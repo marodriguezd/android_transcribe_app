@@ -51,6 +51,8 @@ public class RustInputMethodService extends InputMethodService {
     private Runnable spaceRepeatRunnable;
     private final AudioFocusPauser audioPauser = new AudioFocusPauser();
     private boolean pauseAudioActive = false;
+    private SettingsManager settingsManager;
+    private PostProcessor postProcessor;
 
     @Override
     public void onCreate() {
@@ -59,6 +61,8 @@ public class RustInputMethodService extends InputMethodService {
         Log.d(TAG, "Service onCreate");
         try {
             initNative(this);
+            settingsManager = new SettingsManager(this);
+            postProcessor = new PostProcessor(settingsManager);
         } catch (Exception e) {
             Log.e(TAG, "Error in initNative", e);
         }
@@ -339,34 +343,55 @@ public class RustInputMethodService extends InputMethodService {
     // Called from Rust
     public void onTextTranscribed(String text) {
         mainHandler.post(() -> {
-            InputConnection ic = getCurrentInputConnection();
-            if (ic != null) {
-                String committed = text + " ";
-                ic.commitText(committed, 1);
+            if (settingsManager.isPostProcessEnabled()) {
+                if (statusView != null) statusView.setText("Refining text...");
+                postProcessor.process(text, new PostProcessor.PostProcessCallback() {
+                    @Override
+                    public void onSuccess(String refinedText) {
+                        mainHandler.post(() -> finalizeTranscription(refinedText));
+                    }
 
-                if (!pendingSwitchBack && new File(getFilesDir(), "select_transcription").exists()) {
-                    android.view.inputmethod.ExtractedText et = ic.getExtractedText(
-                        new android.view.inputmethod.ExtractedTextRequest(), 0);
-                    if (et != null) {
-                        int end = et.selectionStart;
-                        int start = end - committed.length();
-                        if (start >= 0) {
-                            ic.setSelection(start, end);
-                        }
+                    @Override
+                    public void onError(String error) {
+                        Log.e(TAG, "Post-process error: " + error);
+                        // Fallback to raw text
+                        mainHandler.post(() -> finalizeTranscription(text));
+                    }
+                });
+            } else {
+                finalizeTranscription(text);
+            }
+        });
+    }
+
+    private void finalizeTranscription(String text) {
+        InputConnection ic = getCurrentInputConnection();
+        if (ic != null) {
+            String committed = text + " ";
+            ic.commitText(committed, 1);
+
+            if (!pendingSwitchBack && new File(getFilesDir(), "select_transcription").exists()) {
+                android.view.inputmethod.ExtractedText et = ic.getExtractedText(
+                    new android.view.inputmethod.ExtractedTextRequest(), 0);
+                if (et != null) {
+                    int end = et.selectionStart;
+                    int start = end - committed.length();
+                    if (start >= 0) {
+                        ic.setSelection(start, end);
                     }
                 }
             }
-            if (pauseAudioActive) {
-                audioPauser.abandon(this);
-                pauseAudioActive = false;
-            }
-            updateRecordButtonUI(false);
-            if (statusView != null) statusView.setText("Tap to Record");
-            if (pendingSwitchBack) {
-                pendingSwitchBack = false;
-                switchToPreviousInputMethod();
-            }
-        });
+        }
+        if (pauseAudioActive) {
+            audioPauser.abandon(this);
+            pauseAudioActive = false;
+        }
+        updateRecordButtonUI(false);
+        if (statusView != null) statusView.setText("Tap to Record");
+        if (pendingSwitchBack) {
+            pendingSwitchBack = false;
+            switchToPreviousInputMethod();
+        }
     }
     public void onAudioLevel(float level) { }
 

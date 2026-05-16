@@ -7,6 +7,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.INTERNET" />
 
     <application
         android:label="Offline Voice Input"
@@ -25,6 +26,12 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <activity
+            android:name=".PostProcessSettingsActivity"
+            android:label="Ajustes de Post-Proceso"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:exported="false" />
 
         <!-- Live Subtitles Activity (for permissions) -->
         <activity

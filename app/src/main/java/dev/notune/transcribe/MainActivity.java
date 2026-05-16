@@ -58,6 +58,12 @@ public class MainActivity extends Activity {
             startActivity(intent);
         });
 
+        Button postProcessButton = findViewById(R.id.btn_post_process_settings);
+        postProcessButton.setOnClickListener(v -> {
+            Intent intent = new Intent(this, PostProcessSettingsActivity.class);
+            startActivity(intent);
+        });
+
         Switch autoRecordSwitch = findViewById(R.id.switch_auto_record);
         File autoRecordFile = new File(getFilesDir(), "auto_record");
         autoRecordSwitch.setChecked(autoRecordFile.exists());

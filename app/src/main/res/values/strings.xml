@@ -30,4 +30,18 @@
 
     <string name="setting_pause_audio">Pause audio</string>
     <string name="setting_pause_audio_desc">Pause audio while recording</string>
+
+    <string name="section_post_process">Post-Procesamiento AI</string>
+    <string name="desc_post_process">Refina tu texto usando modelos de lenguaje (OpenAI, Claude, Ollama).</string>
+    <string name="btn_post_process_settings">Ajustes de Post-Proceso</string>
+    
+    <string name="title_post_process_settings">Ajustes de Post-Proceso</string>
+    <string name="label_enable_post_process">Activar Post-Proceso</string>
+    <string name="label_api_url">URL de la API (OpenAI Compatible)</string>
+    <string name="label_api_key">Clave API (Opcional)</string>
+    <string name="label_model_name">Nombre del Modelo</string>
+    <string name="label_prompt">Instrucciones (Prompt)</string>
+    <string name="hint_prompt">Usa ${output} para insertar el texto transcrito</string>
+    <string name="btn_save">Guardar Configuración</string>
+    <string name="status_refining">Refinando texto...</string>
 </resources>

@@ -21,9 +21,9 @@ height="80">](https://play.google.com/store/apps/details?id=dev.notune.transcrib
 
 ## Screenshots
 <p float="left">
-  <img src=".screenshots/screenshot_home.png" width="30%" />
+  <img src=".screenshots/screenshot_home.jpg" width="30%" />
   <img src=".screenshots/screenshot_ime.png" width="30%" />
-  <img src=".screenshots/screenshot_subtitles.png" width="30%" /> 
+  <img src=".screenshots/screenshot_handy.jpg" width="30%" /> 
 </p>
 
 ## Prerequisites

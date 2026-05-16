@@ -15,7 +15,8 @@ height="80">](https://play.google.com/store/apps/details?id=dev.notune.transcrib
 - **Supported Languages:** Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Slovak, Slovenian, Spanish, Swedish, Russian, Ukrainian
 - **Voice Input Keyboard** Use your voice as a text field input method.
 - **Live Subtitles:** Real-time captions for any audio/video playing on your device.
-- **Privacy-First:** No audio data leaves your device.
+- **AI Post-Processing (New!):** Optional text refinement using LLMs (OpenAI, Gemini, Ollama). Refine your transcriptions with custom prompts, model discovery, and base URL support—similar to [Handy.computer](https://handy.computer).
+- **Privacy-First:** No audio data leaves your device. Local transcription by default.
 - **Rust Backend:** Efficient and safe native code using [transcribe-rs](https://github.com/cjpais/transcribe-rs).
 
 ## Screenshots
@@ -85,6 +86,16 @@ export STORE_PASS=yourpassword
 ### Model Assets
 
 The Parakeet TDT model files (~670 MB) are automatically downloaded from HuggingFace during the first build via a Gradle task. Checksums are verified with SHA-256. No manual download is needed.
+
+### AI Post-Processing (Handy-like)
+
+To enable AI-powered text refinement:
+1. Open the app and navigate to **Ajustes de Post-Proceso**.
+2. Enable the feature and enter your **API Base URL** (e.g., `https://api.openai.com/v1`).
+3. Provide your **API Key** (optional for local models like Ollama).
+4. Tap the **Refresh** icon next to the Model Name to fetch available models.
+5. Define your **Prompt** (use `${output}` as a placeholder for the raw text).
+6. Save and start dictating!
 
 ## Project Structure
 

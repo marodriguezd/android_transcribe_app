@@ -1,6 +1,6 @@
 # Offline Voice Input (Android)
 
-An offline, privacy-focused voice input keyboard and live subtitle tool for Android, built with Rust.
+An offline, privacy-focused voice input keyboard, live subtitle tool, and AI-powered text refiner (Handy-like) for Android, built with Rust.
 
 [<img src="https://i.ibb.co/q0mdc4Z/get-it-on-github.png"
 alt="Get it on GitHub"

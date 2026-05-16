@@ -7,12 +7,12 @@ public class SettingsManager {
     private static final String PREFS_NAME = "transcribe_settings";
     
     private static final String KEY_POST_PROCESS_ENABLED = "post_process_enabled";
-    private static final String KEY_API_URL = "api_url";
+    private static final String KEY_API_URL = "api_url"; // Now stores Base URL
     private static final String KEY_API_KEY = "api_key";
     private static final String KEY_MODEL_NAME = "model_name";
     private static final String KEY_SYSTEM_PROMPT = "system_prompt";
 
-    private static final String DEFAULT_API_URL = "https://api.openai.com/v1/chat/completions";
+    private static final String DEFAULT_API_URL = "https://api.openai.com/v1";
     private static final String DEFAULT_MODEL = "gpt-4o-mini";
     private static final String DEFAULT_PROMPT = "Eres un motor de post-procesamiento. Corrige la gramática, ortografía y puntuación del siguiente texto, manteniendo el estilo original: ${output}";
 

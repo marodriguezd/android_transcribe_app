@@ -81,7 +81,7 @@
                 android:id="@+id/edit_api_url"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="https://api.openai.com/v1/..."
+                android:hint="https://api.openai.com/v1"
                 android:inputType="textUri"
                 android:textSize="16sp"
                 android:layout_marginBottom="16dp" />
@@ -113,13 +113,39 @@
                 android:textStyle="bold"
                 android:layout_marginBottom="4dp" />
 
-            <EditText
-                android:id="@+id/edit_model_name"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:hint="gpt-4o-mini"
-                android:inputType="text"
-                android:textSize="16sp" />
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <AutoCompleteTextView
+                    android:id="@+id/edit_model_name"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:hint="gpt-4o-mini"
+                    android:inputType="text"
+                    android:textSize="16sp"
+                    android:completionThreshold="1" />
+
+                <ProgressBar
+                    android:id="@+id/progress_models"
+                    style="?android:attr/progressBarStyleSmall"
+                    android:layout_width="24dp"
+                    android:layout_height="24dp"
+                    android:layout_marginStart="8dp"
+                    android:visibility="gone" />
+
+                <ImageButton
+                    android:id="@+id/btn_refresh_models"
+                    android:layout_width="48dp"
+                    android:layout_height="48dp"
+                    android:background="?android:attr/selectableItemBackgroundBorderless"
+                    android:src="@android:drawable/ic_popup_sync"
+                    android:tint="@color/colorPrimary"
+                    android:contentDescription="Refresh Models" />
+            </LinearLayout>
         </LinearLayout>
 
         <!-- Prompt Card -->

@@ -37,11 +37,13 @@
     
     <string name="title_post_process_settings">Ajustes de Post-Proceso</string>
     <string name="label_enable_post_process">Activar Post-Proceso</string>
-    <string name="label_api_url">URL de la API (OpenAI Compatible)</string>
+    <string name="label_api_url">URL Base de la API (OpenAI Compatible)</string>
     <string name="label_api_key">Clave API (Opcional)</string>
     <string name="label_model_name">Nombre del Modelo</string>
     <string name="label_prompt">Instrucciones (Prompt)</string>
     <string name="hint_prompt">Usa ${output} para insertar el texto transcrito</string>
     <string name="btn_save">Guardar Configuración</string>
     <string name="status_refining">Refinando texto...</string>
+    <string name="msg_fetching_models">Obteniendo modelos...</string>
+    <string name="msg_models_ready">Lista de modelos actualizada</string>
 </resources>

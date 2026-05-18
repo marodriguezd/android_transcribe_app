@@ -12,12 +12,13 @@ height="80">](https://play.google.com/store/apps/details?id=dev.notune.transcrib
 ## Features
 
 - **Offline Transcription:** Uses deep learning models (Parakeet TDT) to transcribe speech entirely on-device.
+- **Hardware Acceleration:** Powered by **NNAPI** and **XNNPACK** for high-performance inference on mobile NPUs and CPUs.
 - **Supported Languages:** Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Slovak, Slovenian, Spanish, Swedish, Russian, Ukrainian
 - **Voice Input Keyboard** Use your voice as a text field input method.
 - **Live Subtitles:** Real-time captions for any audio/video playing on your device.
 - **AI Post-Processing (New!):** Optional text refinement using LLMs (OpenAI, Gemini, Ollama). Refine your transcriptions with custom prompts, model discovery, and base URL support—similar to [Handy.computer](https://handy.computer).
 - **Privacy-First:** No audio data leaves your device. Local transcription by default.
-- **Rust Backend:** Efficient and safe native code using [transcribe-rs](https://github.com/cjpais/transcribe-rs).
+- **Rust Backend:** High-performance native code using **transcribe-rs** and **ONNX Runtime 1.25.0**.
 
 ## Screenshots
 <p float="left">

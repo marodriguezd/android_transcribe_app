@@ -323,7 +323,7 @@ impl ParakeetModel {
 
         let (mut state1, mut state2) = self.create_decoder_state()?;
         let mut targets = Array2::<i32>::zeros((1, 1));
-        let target_length = Array1::from_vec(vec![1i64]);
+        let target_length = Array1::from_vec(vec![1i32]);
 
         while t < encodings_len {
             let target_token = tokens.last().copied().unwrap_or(self.blank_idx);

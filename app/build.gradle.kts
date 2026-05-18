@@ -81,14 +81,14 @@ if (!isBundle) {
 }
 
 dependencies {
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.25.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 }
 
 // Dedicated configuration to resolve the ORT AAR for the Rust build
 val ortNative: Configuration by configurations.creating
 dependencies {
-    ortNative("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
+    ortNative("com.microsoft.onnxruntime:onnxruntime-android:1.25.0")
 }
 
 // ---------------------------------------------------------------------------

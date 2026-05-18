@@ -1,10 +1,10 @@
 use ndarray::{Array, Array1, Array2, Array3, ArrayD, ArrayViewD, IxDyn};
 use once_cell::sync::Lazy;
-use ort::execution_providers::CPUExecutionProvider;
+use ort::ep;
 use ort::inputs;
 use ort::session::builder::GraphOptimizationLevel;
 use ort::session::Session;
-use ort::value::TensorRef;
+use ort::value::{Tensor, TensorRef};
 use regex::Regex;
 
 use std::fs;
@@ -100,7 +100,13 @@ impl ParakeetModel {
         intra_threads: Option<usize>,
         try_quantized: bool,
     ) -> Result<Session, ParakeetError> {
-        let providers = vec![CPUExecutionProvider::default().build()];
+        let mut providers = Vec::new();
+        #[cfg(target_os = "android")]
+        {
+            providers.push(ep::NNAPI::default().build());
+            providers.push(ep::XNNPACK::default().build());
+        }
+        providers.push(ep::CPU::default().build());
 
         // Try quantized version first if requested, fallback to regular version
         let model_filename = if try_quantized {
@@ -123,25 +129,32 @@ impl ParakeetModel {
             regular_name
         };
 
-        let mut builder = Session::builder()?
-            .with_optimization_level(GraphOptimizationLevel::Level3)?
-            .with_execution_providers(providers)?
-            .with_parallel_execution(true)?;
+        let mut builder = Session::builder()
+            .map_err(|e| ParakeetError::Ort(e.into()))?
+            .with_optimization_level(GraphOptimizationLevel::Level3)
+            .map_err(|e| ParakeetError::Ort(e.into()))?
+            .with_execution_providers(providers)
+            .map_err(|e| ParakeetError::Ort(e.into()))?
+            .with_parallel_execution(true)
+            .map_err(|e| ParakeetError::Ort(e.into()))?;
 
         if let Some(threads) = intra_threads {
             builder = builder
-                .with_intra_threads(threads)?
-                .with_inter_threads(threads)?;
+                .with_intra_threads(threads)
+                .map_err(|e| ParakeetError::Ort(e.into()))?
+                .with_inter_threads(threads)
+                .map_err(|e| ParakeetError::Ort(e.into()))?;
         }
 
-        let session = builder.commit_from_file(model_dir.as_ref().join(&model_filename))?;
+        let session = builder.commit_from_file(model_dir.as_ref().join(&model_filename))
+            .map_err(|e| ParakeetError::Ort(e.into()))?;
 
-        for input in &session.inputs {
+        for input in session.inputs() {
             log::info!(
                 "Model '{}' input: name={}, type={:?}",
                 model_filename,
-                input.name,
-                input.input_type
+                input.name(),
+                input.dtype()
             );
         }
 
@@ -238,21 +251,21 @@ impl ParakeetModel {
 
     pub fn create_decoder_state(&self) -> Result<DecoderState, ParakeetError> {
         // Get input shapes from decoder model
-        let inputs = &self.decoder_joint.inputs;
+        let inputs = self.decoder_joint.inputs();
 
         let state1_shape = inputs
             .iter()
-            .find(|input| input.name == "input_states_1")
+            .find(|input| input.name() == "input_states_1")
             .ok_or_else(|| ParakeetError::InputNotFound("input_states_1".to_string()))?
-            .input_type
+            .dtype()
             .tensor_shape()
             .ok_or_else(|| ParakeetError::TensorShape("input_states_1".to_string()))?;
 
         let state2_shape = inputs
             .iter()
-            .find(|input| input.name == "input_states_2")
+            .find(|input| input.name() == "input_states_2")
             .ok_or_else(|| ParakeetError::InputNotFound("input_states_2".to_string()))?
-            .input_type
+            .dtype()
             .tensor_shape()
             .ok_or_else(|| ParakeetError::TensorShape("input_states_2".to_string()))?;
 
@@ -271,63 +284,6 @@ impl ParakeetModel {
         ));
 
         Ok((state1, state2))
-    }
-
-    pub fn decode_step(
-        &mut self,
-        prev_tokens: &[i32],
-        prev_state: &DecoderState,
-        encoder_out: &ArrayViewD<f32>, // [time_steps, 1024]
-    ) -> Result<(ArrayD<f32>, DecoderState), ParakeetError> {
-        log::trace!("Running decoder inference...");
-
-        // Get last token or blank_idx if empty
-        let target_token = prev_tokens.last().copied().unwrap_or(self.blank_idx);
-
-        // Prepare inputs matching Python: encoder_out[None, :, None] -> [1, time_steps, 1]
-        let encoder_outputs = encoder_out
-            .to_owned()
-            .insert_axis(ndarray::Axis(0))
-            .insert_axis(ndarray::Axis(2));
-        let targets = Array2::from_shape_vec((1, 1), vec![target_token])?;
-        let target_length = Array1::from_vec(vec![1]);
-
-        let inputs = inputs![
-            "encoder_outputs" => TensorRef::from_array_view(encoder_outputs.view())?,
-            "targets" => TensorRef::from_array_view(targets.view())?,
-            "target_length" => TensorRef::from_array_view(target_length.view())?,
-            "input_states_1" => TensorRef::from_array_view(prev_state.0.view())?,
-            "input_states_2" => TensorRef::from_array_view(prev_state.1.view())?,
-        ];
-
-        let outputs = self.decoder_joint.run(inputs)?;
-
-        let logits = outputs
-            .get("outputs")
-            .ok_or_else(|| ParakeetError::OutputNotFound("outputs".to_string()))?
-            .try_extract_array()?;
-        log::trace!(
-            "Logits shape: {:?}, vocab_size: {}",
-            logits.shape(),
-            self.vocab_size
-        );
-        let state1 = outputs
-            .get("output_states_1")
-            .ok_or_else(|| ParakeetError::OutputNotFound("output_states_1".to_string()))?
-            .try_extract_array()?;
-        let state2 = outputs
-            .get("output_states_2")
-            .ok_or_else(|| ParakeetError::OutputNotFound("output_states_2".to_string()))?
-            .try_extract_array()?;
-
-        // Squeeze outputs like Python (remove batch dimension)
-        let logits = logits.remove_axis(ndarray::Axis(0));
-
-        // Convert ArrayD back to Array3 to match expected return type
-        let state1_3d = state1.to_owned().into_dimensionality::<ndarray::Ix3>()?;
-        let state2_3d = state2.to_owned().into_dimensionality::<ndarray::Ix3>()?;
-
-        Ok((logits.to_owned(), (state1_3d, state2_3d)))
     }
 
     pub fn recognize_batch(
@@ -357,43 +313,63 @@ impl ParakeetModel {
         encodings: &ArrayViewD<f32>, // [time_steps, 1024]
         encodings_len: usize,
     ) -> Result<(Vec<i32>, Vec<usize>), ParakeetError> {
-        let mut prev_state = self.create_decoder_state()?;
+        let mut binding = self.decoder_joint.create_binding()?;
+
         let mut tokens = Vec::new();
         let mut timestamps = Vec::new();
 
         let mut t = 0;
         let mut emitted_tokens = 0;
 
-        while t < encodings_len {
-            let encoder_step = encodings.slice(ndarray::s![t, ..]);
-            // Convert to dynamic dimension to match decode_step parameter type
-            let encoder_step_dyn = encoder_step.to_owned().into_dyn();
-            let (probs, new_state) =
-                self.decode_step(&tokens, &prev_state, &encoder_step_dyn.view())?;
+        let (mut state1, mut state2) = self.create_decoder_state()?;
+        let mut targets = Array2::<i32>::zeros((1, 1));
+        let target_length = Array1::from_vec(vec![1i64]);
 
-            // For TDT models, split output into vocab logits and duration logits
-            // output[:vocab_size] = vocabulary logits
-            // output[vocab_size:] = duration logits
-            let vocab_logits_slice = probs.as_slice().ok_or_else(|| {
-                ParakeetError::Shape(ndarray::ShapeError::from_kind(
-                    ndarray::ErrorKind::IncompatibleShape,
-                ))
+        while t < encodings_len {
+            let target_token = tokens.last().copied().unwrap_or(self.blank_idx);
+            targets[[0, 0]] = target_token;
+
+            let encoder_step = encodings.slice(ndarray::s![t, ..]);
+            let encoder_outputs = encoder_step
+                .to_owned()
+                .insert_axis(ndarray::Axis(0))
+                .insert_axis(ndarray::Axis(2));
+
+            let encoder_outputs_ort = Tensor::from_array(encoder_outputs)?;
+            let targets_ort = Tensor::from_array(targets.clone())?;
+            let target_length_ort = Tensor::from_array(target_length.clone())?;
+            let state1_ort = Tensor::from_array(state1.clone())?;
+            let state2_ort = Tensor::from_array(state2.clone())?;
+
+            binding.bind_input("encoder_outputs", &encoder_outputs_ort)?;
+            binding.bind_input("targets", &targets_ort)?;
+            binding.bind_input("target_length", &target_length_ort)?;
+            binding.bind_input("input_states_1", &state1_ort)?;
+            binding.bind_input("input_states_2", &state2_ort)?;
+
+            // Bind outputs to avoid re-allocation
+            binding.bind_output_to_device("outputs", &self.decoder_joint.allocator().memory_info())?;
+            binding.bind_output_to_device("output_states_1", &self.decoder_joint.allocator().memory_info())?;
+            binding.bind_output_to_device("output_states_2", &self.decoder_joint.allocator().memory_info())?;
+
+            let outputs = self.decoder_joint.run_binding(&binding)?;
+
+            let probs = outputs.get("outputs").unwrap().try_extract_array()?;
+            let out_state1 = outputs.get("output_states_1").unwrap().try_extract_array()?;
+            let out_state2 = outputs.get("output_states_2").unwrap().try_extract_array()?;
+
+            // TDT logic
+            let probs_squeezed = probs.remove_axis(ndarray::Axis(0));
+            let vocab_logits_slice: &[f32] = probs_squeezed.as_slice().ok_or_else(|| {
+                ParakeetError::Shape(ndarray::ShapeError::from_kind(ndarray::ErrorKind::IncompatibleShape))
             })?;
 
-            let vocab_logits = if probs.len() > self.vocab_size {
-                // TDT model - extract only vocabulary logits
-                log::trace!(
-                    "TDT model detected: splitting {} logits into vocab({}) + duration",
-                    probs.len(),
-                    self.vocab_size
-                );
+            let vocab_logits = if probs_squeezed.len() > self.vocab_size {
                 &vocab_logits_slice[..self.vocab_size]
             } else {
-                // Regular RNN-T model
                 vocab_logits_slice
             };
 
-            // Get argmax token from vocabulary logits only
             let token = vocab_logits
                 .iter()
                 .enumerate()
@@ -402,13 +378,13 @@ impl ParakeetModel {
                 .unwrap_or(self.blank_idx);
 
             if token != self.blank_idx {
-                prev_state = new_state;
+                state1 = out_state1.to_owned().into_dimensionality()?;
+                state2 = out_state2.to_owned().into_dimensionality()?;
                 tokens.push(token);
                 timestamps.push(t);
                 emitted_tokens += 1;
             }
 
-            // Step logic from Python - simplified since step is always -1
             if token == self.blank_idx || emitted_tokens == MAX_TOKENS_PER_STEP {
                 t += 1;
                 emitted_tokens = 0;

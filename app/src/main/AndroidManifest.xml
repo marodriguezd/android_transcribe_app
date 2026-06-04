@@ -85,6 +85,23 @@
             android:foregroundServiceType="mediaProjection"
             android:exported="false" />
 
+        <!-- Speech-to-text provider for other keyboards (SwiftKey, Gboard, …).
+             Declared in the manifest so it is always discoverable via
+             SpeechRecognizer, even when the app process isn't running. -->
+        <service
+            android:name=".VoiceRecognitionService"
+            android:label="@string/recognition_service_label"
+            android:permission="android.permission.BIND_RECOGNITION_SERVICE"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.speech.RecognitionService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+            <meta-data
+                android:name="android.speech"
+                android:resource="@xml/recognition_service" />
+        </service>
+
         <!-- IME Service -->
         <service
             android:name=".RustInputMethodService"

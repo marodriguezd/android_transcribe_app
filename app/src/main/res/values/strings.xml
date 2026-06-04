@@ -34,7 +34,7 @@
     <string name="section_post_process">Post-Procesamiento AI</string>
     <string name="desc_post_process">Refina tu texto usando modelos de lenguaje (OpenAI, Claude, Ollama).</string>
     <string name="btn_post_process_settings">Ajustes de Post-Proceso</string>
-    
+
     <string name="title_post_process_settings">Ajustes de Post-Proceso</string>
     <string name="label_enable_post_process">Activar Post-Proceso</string>
     <string name="label_api_url">URL Base de la API (OpenAI Compatible)</string>
@@ -46,4 +46,6 @@
     <string name="status_refining">Refinando texto...</string>
     <string name="msg_fetching_models">Obteniendo modelos...</string>
     <string name="msg_models_ready">Lista de modelos actualizada</string>
+
+    <string name="recognition_service_label">Offline Voice Input</string>
 </resources>

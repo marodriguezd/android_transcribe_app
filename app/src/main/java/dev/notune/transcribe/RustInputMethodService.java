@@ -53,6 +53,17 @@ public class RustInputMethodService extends InputMethodService {
     private boolean pauseAudioActive = false;
     private SettingsManager settingsManager;
     private PostProcessor postProcessor;
+    // Whether an editor is currently focused/started for input. Tracked via
+    // onStartInput/onFinishInput because getCurrentInputConnection() returns a
+    // non-null no-op connection when nothing is focused, so commitText would be
+    // silently dropped.
+    private boolean inputActive = false;
+    // Transcribed text waiting to be committed because no editor was focused
+    // when transcription finished. This happens on long transcribes where the
+    // target field (e.g. a web field in Firefox/Gemini) drops focus while we
+    // process audio. Flushed from onStartInputView once a field is focused
+    // again so the text is never lost.
+    private String pendingCommitText = null;
 
     @Override
     public void onCreate() {
@@ -258,6 +269,27 @@ public class RustInputMethodService extends InputMethodService {
         }
     }
 
+    @Override
+    public void onStartInput(EditorInfo attribute, boolean restarting) {
+        super.onStartInput(attribute, restarting);
+        inputActive = true;
+    }
+
+    @Override
+    public void onStartInputView(EditorInfo info, boolean restarting) {
+        super.onStartInputView(info, restarting);
+        inputActive = true;
+        // A field is focused and the input connection is live again — commit any
+        // text that finished transcribing while nothing was focused.
+        flushPendingText();
+    }
+
+    @Override
+    public void onFinishInput() {
+        super.onFinishInput();
+        inputActive = false;
+    }
+
     private void updateRecordButtonUI(boolean recording) {
         isRecording = recording;
         if (recording) {
@@ -365,22 +397,16 @@ public class RustInputMethodService extends InputMethodService {
     }
 
     private void finalizeTranscription(String text) {
+        String committed = text + " ";
         InputConnection ic = getCurrentInputConnection();
-        if (ic != null) {
-            String committed = text + " ";
-            ic.commitText(committed, 1);
-
-            if (!pendingSwitchBack && settingsManager.isSelectTranscription()) {
-                android.view.inputmethod.ExtractedText et = ic.getExtractedText(
-                    new android.view.inputmethod.ExtractedTextRequest(), 0);
-                if (et != null) {
-                    int end = et.selectionStart;
-                    int start = end - committed.length();
-                    if (start >= 0) {
-                        ic.setSelection(start, end);
-                    }
-                }
-            }
+        if (inputActive && ic != null) {
+            commitTranscribedText(ic, committed);
+        } else {
+            // No editor is focused right now (common on long transcribes where
+            // a web field in Firefox/Gemini dropped focus while we processed
+            // audio). Committing now would be silently dropped, so defer the
+            // text until a field is focused again instead of losing it.
+            pendingCommitText = committed;
         }
         if (pauseAudioActive) {
             audioPauser.abandon(this);
@@ -391,6 +417,36 @@ public class RustInputMethodService extends InputMethodService {
         if (pendingSwitchBack) {
             pendingSwitchBack = false;
             switchToPreviousInputMethod();
+        }
+    }
+
+    // Commits transcribed text into the active input connection, optionally
+    // selecting it afterwards (select_transcription setting).
+    private void commitTranscribedText(InputConnection ic, String committed) {
+        ic.commitText(committed, 1);
+
+        if (!pendingSwitchBack && settingsManager.isSelectTranscription()) {
+            android.view.inputmethod.ExtractedText et = ic.getExtractedText(
+                new android.view.inputmethod.ExtractedTextRequest(), 0);
+            if (et != null) {
+                int end = et.selectionStart;
+                int start = end - committed.length();
+                if (start >= 0) {
+                    ic.setSelection(start, end);
+                }
+            }
+        }
+    }
+
+    // Commits text that finished transcribing while no field was focused. Called
+    // from onStartInputView when an editor (and a live input connection) is
+    // available again.
+    private void flushPendingText() {
+        if (pendingCommitText == null) return;
+        InputConnection ic = getCurrentInputConnection();
+        if (ic != null) {
+            commitTranscribedText(ic, pendingCommitText);
+            pendingCommitText = null;
         }
     }
     public void onAudioLevel(float level) { }

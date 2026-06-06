@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.speech.RecognizerIntent;
 import android.util.Log;
+import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -48,6 +49,10 @@ public class RecognizeActivity extends Activity {
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.recognize_activity);
+
+        // Keep the screen awake for the lifetime of this recording screen so it
+        // never sleeps mid-capture and cuts the recording short.
+        getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
 
         micLevel = findViewById(R.id.mic_level);
         status = findViewById(R.id.txt_status);

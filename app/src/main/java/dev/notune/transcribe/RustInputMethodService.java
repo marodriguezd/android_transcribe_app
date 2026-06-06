@@ -40,6 +40,7 @@ public class RustInputMethodService extends InputMethodService {
     private View spaceButton;
     private View enterButton;
     private View switchKeyboardButton;
+    private View inputView;
     private Handler mainHandler;
     private boolean isRecording = false;
     private boolean pendingSwitchBack = false;
@@ -84,7 +85,8 @@ public class RustInputMethodService extends InputMethodService {
         Log.d(TAG, "onCreateInputView");
         try {
             View view = getLayoutInflater().inflate(R.layout.ime_layout, null);
-            
+            inputView = view;
+
             // Handle window insets for avoiding navigation bar overlap
             view.setOnApplyWindowInsetsListener((v, insets) -> {
                 int paddingBottom = insets.getSystemWindowInsetBottom();
@@ -292,6 +294,11 @@ public class RustInputMethodService extends InputMethodService {
 
     private void updateRecordButtonUI(boolean recording) {
         isRecording = recording;
+        // Keep the screen awake while recording so it never sleeps mid-capture
+        // and cuts the recording short. Cleared automatically once we stop.
+        if (inputView != null) {
+            inputView.setKeepScreenOn(recording);
+        }
         if (recording) {
             micIcon.setColorFilter(0xFFF44336); // Red
             statusView.setText("Listening...");

@@ -12,11 +12,13 @@ height="80">](https://play.google.com/store/apps/details?id=dev.notune.transcrib
 ## Features
 
 - **Offline Transcription:** Uses deep learning models (Parakeet TDT) to transcribe speech entirely on-device.
+- **Zero-Copy Model Loading:** ONNX models are memory-mapped (`mmap`) directly from APK assets — no extraction step, instant startup.
 - **Hardware Acceleration:** Powered by **NNAPI** and **XNNPACK** for high-performance inference on mobile NPUs and CPUs.
+- **Lock-Free Audio Pipeline:** Audio level updates use atomic operations (`AtomicU32`), fully decoupled from the JVM — no GC pauses during capture.
 - **Supported Languages:** Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Slovak, Slovenian, Spanish, Swedish, Russian, Ukrainian
 - **Voice Input Keyboard** Use your voice as a text field input method.
-- **Live Subtitles:** Real-time captions for any audio/video playing on your device.
-- **AI Post-Processing (New!):** Optional text refinement using LLMs (OpenAI, Gemini, Ollama). Refine your transcriptions with custom prompts, model discovery, and base URL support—similar to [Handy.computer](https://handy.computer).
+- **Live Subtitles:** Real-time captions for any audio/video playing on your device, with automatic silence detection and clearing.
+- **AI Post-Processing:** Optional text refinement using LLMs (OpenAI, Gemini, Ollama). Refine your transcriptions with custom prompts, model discovery, and base URL support—similar to [Handy.computer](https://handy.computer).
 - **Privacy-First:** No audio data leaves your device. Local transcription by default.
 - **Rust Backend:** High-performance native code using **transcribe-rs** and **ONNX Runtime 1.25.0**.
 
@@ -56,6 +58,13 @@ org.gradle.java.home=/path/to/jdk17
 
 ## Building
 
+### Quick Build (Recommended)
+```bash
+./build.sh
+# Builds the Rust native library and assembles the release APK in one step.
+# Output: app/build/outputs/apk/release/app-release.apk
+```
+
 ### Debug APK
 ```bash
 ./gradlew assembleDebug
@@ -86,7 +95,7 @@ export STORE_PASS=yourpassword
 
 ### Model Assets
 
-The Parakeet TDT model files (~670 MB) are automatically downloaded from HuggingFace during the first build via a Gradle task. Checksums are verified with SHA-256. No manual download is needed.
+The Parakeet TDT model files (~670 MB) are automatically downloaded from HuggingFace during the first build via a Gradle task. Checksums are verified with SHA-256. No manual download is needed. At runtime, models are loaded directly from the APK via memory mapping — no extra disk space is required beyond the APK itself.
 
 ### AI Post-Processing (Handy-like)
 
@@ -113,6 +122,7 @@ To enable AI-powered text refinement:
 ├── Cargo.toml                            # Rust workspace
 ├── build.gradle.kts                      # Root Gradle config
 ├── app/build.gradle.kts                  # App module config (AGP 8.7.3)
+├── build.sh                              # One-command build script
 ├── settings.gradle.kts
 ├── gradle.properties
 └── fastlane/metadata/android/            # F-Droid metadata

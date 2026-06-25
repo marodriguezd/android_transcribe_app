@@ -61,6 +61,19 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_ini
         let mut last_committed_end = 0.0f64;
 
         while let Ok((samples, start_time)) = rx.recv() {
+            if samples.is_empty() {
+                if let Ok(txt) = env.new_string("") {
+                    let _ = env.call_method(
+                        service_obj,
+                        "onSubtitleText",
+                        "(Ljava/lang/String;)V",
+                        &[(&txt).into()],
+                    );
+                }
+                last_committed_end = 0.0f64;
+                continue;
+            }
+
             if let Some(engine_arc) = engine::get_engine() {
                 let params = ParakeetInferenceParams {
                     timestamp_granularity: TimestampGranularity::Word,
@@ -158,6 +171,8 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_pus
 
             if rms > 0.002 {
                 let _ = state.worker_tx.send((buffer.clone(), start_time));
+            } else {
+                let _ = state.worker_tx.send((Vec::new(), start_time));
             }
             state.last_process_sample = state.total_samples;
 

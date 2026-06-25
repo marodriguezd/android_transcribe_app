@@ -241,6 +241,24 @@ impl ParakeetEngine {
             model: None,
         }
     }
+
+    pub fn load_model_from_memory(
+        &mut self,
+        encoder_bytes: &[u8],
+        decoder_joint_bytes: &[u8],
+        preprocessor_bytes: &[u8],
+        vocab_content: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let model = ParakeetModel::from_memory(
+            encoder_bytes,
+            decoder_joint_bytes,
+            preprocessor_bytes,
+            vocab_content,
+        )?;
+        self.model = Some(model);
+        self.loaded_model_path = None;
+        Ok(())
+    }
 }
 
 impl Drop for ParakeetEngine {

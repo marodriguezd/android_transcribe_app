@@ -62,6 +62,10 @@ android {
     // Play Asset Delivery: large model files go into a separate asset pack
     // so the base module stays under the 200 MB Play Store limit.
     assetPacks += listOf(":model_assets")
+
+    androidResources {
+        noCompress += "onnx"
+    }
 }
 
 // For APK builds (assemble/install), asset packs are ignored by AGP so we
@@ -83,6 +87,8 @@ if (!isBundle) {
 dependencies {
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.25.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    testImplementation("org.robolectric:robolectric:4.11.1")
+    testImplementation("junit:junit:4.13.2")
 }
 
 // Dedicated configuration to resolve the ORT AAR for the Rust build
@@ -262,4 +268,8 @@ val downloadModels by tasks.registering {
 
 tasks.named("preBuild") {
     dependsOn(downloadModels)
+}
+
+tasks.withType<Test> {
+    systemProperty("java.library.path", file("../target/release").absolutePath)
 }

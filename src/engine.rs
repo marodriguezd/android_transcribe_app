@@ -1,7 +1,6 @@
 use once_cell::sync::Lazy;
 use std::sync::{Arc, Condvar, Mutex};
 use transcribe_rs::engines::parakeet::ParakeetEngine;
-use transcribe_rs::TranscriptionEngine;
 
 use jni::objects::{GlobalRef, JObject};
 use jni::JNIEnv;
@@ -188,23 +187,41 @@ pub fn ensure_loaded_from_thread(
     }
 }
 
-/// Actually perform the model load. If loading fails due to corrupt files,
-/// removes the extraction marker so the next attempt will re-extract.
 fn do_load(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
-    notify_status(env, context, "Checking assets...");
+    notify_status(env, context, "Accessing assets...");
 
-    let path = assets::extract_assets(env, context).map_err(|e| {
-        let msg = format!("Asset error: {}", e);
-        notify_status(env, context, &format!("Error: {}", msg));
-        msg
-    })?;
+    let asset_manager_obj = env
+        .call_method(
+            context,
+            "getAssets",
+            "()Landroid/content/res/AssetManager;",
+            &[],
+        )
+        .and_then(|v| v.l())
+        .map_err(|e| format!("Failed to get AssetManager: {}", e))?;
 
-    notify_status(env, context, "Loading model...");
+    notify_status(env, context, "Reading vocabulary...");
+    let vocab_content = assets::read_asset_to_string(env, &asset_manager_obj, "parakeet-tdt-0.6b-v3-int8/vocab.txt")
+        .map_err(|e| format!("Failed to read vocab.txt: {}", e))?;
+
+    notify_status(env, context, "Mapping model files...");
+    let encoder_mapped = assets::mmap_asset(env, &asset_manager_obj, "parakeet-tdt-0.6b-v3-int8/encoder-model.int8.onnx")
+        .map_err(|e| format!("Failed to map encoder-model.int8.onnx: {}", e))?;
+
+    let decoder_mapped = assets::mmap_asset(env, &asset_manager_obj, "parakeet-tdt-0.6b-v3-int8/decoder_joint-model.int8.onnx")
+        .map_err(|e| format!("Failed to map decoder_joint-model.int8.onnx: {}", e))?;
+
+    let preprocessor_mapped = assets::mmap_asset(env, &asset_manager_obj, "parakeet-tdt-0.6b-v3-int8/nemo128.onnx")
+        .map_err(|e| format!("Failed to map nemo128.onnx: {}", e))?;
+
+    notify_status(env, context, "Initializing engine...");
 
     let mut eng = ParakeetEngine::new();
-    match eng.load_model_with_params(
-        &path,
-        transcribe_rs::engines::parakeet::ParakeetModelParams::int8(),
+    match eng.load_model_from_memory(
+        encoder_mapped.as_slice(),
+        decoder_mapped.as_slice(),
+        preprocessor_mapped.as_slice(),
+        &vocab_content,
     ) {
         Ok(_) => {
             *GLOBAL_ENGINE.lock().unwrap() = Some(Arc::new(Mutex::new(eng)));
@@ -212,14 +229,6 @@ fn do_load(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
             Ok(())
         }
         Err(e) => {
-            // Model load failed — likely corrupt/incomplete files.
-            // Remove the completion marker so the next attempt re-extracts.
-            let marker = path.join(".extraction_complete");
-            if marker.exists() {
-                log::warn!("Model load failed, removing extraction marker for re-extraction");
-                let _ = std::fs::remove_file(&marker);
-            }
-
             let msg = format!("Model error: {}", e);
             notify_status(env, context, &format!("Error: {}", msg));
             Err(msg)

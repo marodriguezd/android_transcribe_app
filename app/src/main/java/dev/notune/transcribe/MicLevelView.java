@@ -12,7 +12,6 @@ public class MicLevelView extends View {
     private final Paint paint = new Paint(Paint.ANTI_ALIAS_FLAG);
     private float current = 0f;   // 0..1
     private float target = 0f;    // 0..1
-    private ValueAnimator animator;
 
     public MicLevelView(Context c) { super(c); init(); }
     public MicLevelView(Context c, AttributeSet a) { super(c, a); init(); }
@@ -33,20 +32,21 @@ public class MicLevelView extends View {
         if (level < 0f) level = 0f;
         if (level > 1f) level = 1f;
         target = level;
-
-        if (animator != null) animator.cancel();
-        animator = ValueAnimator.ofFloat(current, target);
-        animator.setDuration(60); // fast, makes it feel "live"
-        animator.addUpdateListener(a -> {
-            current = (float) a.getAnimatedValue();
-            invalidate();
-        });
-        animator.start();
+        postInvalidateOnAnimation();
     }
 
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
+
+        // Exponential smoothing (low-pass filter)
+        // 0.25f provides a fast, smooth transition (~60ms response)
+        current = current + 0.25f * (target - current);
+        if (Math.abs(target - current) > 0.005f) {
+            postInvalidateOnAnimation();
+        } else {
+            current = target;
+        }
 
         float cx = getWidth() / 2f;
         float cy = getHeight() / 2f;

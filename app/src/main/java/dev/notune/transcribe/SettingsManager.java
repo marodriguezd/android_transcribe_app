@@ -11,6 +11,9 @@ public class SettingsManager {
     private static final String KEY_API_KEY = "api_key";
     private static final String KEY_MODEL_NAME = "model_name";
     private static final String KEY_SYSTEM_PROMPT = "system_prompt";
+    private static final String KEY_AUTO_RECORD = "auto_record";
+    private static final String KEY_SELECT_TRANSCRIPTION = "select_transcription";
+    private static final String KEY_PAUSE_AUDIO = "pause_audio";
 
     private static final String DEFAULT_API_URL = "https://api.openai.com/v1";
     private static final String DEFAULT_MODEL = "gpt-4o-mini";
@@ -60,5 +63,29 @@ public class SettingsManager {
 
     public void setSystemPrompt(String prompt) {
         prefs.edit().putString(KEY_SYSTEM_PROMPT, prompt).apply();
+    }
+
+    public boolean isAutoRecord() {
+        return prefs.getBoolean(KEY_AUTO_RECORD, false);
+    }
+
+    public void setAutoRecord(boolean enabled) {
+        prefs.edit().putBoolean(KEY_AUTO_RECORD, enabled).apply();
+    }
+
+    public boolean isSelectTranscription() {
+        return prefs.getBoolean(KEY_SELECT_TRANSCRIPTION, false);
+    }
+
+    public void setSelectTranscription(boolean enabled) {
+        prefs.edit().putBoolean(KEY_SELECT_TRANSCRIPTION, enabled).apply();
+    }
+
+    public boolean isPauseAudio() {
+        return prefs.getBoolean(KEY_PAUSE_AUDIO, false);
+    }
+
+    public void setPauseAudio(boolean enabled) {
+        prefs.edit().putBoolean(KEY_PAUSE_AUDIO, enabled).apply();
     }
 }

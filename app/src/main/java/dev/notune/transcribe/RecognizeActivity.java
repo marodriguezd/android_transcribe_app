@@ -32,6 +32,18 @@ public class RecognizeActivity extends Activity {
     private final AudioFocusPauser audioPauser = new AudioFocusPauser();
     private boolean pauseAudioActive = false;
 
+    private final android.os.Handler pollHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable pollRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (isRecording) {
+                float level = getAudioLevelNative();
+                micLevel.setLevel(level);
+                pollHandler.postDelayed(this, 50);
+            }
+        }
+    };
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -44,6 +56,7 @@ public class RecognizeActivity extends Activity {
             // discard current recording
             if (isRecording) {
                 isRecording = false;
+                pollHandler.removeCallbacks(pollRunnable);
                 cancelRecording();   // new native method
             }
             if (pauseAudioActive) {
@@ -58,6 +71,7 @@ public class RecognizeActivity extends Activity {
         findViewById(R.id.root).setOnClickListener(v -> {
             if (isRecording) {
                 isRecording = false;
+                pollHandler.removeCallbacks(pollRunnable);
                 status.setText("Processing...");
                 stopRecording();
                 if (pauseAudioActive) {
@@ -82,11 +96,13 @@ public class RecognizeActivity extends Activity {
             pauseAudioActive = true;
         }
         startRecording();
+        pollHandler.post(pollRunnable);
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
+        pollHandler.removeCallbacks(pollRunnable);
         if (pauseAudioActive) {
             audioPauser.abandon(this);
             pauseAudioActive = false;
@@ -108,11 +124,6 @@ public class RecognizeActivity extends Activity {
         runOnUiThread(() -> status.setText(shown));
     }
 
-    // Called from Rust with 0..1
-    public void onAudioLevel(float level) {
-        runOnUiThread(() -> micLevel.setLevel(level));
-    }
-
     // Called from Rust – keep same method name as IME for code reuse
     public void onTextTranscribed(String text) {
         runOnUiThread(() -> {
@@ -128,7 +139,7 @@ public class RecognizeActivity extends Activity {
     }
 
     private boolean isPauseAudioEnabled() {
-        return new java.io.File(getFilesDir(), "pause_audio").exists();
+        return new SettingsManager(this).isPauseAudio();
     }
 
     // Native methods
@@ -137,4 +148,5 @@ public class RecognizeActivity extends Activity {
     private native void startRecording();
     private native void stopRecording();
     private native void cancelRecording();
+    private native float getAudioLevelNative();
 }

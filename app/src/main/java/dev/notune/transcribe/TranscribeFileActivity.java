@@ -290,6 +290,27 @@ public class TranscribeFileActivity extends Activity {
      */
     private float[] resample(float[] input, int fromRate, int toRate) {
         double ratio = (double) fromRate / toRate;
+
+        // Anti-aliasing pre-filter: moving average of window size floor(ratio)
+        int filterSpan = (int) Math.max(1, Math.floor(ratio));
+        if (filterSpan > 1) {
+            float[] filtered = new float[input.length];
+            float sum = 0;
+            // Initialize moving average
+            for (int i = 0; i < filterSpan; i++) {
+                sum += input[i];
+            }
+            filtered[0] = sum / filterSpan;
+            for (int i = 1; i < input.length; i++) {
+                sum -= input[i - 1];
+                if (i + filterSpan - 1 < input.length) {
+                    sum += input[i + filterSpan - 1];
+                }
+                filtered[i] = sum / filterSpan;
+            }
+            input = filtered;
+        }
+
         int outputLength = (int) (input.length / ratio);
         float[] output = new float[outputLength];
 

@@ -17,6 +17,7 @@ pub struct VoiceSessionState {
     pub jvm: Arc<jni::JavaVM>,
     pub target_ref: GlobalRef,
     pub last_level_sent: Arc<Mutex<std::time::Instant>>,
+    pub current_level: Arc<std::sync::atomic::AtomicU32>,
 }
 
 fn notify_status(env: &mut JNIEnv, obj: &JObject, msg: &str) {
@@ -28,10 +29,6 @@ fn notify_status(env: &mut JNIEnv, obj: &JObject, msg: &str) {
             &[(&jmsg).into()],
         );
     }
-}
-
-fn notify_level(env: &mut JNIEnv, obj: &JObject, level: f32) {
-    let _ = env.call_method(obj, "onAudioLevel", "(F)V", &[level.into()]);
 }
 
 fn notify_text(env: &mut JNIEnv, obj: &JObject, text: &str) {
@@ -60,6 +57,7 @@ pub fn init_session(env: JNIEnv, target: JObject) -> VoiceSessionState {
         jvm: vm_arc.clone(),
         target_ref: target_ref.clone(),
         last_level_sent: Arc::new(Mutex::new(std::time::Instant::now())),
+        current_level: Arc::new(std::sync::atomic::AtomicU32::new(0)),
     };
 
     // Load engine in background
@@ -95,15 +93,14 @@ pub fn start_recording(mut env: JNIEnv, state: &mut VoiceSessionState) {
 
     state.audio_buffer.lock().unwrap().clear();
     let buffer_clone = state.audio_buffer.clone();
+    let level_clone = state.current_level.clone();
 
-    let jvm = state.jvm.clone();
-    let target_ref = state.target_ref.clone();
-    let last_sent = state.last_level_sent.clone();
-
-    let stream = device.build_input_stream(
+    let buffer_clone_f32 = buffer_clone.clone();
+    let level_clone_f32 = level_clone.clone();
+    let stream_result = device.build_input_stream(
         &config,
         move |data: &[f32], _: &_| {
-            buffer_clone.lock().unwrap().extend_from_slice(data);
+            buffer_clone_f32.lock().unwrap().extend_from_slice(data);
 
             // compute RMS
             let mut sum = 0.0f32;
@@ -112,21 +109,37 @@ pub fn start_recording(mut env: JNIEnv, state: &mut VoiceSessionState) {
             }
             let rms = (sum / (data.len() as f32)).sqrt();
             let level = (rms * 6.0).clamp(0.0, 1.0);
-
-            // throttle updates
-            let mut last = last_sent.lock().unwrap();
-            if last.elapsed() >= std::time::Duration::from_millis(50) {
-                *last = std::time::Instant::now();
-
-                if let Ok(mut env) = jvm.attach_current_thread() {
-                    let obj = target_ref.as_obj();
-                    notify_level(&mut env, obj, level);
-                }
-            }
+            level_clone_f32.store(level.to_bits(), std::sync::atomic::Ordering::Relaxed);
         },
         |e| log::error!("Stream err: {}", e),
         None,
     );
+
+    let stream = match stream_result {
+        Ok(s) => Ok(s),
+        Err(e) => {
+            log::warn!("F32 stream building failed, attempting I16 fallback. Error: {}", e);
+            let buffer_clone_i16 = buffer_clone.clone();
+            let level_clone_i16 = level_clone.clone();
+            device.build_input_stream(
+                &config,
+                move |data: &[i16], _: &_| {
+                    let f32_data: Vec<f32> = data.iter().map(|&x| x as f32 / 32768.0).collect();
+                    buffer_clone_i16.lock().unwrap().extend_from_slice(&f32_data);
+
+                    let mut sum = 0.0f32;
+                    for &x in &f32_data {
+                        sum += x * x;
+                    }
+                    let rms = (sum / (f32_data.len() as f32)).sqrt();
+                    let level = (rms * 6.0).clamp(0.0, 1.0);
+                    level_clone_i16.store(level.to_bits(), std::sync::atomic::Ordering::Relaxed);
+                },
+                |e| log::error!("Stream err: {}", e),
+                None,
+            )
+        }
+    };
 
     match stream {
         Ok(s) => {

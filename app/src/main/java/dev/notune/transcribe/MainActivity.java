@@ -64,49 +64,24 @@ public class MainActivity extends Activity {
             startActivity(intent);
         });
 
+        SettingsManager settingsManager = new SettingsManager(this);
+
         Switch autoRecordSwitch = findViewById(R.id.switch_auto_record);
-        File autoRecordFile = new File(getFilesDir(), "auto_record");
-        autoRecordSwitch.setChecked(autoRecordFile.exists());
+        autoRecordSwitch.setChecked(settingsManager.isAutoRecord());
         autoRecordSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            if (isChecked) {
-                try {
-                    autoRecordFile.createNewFile();
-                } catch (IOException e) {
-                    Log.e(TAG, "Failed to create auto_record file", e);
-                }
-            } else {
-                autoRecordFile.delete();
-            }
+            settingsManager.setAutoRecord(isChecked);
         });
 
         Switch selectTranscriptionSwitch = findViewById(R.id.switch_select_transcription);
-        File selectTranscriptionFile = new File(getFilesDir(), "select_transcription");
-        selectTranscriptionSwitch.setChecked(selectTranscriptionFile.exists());
+        selectTranscriptionSwitch.setChecked(settingsManager.isSelectTranscription());
         selectTranscriptionSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            if (isChecked) {
-                try {
-                    selectTranscriptionFile.createNewFile();
-                } catch (IOException e) {
-                    Log.e(TAG, "Failed to create select_transcription file", e);
-                }
-            } else {
-                selectTranscriptionFile.delete();
-            }
+            settingsManager.setSelectTranscription(isChecked);
         });
 
         Switch pauseAudioSwitch = findViewById(R.id.switch_pause_audio);
-        File pauseAudioFile = new File(getFilesDir(), "pause_audio");
-        pauseAudioSwitch.setChecked(pauseAudioFile.exists());
+        pauseAudioSwitch.setChecked(settingsManager.isPauseAudio());
         pauseAudioSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
-            if (isChecked) {
-                try {
-                    pauseAudioFile.createNewFile();
-                } catch (IOException e) {
-                    Log.e(TAG, "Failed to create pause_audio file", e);
-                }
-            } else {
-                pauseAudioFile.delete();
-            }
+            settingsManager.setPauseAudio(isChecked);
         });
 
         // Initial check

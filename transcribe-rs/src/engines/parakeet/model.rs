@@ -94,6 +94,35 @@ impl ParakeetModel {
         })
     }
 
+    pub fn from_memory(
+        encoder_bytes: &[u8],
+        decoder_joint_bytes: &[u8],
+        preprocessor_bytes: &[u8],
+        vocab_content: &str,
+    ) -> Result<Self, ParakeetError> {
+        let encoder = Self::init_session_from_memory(encoder_bytes, None)?;
+        let decoder_joint = Self::init_session_from_memory(decoder_joint_bytes, None)?;
+        let preprocessor = Self::init_session_from_memory(preprocessor_bytes, None)?;
+
+        let (vocab, blank_idx) = Self::parse_vocab(vocab_content)?;
+        let vocab_size = vocab.len();
+
+        log::info!(
+            "Loaded vocabulary from memory with {} tokens, blank_idx={}",
+            vocab_size,
+            blank_idx
+        );
+
+        Ok(Self {
+            encoder,
+            decoder_joint,
+            preprocessor,
+            vocab,
+            blank_idx,
+            vocab_size,
+        })
+    }
+
     fn init_session<P: AsRef<Path>>(
         model_dir: P,
         model_name: &str,
@@ -161,10 +190,42 @@ impl ParakeetModel {
         Ok(session)
     }
 
-    fn load_vocab<P: AsRef<Path>>(model_dir: P) -> Result<(Vec<String>, i32), ParakeetError> {
-        let vocab_path = model_dir.as_ref().join("vocab.txt");
-        let content = fs::read_to_string(vocab_path)?;
+    fn init_session_from_memory(
+        model_bytes: &[u8],
+        intra_threads: Option<usize>,
+    ) -> Result<Session, ParakeetError> {
+        let mut providers = Vec::new();
+        #[cfg(target_os = "android")]
+        {
+            providers.push(ep::NNAPI::default().build());
+            providers.push(ep::XNNPACK::default().build());
+        }
+        providers.push(ep::CPU::default().build());
 
+        let mut builder = Session::builder()
+            .map_err(|e| ParakeetError::Ort(e.into()))?
+            .with_optimization_level(GraphOptimizationLevel::Level3)
+            .map_err(|e| ParakeetError::Ort(e.into()))?
+            .with_execution_providers(providers)
+            .map_err(|e| ParakeetError::Ort(e.into()))?
+            .with_parallel_execution(true)
+            .map_err(|e| ParakeetError::Ort(e.into()))?;
+
+        if let Some(threads) = intra_threads {
+            builder = builder
+                .with_intra_threads(threads)
+                .map_err(|e| ParakeetError::Ort(e.into()))?
+                .with_inter_threads(threads)
+                .map_err(|e| ParakeetError::Ort(e.into()))?;
+        }
+
+        let session = builder.commit_from_memory(model_bytes)
+            .map_err(|e| ParakeetError::Ort(e.into()))?;
+
+        Ok(session)
+    }
+
+    fn parse_vocab(content: &str) -> Result<(Vec<String>, i32), ParakeetError> {
         let mut max_id = 0;
         let mut tokens_with_ids: Vec<(String, usize)> = Vec::new();
         let mut blank_idx: Option<usize> = None;
@@ -197,6 +258,12 @@ impl ParakeetModel {
         })? as i32;
 
         Ok((vocab, blank_idx))
+    }
+
+    fn load_vocab<P: AsRef<Path>>(model_dir: P) -> Result<(Vec<String>, i32), ParakeetError> {
+        let vocab_path = model_dir.as_ref().join("vocab.txt");
+        let content = fs::read_to_string(vocab_path)?;
+        Self::parse_vocab(&content)
     }
 
     pub fn preprocess(

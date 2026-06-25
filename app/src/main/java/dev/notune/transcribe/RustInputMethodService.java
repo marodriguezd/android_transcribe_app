@@ -227,7 +227,7 @@ public class RustInputMethodService extends InputMethodService {
     @Override
     public void onWindowShown() {
         super.onWindowShown();
-        if (!isRecording && new File(getFilesDir(), "auto_record").exists()) {
+        if (!isRecording && settingsManager.isAutoRecord()) {
             if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
                     == PackageManager.PERMISSION_GRANTED) {
                 if (isPauseAudioEnabled()) {
@@ -370,7 +370,7 @@ public class RustInputMethodService extends InputMethodService {
             String committed = text + " ";
             ic.commitText(committed, 1);
 
-            if (!pendingSwitchBack && new File(getFilesDir(), "select_transcription").exists()) {
+            if (!pendingSwitchBack && settingsManager.isSelectTranscription()) {
                 android.view.inputmethod.ExtractedText et = ic.getExtractedText(
                     new android.view.inputmethod.ExtractedTextRequest(), 0);
                 if (et != null) {
@@ -396,6 +396,6 @@ public class RustInputMethodService extends InputMethodService {
     public void onAudioLevel(float level) { }
 
     private boolean isPauseAudioEnabled() {
-        return new File(getFilesDir(), "pause_audio").exists();
+        return settingsManager.isPauseAudio();
     }
 }

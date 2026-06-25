@@ -1,152 +1,157 @@
 use jni::objects::JObject;
 use jni::JNIEnv;
-use std::path::PathBuf;
 
-/// Marker file written after a successful extraction. If this file is missing,
-/// the directory is assumed to be incomplete (e.g. interrupted mid-extraction)
-/// and the assets will be re-extracted.
-const EXTRACTION_COMPLETE_MARKER: &str = ".extraction_complete";
-
-pub fn extract_assets(env: &mut JNIEnv, context: &JObject) -> anyhow::Result<PathBuf> {
-    let files_dir_obj = env
-        .call_method(context, "getFilesDir", "()Ljava/io/File;", &[])?
-        .l()?;
-    let path_str_obj = env
-        .call_method(
-            &files_dir_obj,
-            "getAbsolutePath",
-            "()Ljava/lang/String;",
-            &[],
-        )?
-        .l()?;
-    let path_string: String = env.get_string(&path_str_obj.into())?.into();
-
-    let base_path = PathBuf::from(path_string);
-    let model_dir = base_path.join("parakeet-tdt-0.6b-v3-int8");
-    let marker_file = model_dir.join(EXTRACTION_COMPLETE_MARKER);
-
-    // Only skip extraction if the marker file exists (proves prior extraction completed)
-    if marker_file.exists() {
-        return Ok(model_dir);
-    }
-
-    // Incomplete or missing — wipe and re-extract
-    if model_dir.exists() {
-        log::info!("Removing incomplete model directory for re-extraction");
-        let _ = std::fs::remove_dir_all(&model_dir);
-    }
-
-    std::fs::create_dir_all(&model_dir)?;
-
-    let asset_manager_obj = env
-        .call_method(
-            context,
-            "getAssets",
-            "()Landroid/content/res/AssetManager;",
-            &[],
-        )?
-        .l()?;
-    let asset_dir_name = "parakeet-tdt-0.6b-v3-int8";
-
-    copy_assets_recursively(env, &asset_manager_obj, asset_dir_name, &base_path)?;
-
-    // Write the marker file to indicate successful completion
-    std::fs::write(&marker_file, "ok")?;
-    log::info!("Asset extraction complete, marker written");
-
-    Ok(model_dir)
+pub struct MemoryMappedAsset {
+    mapped_ptr: *mut libc::c_void,
+    mapped_length: usize,
+    slice_offset: usize,
+    slice_len: usize,
 }
 
-fn copy_assets_recursively(
+impl MemoryMappedAsset {
+    pub fn as_slice(&self) -> &[u8] {
+        unsafe {
+            std::slice::from_raw_parts(
+                (self.mapped_ptr as *const u8).add(self.slice_offset),
+                self.slice_len,
+            )
+        }
+    }
+}
+
+unsafe impl Send for MemoryMappedAsset {}
+unsafe impl Sync for MemoryMappedAsset {}
+
+impl Drop for MemoryMappedAsset {
+    fn drop(&mut self) {
+        unsafe {
+            libc::munmap(self.mapped_ptr, self.mapped_length);
+        }
+    }
+}
+
+pub fn mmap_asset(
     env: &mut JNIEnv,
     asset_manager: &JObject,
-    path: &str,
-    target_root: &PathBuf,
-) -> anyhow::Result<()> {
-    use jni::objects::JObjectArray;
-
-    let path_jstring = env.new_string(path)?;
-    let list_array_obj = env
+    asset_path: &str,
+) -> anyhow::Result<MemoryMappedAsset> {
+    let path_jstring = env.new_string(asset_path)?;
+    let asset_fd_obj = env
         .call_method(
             asset_manager,
-            "list",
-            "(Ljava/lang/String;)[Ljava/lang/String;",
+            "openFd",
+            "(Ljava/lang/String;)Landroid/content/res/AssetFileDescriptor;",
             &[(&path_jstring).into()],
         )?
         .l()?;
 
-    let list_array: JObjectArray = list_array_obj.into();
-    let len = env.get_array_length(&list_array)?;
+    let start_offset = env
+        .call_method(&asset_fd_obj, "getStartOffset", "()J", &[])?
+        .j()?;
+    let length = env
+        .call_method(&asset_fd_obj, "getLength", "()J", &[])?
+        .j()?;
 
-    if len == 0 {
-        return copy_asset_file(env, asset_manager, path, target_root);
+    let pfd_obj = env
+        .call_method(
+            &asset_fd_obj,
+            "getParcelFileDescriptor",
+            "()Landroid/os/ParcelFileDescriptor;",
+            &[],
+        )?
+        .l()?;
+
+    let raw_fd = env
+        .call_method(&pfd_obj, "getFd", "()I", &[])?
+        .i()?;
+
+    // Duplicate the file descriptor
+    let dup_fd = unsafe { libc::dup(raw_fd) };
+    if dup_fd < 0 {
+        // Make sure we close Java side asset_fd before returning
+        let _ = env.call_method(&asset_fd_obj, "close", "()V", &[]);
+        return Err(anyhow::anyhow!("dup failed: {}", std::io::Error::last_os_error()));
     }
 
-    let target_dir = target_root.join(path);
-    std::fs::create_dir_all(&target_dir)?;
+    // Now close the Java-side asset fd
+    let _ = env.call_method(&asset_fd_obj, "close", "()V", &[]);
 
-    for i in 0..len {
-        let file_name_obj = env.get_object_array_element(&list_array, i)?;
-        let file_name: String = env.get_string(&file_name_obj.into())?.into();
+    // Get page size
+    let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as usize;
+    let offset = start_offset as usize;
+    let aligned_offset = (offset / page_size) * page_size;
+    let alignment_difference = offset - aligned_offset;
+    let mapped_length = (length as usize) + alignment_difference;
 
-        let child_path = if path.is_empty() {
-            file_name
-        } else {
-            format!("{}/{}", path, file_name)
-        };
+    let mapped_ptr = unsafe {
+        libc::mmap(
+            std::ptr::null_mut(),
+            mapped_length,
+            libc::PROT_READ,
+            libc::MAP_SHARED,
+            dup_fd,
+            aligned_offset as libc::off_t,
+        )
+    };
 
-        copy_assets_recursively(env, asset_manager, &child_path, target_root)?;
+    // We can close the dup_fd immediately after mmap call
+    unsafe {
+        libc::close(dup_fd);
     }
-    Ok(())
+
+    if mapped_ptr == libc::MAP_FAILED {
+        return Err(anyhow::anyhow!(
+            "mmap failed: {}",
+            std::io::Error::last_os_error()
+        ));
+    }
+
+    Ok(MemoryMappedAsset {
+        mapped_ptr,
+        mapped_length,
+        slice_offset: alignment_difference,
+        slice_len: length as usize,
+    })
 }
 
-fn copy_asset_file(
+pub fn read_asset_to_string(
     env: &mut JNIEnv,
     asset_manager: &JObject,
     asset_path: &str,
-    target_root: &PathBuf,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<String> {
     let path_jstring = env.new_string(asset_path)?;
-    let result = env.call_method(
+    let stream_val = env.call_method(
         asset_manager,
         "open",
         "(Ljava/lang/String;)Ljava/io/InputStream;",
         &[(&path_jstring).into()],
-    );
+    )?;
+    let stream_obj = stream_val.l()?;
 
-    match result {
-        Ok(stream_val) => {
-            let stream_obj = stream_val.l()?;
-            let target_file_path = target_root.join(asset_path);
+    let mut content = Vec::new();
+    let mut buffer = [0u8; 8192];
+    let buffer_j = env.new_byte_array(8192)?;
 
-            let mut file = std::fs::File::create(&target_file_path)?;
-            let mut buffer = [0u8; 8192];
-            let buffer_j = env.new_byte_array(8192)?;
+    loop {
+        let bytes_read = env
+            .call_method(&stream_obj, "read", "([B)I", &[(&buffer_j).into()])?
+            .i()?;
 
-            loop {
-                let bytes_read = env
-                    .call_method(&stream_obj, "read", "([B)I", &[(&buffer_j).into()])?
-                    .i()?;
-
-                if bytes_read == -1 {
-                    break;
-                }
-
-                let bytes_read_usize = bytes_read as usize;
-                let buffer_slice = unsafe {
-                    std::slice::from_raw_parts_mut(buffer.as_mut_ptr() as *mut i8, bytes_read_usize)
-                };
-
-                env.get_byte_array_region(&buffer_j, 0, buffer_slice)?;
-
-                use std::io::Write;
-                file.write_all(&buffer[0..bytes_read_usize])?;
-            }
-
-            env.call_method(&stream_obj, "close", "()V", &[])?;
-            log::info!("Extracted: {:?}", target_file_path);
-            Ok(())
+        if bytes_read == -1 {
+            break;
         }
-        Err(_) => Ok(()),
+
+        let bytes_read_usize = bytes_read as usize;
+        let buffer_slice = unsafe {
+            std::slice::from_raw_parts_mut(buffer.as_mut_ptr() as *mut i8, bytes_read_usize)
+        };
+
+        env.get_byte_array_region(&buffer_j, 0, buffer_slice)?;
+        content.extend_from_slice(&buffer[0..bytes_read_usize]);
     }
+
+    env.call_method(&stream_obj, "close", "()V", &[])?;
+
+    let string_content = String::from_utf8(content)?;
+    Ok(string_content)
 }

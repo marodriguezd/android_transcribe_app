@@ -58,3 +58,17 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_RecognizeActivity_cance
         crate::voice_session::cancel_recording(env, state);
     }
 }
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_notune_transcribe_RecognizeActivity_getAudioLevelNative(
+    _env: JNIEnv,
+    _class: JClass,
+) -> jni::sys::jfloat {
+    let guard = RECOG_STATE.lock().unwrap();
+    if let Some(state) = guard.as_ref() {
+        let bits = state.current_level.load(std::sync::atomic::Ordering::Relaxed);
+        f32::from_bits(bits)
+    } else {
+        0.0
+    }
+}

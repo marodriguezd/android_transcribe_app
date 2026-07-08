@@ -9,9 +9,20 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Package visibility (Android 11+): lets resolveActivity()/queryIntentActivities()
+         for the speech intent see other handlers, so MainActivity can tell whether this
+         app is the resolved handler or a chooser would appear. -->
+    <queries>
+        <intent>
+            <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
+        </intent>
+    </queries>
+
     <application
+        android:name=".App"
         android:label="Offline Voice Input"
         android:icon="@drawable/icon"
+        android:theme="@style/AppTheme"
         android:hasCode="true">
 
         <!-- Main Activity -->
@@ -47,7 +58,8 @@
             android:exported="true"
             android:excludeFromRecents="true"
             android:launchMode="singleTask"
-            android:theme="@android:style/Theme.DeviceDefault.Dialog.NoActionBar">
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:theme="@style/AppTheme.VoicePanel">
 
             <intent-filter>
                 <action android:name="android.speech.action.RECOGNIZE_SPEECH" />
@@ -62,7 +74,7 @@
             android:exported="true"
             android:excludeFromRecents="true"
             android:launchMode="singleTask"
-            android:theme="@android:style/Theme.DeviceDefault.NoActionBar">
+            android:theme="@style/AppTheme">
 
             <!-- Handle "Share" from other apps -->
             <intent-filter>

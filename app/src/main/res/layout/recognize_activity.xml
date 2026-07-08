@@ -1,51 +1,79 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Compact voice-input panel anchored to the bottom of a transparent window.
+     The calling app stays visible behind it (the activity is translucent), so
+     the target text field keeps its state while the user speaks. Tapping
+     anywhere stops & inserts; the X discards. -->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:id="@+id/root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#1F2937"
-    android:padding="24dp">
+    android:fitsSystemWindows="true"
+    android:clickable="true"
+    android:focusable="true">
 
-    <!-- Close (discard) -->
-    <ImageButton
-        android:id="@+id/btn_close"
-        android:layout_width="40dp"
-        android:layout_height="40dp"
-        android:layout_gravity="top|end"
-        android:background="@android:color/transparent"
-        android:contentDescription="Close"
-        android:src="@android:drawable/ic_menu_close_clear_cancel"
-        android:tint="#FFFFFF" />
-
-    <!-- Center mic + ring -->
-    <FrameLayout
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:layout_gravity="center">
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_margin="16dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:background="@drawable/bg_voice_panel"
+        android:elevation="8dp"
+        android:paddingStart="12dp"
+        android:paddingEnd="4dp"
+        android:paddingTop="10dp"
+        android:paddingBottom="10dp">
 
-        <dev.notune.transcribe.MicLevelView
-            android:id="@+id/mic_level"
-            android:layout_width="220dp"
-            android:layout_height="220dp"
-            android:layout_gravity="center" />
+        <!-- Mic with level glow -->
+        <FrameLayout
+            android:layout_width="64dp"
+            android:layout_height="64dp">
 
-        <ImageView
-            android:id="@+id/mic_icon"
-            android:layout_width="72dp"
-            android:layout_height="72dp"
-            android:layout_gravity="center"
-            android:src="@android:drawable/ic_btn_speak_now"
-            android:tint="#FFFFFF" />
+            <dev.notune.transcribe.MicLevelView
+                android:id="@+id/mic_level"
+                android:layout_width="64dp"
+                android:layout_height="64dp"
+                android:layout_gravity="center" />
+
+            <View
+                android:layout_width="44dp"
+                android:layout_height="44dp"
+                android:layout_gravity="center"
+                android:background="@drawable/bg_record_circle" />
+
+            <ImageView
+                android:id="@+id/mic_icon"
+                android:layout_width="24dp"
+                android:layout_height="24dp"
+                android:layout_gravity="center"
+                android:src="@drawable/ic_mic"
+                android:contentDescription="@string/section_ime"
+                app:tint="?attr/colorOnPrimaryContainer" />
+        </FrameLayout>
 
         <TextView
             android:id="@+id/txt_status"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_gravity="center_horizontal|bottom"
-            android:layout_marginBottom="18dp"
-            android:text="Listening... (Tap to stop)"
-            android:textColor="#FFFFFF"
-            android:textSize="18sp" />
-    </FrameLayout>
+            android:layout_weight="1"
+            android:layout_marginStart="12dp"
+            android:layout_marginEnd="8dp"
+            android:text="Listening… (tap to stop)"
+            android:textColor="?attr/colorOnSurface"
+            android:textAppearance="?attr/textAppearanceTitleSmall" />
+
+        <!-- Close (discard) -->
+        <ImageButton
+            android:id="@+id/btn_close"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Close"
+            android:src="@drawable/ic_close"
+            app:tint="?attr/colorOnSurfaceVariant" />
+
+    </LinearLayout>
 
 </FrameLayout>

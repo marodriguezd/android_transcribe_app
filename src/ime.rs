@@ -32,6 +32,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_RustInputMethodService_
 ) {
     let mut guard = IME_STATE.lock().unwrap();
     if let Some(state) = guard.as_mut() {
+        // The IME keyboard is manual tap-to-stop; no silence auto-stop.
         voice_session::start_recording(env, state);
     }
 }

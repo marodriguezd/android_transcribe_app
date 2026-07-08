@@ -20,12 +20,18 @@ async-openai = { version = "0.29.3" }
 async-trait = { version = "0.1.89" }
 derive_builder = { version = "0.20.2" }
 
+# The whisper engine is optional: it needs Metal/Vulkan toolchains to build
+# and is not used by the Android app (which only uses parakeet).
+[features]
+default = []
+whisper = ["dep:whisper-rs"]
+
 [target.'cfg(target_os = "macos")'.dependencies]
-whisper-rs = { version = "0.13.2", features = ["metal"] }
+whisper-rs = { version = "0.13.2", features = ["metal"], optional = true }
 
 [target.'cfg(target_os = "windows")'.dependencies]
-whisper-rs = { version = "0.13.2", features = ["vulkan"] }
+whisper-rs = { version = "0.13.2", features = ["vulkan"], optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-whisper-rs = { version = "0.13.2", features = ["vulkan"] }
+whisper-rs = { version = "0.13.2", features = ["vulkan"], optional = true }
 

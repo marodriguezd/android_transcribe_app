@@ -1,20 +1,87 @@
+//! Native backend for `LiveSubtitleService` (real-time captions for device audio).
+//!
+//! Audio arrives via `pushAudio` in small blocks (~64 ms). We build up a
+//! *segment* of speech, send the whole segment to a worker thread for
+//! transcription roughly once per tick, and display the result as a *partial*
+//! (replaceable) caption. When trailing silence is detected — or the segment
+//! hits a hard cap — the segment is *finalized*: transcribed once more and
+//! committed, then the buffer starts fresh.
+//!
+//! Two things keep latency low and bounded:
+//! - Partial jobs are only submitted while the worker is idle (latest-wins),
+//!   so a slow device can never build up a queue and drift behind real time.
+//! - Final jobs are always queued (FIFO), so committed text is never lost.
+
 use crossbeam_channel;
 use jni::objects::{JClass, JObject};
-use jni::sys::jfloat;
 use jni::JNIEnv;
 use once_cell::sync::Lazy;
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use transcribe_rs::engines::parakeet::{ParakeetInferenceParams, TimestampGranularity};
 use transcribe_rs::TranscriptionEngine;
 
 use crate::engine;
 
+const SAMPLE_RATE: usize = 16_000;
+/// Minimum audio between two partial-hypothesis updates (~0.7 s).
+const TICK_SAMPLES: usize = 11_200;
+/// Trailing silence that finalizes the current segment (~0.7 s).
+const FINALIZE_SILENCE_SAMPLES: usize = 11_200;
+/// Hard cap on a single segment. Partials re-transcribe the whole current
+/// segment, so this also caps the per-job inference cost: the worst-case
+/// caption offset is roughly one queued final plus one in-flight job, both
+/// proportional to this — keep it short so captions stay close to real time
+/// even in dense speech.
+const MAX_SEGMENT_SAMPLES: usize = 6 * SAMPLE_RATE;
+/// A queued *final* older than this is dropped (a "…" gap is shown instead).
+/// This bounds the audio-to-caption offset on devices that can't transcribe
+/// in real time — without it the finals queue grows and the captions drift
+/// further behind the longer the audio plays.
+const MAX_FINAL_LAG_SAMPLES: u64 = (8 * SAMPLE_RATE) as u64;
+/// A queued *partial* older than this is stale; skip it (a fresh one follows).
+const MAX_PARTIAL_LAG_SAMPLES: u64 = (3 * SAMPLE_RATE) as u64;
+/// A partial is only submitted when its predicted transcription time is at
+/// most this. Partials are cosmetic — on a slow (or thermally throttled)
+/// device the worker's time is better spent on finals, which are what keep
+/// the transcript moving. Finals are never gated on cost.
+const MAX_PARTIAL_COST_SECS: f32 = 2.0;
+/// Audio kept while waiting for speech so the first word isn't clipped (0.4 s).
+const PREROLL_SAMPLES: usize = 6_400;
+/// Silence kept after the last speech when finalizing on silence (0.2 s).
+const FINAL_TAIL_SAMPLES: usize = 3_200;
+/// Per-block RMS at or above this counts as sound worth transcribing.
+const SPEECH_RMS: f32 = 0.004;
+/// Segments shorter than this are dropped as noise (0.25 s).
+const MIN_SEGMENT_SAMPLES: usize = 4_000;
+
+struct Job {
+    samples: Vec<f32>,
+    is_final: bool,
+    /// Position of the job's last sample in the overall pushed-audio stream,
+    /// used by the worker to measure how stale the job is.
+    end_sample: u64,
+}
+
 struct LiveSubtitleState {
-    buffer: Arc<Mutex<Vec<f32>>>,
-    worker_tx: crossbeam_channel::Sender<(Vec<f32>, f64)>,
-    total_samples: u64,
-    last_process_sample: u64,
-    update_interval: usize,
+    /// Current un-finalized speech segment.
+    segment: Vec<f32>,
+    /// Rolling pre-speech audio, prepended once speech starts.
+    preroll: Vec<f32>,
+    has_speech: bool,
+    /// Consecutive quiet samples at the tail of `segment`.
+    silence_run: usize,
+    samples_since_tick: usize,
+    worker_tx: crossbeam_channel::Sender<Job>,
+    worker_busy: Arc<AtomicBool>,
+    /// Total samples ever pushed; shared with the worker for lag measurement.
+    total_pushed: Arc<AtomicU64>,
+    /// Number of final jobs queued but not yet fully processed. While > 0,
+    /// partials are not submitted so the worker catches up on finals first.
+    pending_finals: Arc<AtomicUsize>,
+    /// Measured transcription speed as milli-RTF (compute ms per audio ms),
+    /// smoothed by the worker; 0 until the first job completes. Used to
+    /// predict a partial's cost before submitting it.
+    rtf_milli: Arc<AtomicU32>,
 }
 
 static LIVE_STATE: Lazy<Mutex<Option<LiveSubtitleState>>> = Lazy::new(|| Mutex::new(None));
@@ -28,101 +95,119 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_ini
     android_logger::init_once(
         android_logger::Config::default().with_max_level(log::LevelFilter::Info),
     );
-    let vm = env.get_java_vm().expect("Failed to get JavaVM");
-    let vm_arc = Arc::new(vm);
-    let service_ref = env.new_global_ref(&service).expect("Failed to ref service");
+    let vm = match env.get_java_vm() {
+        Ok(vm) => Arc::new(vm),
+        Err(_) => return,
+    };
+    let service_ref = match env.new_global_ref(&service) {
+        Ok(r) => r,
+        Err(_) => return,
+    };
 
-    let (tx, rx) = crossbeam_channel::unbounded();
+    let (tx, rx) = crossbeam_channel::unbounded::<Job>();
+    let worker_busy = Arc::new(AtomicBool::new(false));
+    let total_pushed = Arc::new(AtomicU64::new(0));
+    let pending_finals = Arc::new(AtomicUsize::new(0));
+    let rtf_milli = Arc::new(AtomicU32::new(0));
 
-    let mut state_guard = LIVE_STATE.lock().unwrap();
-    // Default 2s
-    *state_guard = Some(LiveSubtitleState {
-        buffer: Arc::new(Mutex::new(Vec::new())),
+    *LIVE_STATE.lock().unwrap() = Some(LiveSubtitleState {
+        segment: Vec::new(),
+        preroll: Vec::new(),
+        has_speech: false,
+        silence_run: 0,
+        samples_since_tick: 0,
         worker_tx: tx,
-        total_samples: 0,
-        last_process_sample: 0,
-        update_interval: 32000,
+        worker_busy: worker_busy.clone(),
+        total_pushed: total_pushed.clone(),
+        pending_finals: pending_finals.clone(),
+        rtf_milli: rtf_milli.clone(),
     });
-    drop(state_guard);
-
-    // Spawn Worker Thread
-    let vm_worker = vm_arc.clone();
-    let service_ref_worker = service_ref.clone();
 
     std::thread::spawn(move || {
-        let mut env = match vm_worker.attach_current_thread() {
+        let mut env = match vm.attach_current_thread() {
             Ok(e) => e,
             Err(e) => {
-                log::error!("Worker failed to attach: {}", e);
+                log::error!("Subtitle worker failed to attach: {}", e);
                 return;
             }
         };
-        let service_obj = service_ref_worker.as_obj();
-        let mut last_committed_end = 0.0f64;
+        let service_obj = service_ref.as_obj();
+        // Whether the previously processed final was dropped for lag — used
+        // to emit a single "…" gap marker per run of dropped finals.
+        let mut gap_pending = false;
 
-        while let Ok((samples, start_time)) = rx.recv() {
-            if samples.is_empty() {
-                if let Ok(txt) = env.new_string("") {
-                    let _ = env.call_method(
-                        service_obj,
-                        "onSubtitleText",
-                        "(Ljava/lang/String;)V",
-                        &[(&txt).into()],
-                    );
-                }
-                last_committed_end = 0.0f64;
-                continue;
+        let deliver = |env: &mut jni::JNIEnv, text: &str, is_final: bool| {
+            if let Ok(jtxt) = env.new_string(text) {
+                let _ = env.call_method(
+                    service_obj,
+                    "onSubtitleText",
+                    "(Ljava/lang/String;Z)V",
+                    &[(&jtxt).into(), is_final.into()],
+                );
             }
+        };
 
-            if let Some(engine_arc) = engine::get_engine() {
-                let params = ParakeetInferenceParams {
-                    timestamp_granularity: TimestampGranularity::Word,
-                };
+        while let Ok(job) = rx.recv() {
+            // Stale-job policy: if transcription can't keep up with the
+            // audio, skip old work instead of drifting ever further behind.
+            let lag = total_pushed
+                .load(Ordering::SeqCst)
+                .saturating_sub(job.end_sample);
+            let skip = if job.is_final {
+                lag > MAX_FINAL_LAG_SAMPLES
+            } else {
+                lag > MAX_PARTIAL_LAG_SAMPLES
+            };
 
+            if skip {
+                if job.is_final {
+                    log::warn!(
+                        "Dropping final {:.1}s behind real time to catch up",
+                        lag as f64 / SAMPLE_RATE as f64
+                    );
+                    gap_pending = true;
+                }
+            } else if let Some(engine_arc) = engine::get_engine() {
+                let audio_secs = job.samples.len() as f64 / SAMPLE_RATE as f64;
+                let started = std::time::Instant::now();
                 let res = {
                     let mut eng = engine_arc.lock().unwrap();
-                    eng.transcribe_samples(samples, Some(params))
+                    eng.transcribe_samples(job.samples, None)
                 };
+                let elapsed = started.elapsed().as_secs_f64();
+                log::info!(
+                    "Subtitle {} job: {:.1}s audio in {:.2}s (lag {:.1}s)",
+                    if job.is_final { "final" } else { "partial" },
+                    audio_secs,
+                    elapsed,
+                    lag as f64 / SAMPLE_RATE as f64,
+                );
+
+                // Track transcription speed (EMA) so the pusher can predict
+                // job costs; also reflects thermal throttling over time.
+                let sample = (elapsed / audio_secs * 1000.0) as u32;
+                let old = rtf_milli.load(Ordering::SeqCst);
+                let ema = if old == 0 { sample } else { (old * 7 + sample * 3) / 10 };
+                rtf_milli.store(ema, Ordering::SeqCst);
 
                 if let Ok(r) = res {
-                    let mut new_text = String::new();
-                    let mut max_end_in_chunk = last_committed_end;
-
-                    if let Some(segments) = r.segments {
-                        for seg in segments {
-                            let abs_start = start_time + seg.start as f64;
-                            let abs_end = start_time + seg.end as f64;
-
-                            if abs_start >= last_committed_end - 0.05 {
-                                if !new_text.is_empty() {
-                                    new_text.push(' ');
-                                }
-                                new_text.push_str(&seg.text);
-
-                                if abs_end > max_end_in_chunk {
-                                    max_end_in_chunk = abs_end;
-                                }
-                            }
-                        }
-                    } else if r.text.len() > 0 {
-                        new_text = r.text;
-                        max_end_in_chunk = start_time + 2.0;
+                    let text = r.text.trim();
+                    if !text.is_empty() && gap_pending {
+                        // Mark the dropped stretch so the transcript doesn't
+                        // silently glue unrelated sentences together.
+                        deliver(&mut env, "…", true);
+                        gap_pending = false;
                     }
-
-                    let text_trim = new_text.trim();
-                    if !text_trim.is_empty() {
-                        last_committed_end = max_end_in_chunk;
-                        if let Ok(txt) = env.new_string(text_trim) {
-                            let _ = env.call_method(
-                                service_obj,
-                                "onSubtitleText",
-                                "(Ljava/lang/String;)V",
-                                &[(&txt).into()],
-                            );
-                        }
+                    if !text.is_empty() || job.is_final {
+                        deliver(&mut env, text, job.is_final);
                     }
                 }
             }
+
+            if job.is_final {
+                pending_finals.fetch_sub(1, Ordering::SeqCst);
+            }
+            worker_busy.store(false, Ordering::SeqCst);
         }
     });
 }
@@ -132,19 +217,8 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_cle
     _env: JNIEnv,
     _class: JClass,
 ) {
+    // Dropping the state drops the sender; the worker exits once the queue drains.
     *LIVE_STATE.lock().unwrap() = None;
-}
-
-#[no_mangle]
-pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_setUpdateInterval(
-    _env: JNIEnv,
-    _class: JClass,
-    interval_seconds: jfloat,
-) {
-    let mut guard = LIVE_STATE.lock().unwrap();
-    if let Some(state) = guard.as_mut() {
-        state.update_interval = (interval_seconds * 16000.0) as usize;
-    }
 }
 
 #[no_mangle]
@@ -154,33 +228,129 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_pus
     data: jni::objects::JFloatArray,
     length: jni::sys::jint,
 ) {
+    let len = length as usize;
+    if len == 0 {
+        return;
+    }
+    let mut input = vec![0.0f32; len];
+    if env.get_float_array_region(&data, 0, &mut input).is_err() {
+        return;
+    }
+
     let mut guard = LIVE_STATE.lock().unwrap();
-    if let Some(state) = guard.as_mut() {
-        let mut buffer = state.buffer.lock().unwrap();
-        let len_usize = length as usize;
-        let mut input = vec![0.0f32; len_usize];
-        env.get_float_array_region(&data, 0, &mut input).unwrap();
-        buffer.extend_from_slice(&input);
-        state.total_samples += len_usize as u64;
+    let state = match guard.as_mut() {
+        Some(s) => s,
+        None => return,
+    };
 
-        if state.total_samples >= state.last_process_sample + state.update_interval as u64 {
-            let buffer_len = buffer.len();
-            let start_time = (state.total_samples as f64 - buffer_len as f64) / 16000.0;
-            let sum_sq: f32 = buffer.iter().map(|&x| x * x).sum();
-            let rms = (sum_sq / buffer_len as f32).sqrt();
+    let stream_pos = state.total_pushed.fetch_add(len as u64, Ordering::SeqCst) + len as u64;
 
-            if rms > 0.002 {
-                let _ = state.worker_tx.send((buffer.clone(), start_time));
-            } else {
-                let _ = state.worker_tx.send((Vec::new(), start_time));
+    let rms = (input.iter().map(|&x| x * x).sum::<f32>() / len as f32).sqrt();
+    let is_sound = rms >= SPEECH_RMS;
+
+    if !state.has_speech {
+        if is_sound {
+            // Speech begins: seed the segment with the pre-roll so the first
+            // word isn't clipped.
+            state.segment = std::mem::take(&mut state.preroll);
+            state.segment.extend_from_slice(&input);
+            state.has_speech = true;
+            state.silence_run = 0;
+            state.samples_since_tick = state.segment.len();
+        } else {
+            state.preroll.extend_from_slice(&input);
+            let excess = state.preroll.len().saturating_sub(PREROLL_SAMPLES);
+            if excess > 0 {
+                state.preroll.drain(..excess);
             }
-            state.last_process_sample = state.total_samples;
-
-            if buffer_len > 48000 {
-                let keep_idx = buffer_len - 48000;
-                let new_buf = buffer[keep_idx..].to_vec();
-                *buffer = new_buf;
-            }
+            return;
+        }
+    } else {
+        state.segment.extend_from_slice(&input);
+        state.samples_since_tick += len;
+        if is_sound {
+            state.silence_run = 0;
+        } else {
+            state.silence_run += len;
         }
     }
+
+    let silence_done = state.silence_run >= FINALIZE_SILENCE_SAMPLES;
+    if silence_done || state.segment.len() >= MAX_SEGMENT_SAMPLES {
+        let mut samples = std::mem::take(&mut state.segment);
+        if silence_done {
+            // Drop most of the trailing silence; keep a short tail.
+            let keep = samples.len() - state.silence_run + FINAL_TAIL_SAMPLES;
+            samples.truncate(keep.min(samples.len()));
+            state.has_speech = false;
+            state.preroll.clear();
+        } else {
+            // Forced cut mid-speech: split at the quietest point in the last
+            // few seconds and carry the remainder into the next segment so no
+            // word is chopped in half.
+            let from = samples.len().saturating_sub(3 * SAMPLE_RATE);
+            let split = find_quietest_split(&samples, from, samples.len());
+            state.segment = samples.split_off(split);
+        }
+        state.silence_run = 0;
+        state.samples_since_tick = state.segment.len();
+
+        if samples.len() >= MIN_SEGMENT_SAMPLES {
+            // Finals are always queued (the worker may still drop them if
+            // they go stale — see MAX_FINAL_LAG_SAMPLES).
+            state.worker_busy.store(true, Ordering::SeqCst);
+            state.pending_finals.fetch_add(1, Ordering::SeqCst);
+            let _ = state.worker_tx.send(Job {
+                samples,
+                is_final: true,
+                end_sample: stream_pos,
+            });
+        }
+    } else if state.samples_since_tick >= TICK_SAMPLES
+        && !state.worker_busy.load(Ordering::SeqCst)
+        && state.pending_finals.load(Ordering::SeqCst) == 0
+        && partial_affordable(state)
+    {
+        // Partial update, only while the worker is idle, no final is waiting
+        // and the job is predicted to be cheap (latest-wins; finals first) so
+        // a slow device never queues up work and drifts behind real time.
+        state.worker_busy.store(true, Ordering::SeqCst);
+        state.samples_since_tick = 0;
+        let _ = state.worker_tx.send(Job {
+            samples: state.segment.clone(),
+            is_final: false,
+            end_sample: stream_pos,
+        });
+    }
+}
+
+/// Whether a partial of the current segment is predicted to transcribe within
+/// [`MAX_PARTIAL_COST_SECS`], based on the worker's measured speed. As the
+/// segment grows (or the device slows down under thermal throttling) partials
+/// stop, leaving the worker free for the finals that carry the transcript.
+fn partial_affordable(state: &LiveSubtitleState) -> bool {
+    let rtf = state.rtf_milli.load(Ordering::SeqCst) as f32 / 1000.0;
+    let segment_secs = state.segment.len() as f32 / SAMPLE_RATE as f32;
+    segment_secs * rtf <= MAX_PARTIAL_COST_SECS
+}
+
+/// Centre of the quietest 100 ms window in `samples[from..to]`; used to pick a
+/// natural split point when a segment must be cut mid-speech.
+fn find_quietest_split(samples: &[f32], from: usize, to: usize) -> usize {
+    const WIN: usize = 1_600; // 100 ms
+    if from + WIN > to {
+        return to;
+    }
+    let mut best_pos = to;
+    let mut best_energy = f32::MAX;
+    let mut i = from;
+    while i + WIN <= to {
+        let energy: f32 = samples[i..i + WIN].iter().map(|&x| x * x).sum();
+        if energy < best_energy {
+            best_energy = energy;
+            best_pos = i + WIN / 2;
+        }
+        i += WIN / 2;
+    }
+    best_pos
 }

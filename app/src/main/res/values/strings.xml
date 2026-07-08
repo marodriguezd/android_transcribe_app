@@ -4,8 +4,8 @@
     <string name="welcome_title">Voice Input &amp; Subtitles</string>
     <string name="welcome_subtitle">Fully offline, private, and fast.</string>
     
-    <string name="section_ime">Keyboard Input</string>
-    <string name="desc_ime">Enable the keyboard to use voice input in any app.</string>
+    <string name="section_ime">Alternative: Voice keyboard</string>
+    <string name="desc_ime">Prefer a dedicated keyboard? Enable the Offline Voice Input keyboard, then switch to it from your keyboard switcher when you want voice input as its own keyboard.</string>
     <string name="btn_ime_settings">Open Keyboard Settings</string>
     
     <string name="section_subs">Live Subtitles</string>
@@ -24,12 +24,43 @@
     <string name="setting_select_transcription">Select transcription</string>
     <string name="setting_select_transcription_desc">Highlight transcribed text so it can be deleted with a single backspace</string>
 
-    <string name="perm_mic_title">Microphone Access</string>
-    <string name="perm_mic_desc">Required for voice recognition.</string>
-    <string name="btn_grant">Grant Permission</string>
-
     <string name="setting_pause_audio">Pause audio</string>
     <string name="setting_pause_audio_desc">Pause audio while recording</string>
+
+    <string name="setting_record_background">Record in background</string>
+    <string name="setting_record_background_desc">Keep recording when the voice keyboard is hidden; the text is inserted when you return</string>
+
+    <string name="setting_auto_stop">Auto-stop after silence</string>
+    <string name="setting_auto_stop_desc">End the voice input popup automatically ~2 seconds after you stop speaking</string>
+
+    <string name="setting_subtitle_lines">Subtitle length</string>
+    <string name="setting_subtitle_lines_desc">How many lines the live subtitles show; older text scrolls away</string>
+    <string name="subtitle_lines_2">2 lines</string>
+    <string name="subtitle_lines_4">4 lines</string>
+    <string name="subtitle_lines_all">All</string>
+
+    <string name="recognition_service_label">Offline Voice Input</string>
+
+    <string name="section_appearance">Appearance</string>
+    <string name="theme_system">System default</string>
+    <string name="theme_light">Light</string>
+    <string name="theme_dark">Dark</string>
+
+    <!-- Primary voice-input flow: apps fire RECOGNIZE_SPEECH and RecognizeActivity handles it. -->
+    <string name="section_voice">Voice input</string>
+    <string name="voice_status_ready">Ready — in any app, tap the microphone on a supported keyboard and your speech is typed into the text field.</string>
+    <string name="voice_status_need_mic">Microphone access is needed before voice input can work.</string>
+    <string name="voice_status_almost">Almost there. When you tap your keyboard\'s mic, pick “Offline Voice Input” and choose “Always”. Tap “Try voice input” below to set it now.</string>
+    <string name="btn_voice_try">Try voice input</string>
+    <string name="btn_voice_grant">Grant microphone access</string>
+    <string name="btn_voice_help">Setup help</string>
+
+    <string name="voice_test_ok">It works! Heard: %1$s</string>
+    <string name="voice_test_empty">It works — but no speech was detected.</string>
+    <string name="voice_test_failed">Couldn\'t start voice input on this device.</string>
+
+    <string name="voice_help_title">Voice input setup</string>
+    <string name="voice_help_body">How to use it\n• Open any app and tap the microphone on a supported keyboard/app. A small panel slides up, you speak, tap to stop, and the text is inserted. (Enable “Auto-stop after silence” in the settings to have it stop by itself.)\n\nWhich keyboards work\n• SwiftKey: works out of the box (see below if its own voice typing opens).\n• HeliBoard / AnySoftKeyboard / OpenBoard: their mic key switches to the system voice keyboard — enable the “Offline Voice Input” keyboard (see “Alternative: Voice keyboard”) and it is used automatically.\n• Gboard only uses Google\'s own voice typing and can\'t use this app. Use one of the keyboards above, or the built-in voice keyboard.\n\nIf your keyboard\'s own voice typing opens instead\n• Microsoft SwiftKey: Settings → Rich input → turn off “Multi-modal voice typing”.\n• Then tap the mic again and pick “Offline Voice Input”.\n\nIf Android asks which app to use\n• Choose “Offline Voice Input” and tap “Always”.\n\nIf another app always opens instead\n• Open Settings → Apps → that app → “Open by default” → Clear defaults, then try again.</string>
 
     <string name="section_post_process">Post-Procesamiento AI</string>
     <string name="desc_post_process">Refina tu texto usando modelos de lenguaje (OpenAI, Claude, Ollama).</string>
@@ -46,6 +77,8 @@
     <string name="status_refining">Refinando texto...</string>
     <string name="msg_fetching_models">Obteniendo modelos...</string>
     <string name="msg_models_ready">Lista de modelos actualizada</string>
-
-    <string name="recognition_service_label">Offline Voice Input</string>
+    
+    <string name="section_hotwords">Palabras Personalizadas</string>
+    <string name="desc_hotwords">Agrega palabras clave o nombres para que el reconocedor las detecte mejor.</string>
+    <string name="btn_hotwords_settings">Editar Palabras</string>
 </resources>

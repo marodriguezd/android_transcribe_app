@@ -1,20 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="AppTheme" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:colorPrimary">@color/colorPrimary</item>
-        <item name="android:colorPrimaryDark">@color/colorPrimaryDark</item>
-        <item name="android:colorAccent">@color/colorAccent</item>
-        <item name="android:windowBackground">@color/background</item>
+    <!-- Material 3 DayNight base theme. Light/dark surfaces and text colors are
+         provided by the theme; on Android 12+ dynamic color (Material You)
+         overrides the seed with the user's wallpaper palette (applied in
+         App.onCreate via DynamicColors). The seed below is the brand blue used
+         as a fallback on older devices. -->
+    <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/colorPrimary</item>
+        <item name="colorOnPrimary">@color/white</item>
     </style>
 
-    <style name="CardStyle">
-        <item name="android:background">@drawable/bg_card</item>
-        <item name="android:padding">16dp</item>
-        <item name="android:layout_marginBottom">16dp</item>
-    </style>
-    
-    <style name="ButtonStyle" parent="android:Widget.Material.Button.Colored">
-        <item name="android:padding">12dp</item>
-        <item name="android:textColor">@color/white</item>
+    <!-- Voice-input popup (RecognizeActivity): a translucent window so the
+         calling app stays visible (and keeps its UI state) behind the compact
+         bottom panel, instead of a full-screen takeover. -->
+    <style name="AppTheme.VoicePanel">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.InputMethod</item>
+        <item name="android:windowSoftInputMode">stateUnchanged</item>
     </style>
 </resources>

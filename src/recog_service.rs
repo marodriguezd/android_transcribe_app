@@ -36,7 +36,7 @@ const SILENCE_MS: u64 = 1500;
 /// If no speech is ever detected, finalise after this long anyway.
 const NO_SPEECH_TIMEOUT_MS: u64 = 7000;
 /// Hard cap on a single utterance (the engine internally chunks long audio).
-const MAX_SESSION_MS: u64 = 30000;
+const MAX_SESSION_MS: u64 = 60000;
 /// Throttle interval for `rmsChanged` UI callbacks.
 const LEVEL_UPDATE_MS: u64 = 50;
 
@@ -137,6 +137,18 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
         Ok(r) => r,
         Err(_) => return,
     };
+
+    // Tear down any session that is still around (e.g. the keyboard called
+    // startListening twice without cancel) so its monitor/finaliser can never
+    // deliver stale results to this new session.
+    {
+        let mut guard = SESSION.lock().unwrap();
+        if let Some(old) = guard.take() {
+            old.shared.cancelled.store(true, Ordering::SeqCst);
+            old.shared.finalized.store(true, Ordering::SeqCst);
+            *old.stream.lock().unwrap() = None;
+        }
+    }
 
     let now = Instant::now();
     let shared = Arc::new(Endpoint {
@@ -349,14 +361,14 @@ fn finalize(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>>) {
     // ~0.2s minimum of audio to bother transcribing.
     if buffer.len() < 3200 {
         call_error(&mut env, target, ERROR_NO_MATCH);
-        clear_session();
+        clear_session(&shared);
         return;
     }
 
     if engine::get_engine().is_none() {
         if engine::ensure_loaded(&mut env, target).is_err() {
             call_error(&mut env, target, ERROR_SERVER);
-            clear_session();
+            clear_session(&shared);
             return;
         }
     }
@@ -379,9 +391,16 @@ fn finalize(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>>) {
         None => call_error(&mut env, target, ERROR_SERVER),
     }
 
-    clear_session();
+    clear_session(&shared);
 }
 
-fn clear_session() {
-    *SESSION.lock().unwrap() = None;
+/// Clear the global session, but only if it is still *this* session — a newer
+/// `startListening` may already have installed a fresh one.
+fn clear_session(shared: &Arc<Endpoint>) {
+    let mut guard = SESSION.lock().unwrap();
+    if let Some(s) = guard.as_ref() {
+        if Arc::ptr_eq(&s.shared, shared) {
+            *guard = None;
+        }
+    }
 }

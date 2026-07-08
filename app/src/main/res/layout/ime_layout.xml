@@ -1,11 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:background="#F0F0F0"
-    android:padding="8dp">
+    android:background="?attr/colorSurface"
+    android:padding="12dp">
 
+    <!-- Status row -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -19,10 +21,10 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="Tap to speak"
-            android:textColor="#333333"
-            android:textSize="14sp"
-            android:paddingStart="8dp"/>
-            
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:paddingStart="4dp"/>
+
         <ProgressBar
             android:id="@+id/ime_progress"
             style="?android:attr/progressBarStyleSmall"
@@ -31,31 +33,47 @@
             android:visibility="gone"/>
     </LinearLayout>
 
+    <!-- Record area: pulsing mic-level glow behind a circular record button -->
     <FrameLayout
         android:id="@+id/ime_record_container"
         android:layout_width="match_parent"
         android:layout_height="200dp"
-        android:background="@drawable/bg_card"
-        android:backgroundTint="#FFFFFF">
-        
+        android:clickable="true"
+        android:focusable="true">
+
+        <dev.notune.transcribe.MicLevelView
+            android:id="@+id/ime_mic_level"
+            android:layout_width="200dp"
+            android:layout_height="200dp"
+            android:layout_gravity="center"/>
+
+        <View
+            android:id="@+id/ime_record_circle"
+            android:layout_width="104dp"
+            android:layout_height="104dp"
+            android:layout_gravity="center"
+            android:background="@drawable/bg_ime_record"/>
+
         <ImageView
             android:id="@+id/ime_mic_icon"
-            android:layout_width="64dp"
-            android:layout_height="64dp"
-            android:src="@android:drawable/ic_btn_speak_now"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:src="@drawable/ic_mic"
             android:layout_gravity="center"
-            android:tint="@color/colorPrimary"/>
-            
+            android:contentDescription="@string/section_ime"/>
+
         <TextView
             android:id="@+id/ime_hint"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:text="Tap to Record"
             android:layout_gravity="center_horizontal|bottom"
-            android:layout_marginBottom="24dp"
-            android:textColor="#888888"/>
+            android:layout_marginBottom="12dp"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:textAppearance="?attr/textAppearanceBodySmall"/>
     </FrameLayout>
 
+    <!-- Bottom key row -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
@@ -65,11 +83,12 @@
 
         <ImageView
             android:id="@+id/ime_switch_keyboard"
-            android:layout_width="48dp"
-            android:layout_height="32dp"
+            android:layout_width="52dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_keyboard_switch"
             android:scaleType="centerInside"
-            android:background="@drawable/bg_backspace"
+            android:background="@drawable/bg_ime_key"
+            android:tint="?attr/colorOnSurfaceVariant"
             android:clickable="true"
             android:focusable="true"
             android:layout_marginEnd="8dp"
@@ -78,11 +97,12 @@
         <ImageView
             android:id="@+id/ime_space"
             android:layout_width="0dp"
-            android:layout_height="32dp"
+            android:layout_height="44dp"
             android:layout_weight="1"
             android:src="@drawable/ic_space"
             android:scaleType="centerInside"
-            android:background="@drawable/bg_backspace"
+            android:background="@drawable/bg_ime_key"
+            android:tint="?attr/colorOnSurfaceVariant"
             android:clickable="true"
             android:focusable="true"
             android:layout_marginEnd="8dp"
@@ -91,24 +111,24 @@
         <ImageView
             android:id="@+id/ime_enter"
             android:layout_width="64dp"
-            android:layout_height="32dp"
+            android:layout_height="44dp"
             android:src="@drawable/ic_enter"
             android:scaleType="centerInside"
-            android:background="@drawable/bg_backspace"
+            android:background="@drawable/bg_ime_key"
+            android:tint="?attr/colorOnSurfaceVariant"
             android:clickable="true"
             android:focusable="true"
             android:layout_marginEnd="8dp"
             android:contentDescription="Enter"/>
 
-        <TextView
+        <ImageView
             android:id="@+id/ime_backspace"
             android:layout_width="64dp"
-            android:layout_height="32dp"
-            android:text="⌫"
-            android:textSize="24sp"
-            android:textColor="#333333"
-            android:background="@drawable/bg_backspace"
-            android:gravity="center"
+            android:layout_height="44dp"
+            android:src="@drawable/ic_backspace"
+            android:scaleType="centerInside"
+            android:background="@drawable/bg_ime_key"
+            android:tint="?attr/colorOnSurfaceVariant"
             android:clickable="true"
             android:focusable="true"
             android:contentDescription="Backspace"/>

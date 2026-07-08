@@ -19,6 +19,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.text.StaticLayout;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -110,6 +111,18 @@ public class LiveSubtitleService extends Service {
             return;
         }
 
+        // Stop cleanly if the user revokes the projection from the status bar
+        // (also required on Android 14+ before starting capture).
+        mMediaProjection.registerCallback(new MediaProjection.Callback() {
+            @Override
+            public void onStop() {
+                mMainHandler.post(() -> {
+                    stopSubtitleSession();
+                    stopSelf();
+                });
+            }
+        }, mMainHandler);
+
         initNative(this);
         setupOverlay();
         startAudioCapture();
@@ -119,7 +132,8 @@ public class LiveSubtitleService extends Service {
         isRecording = false;
         if (mAudioThread != null) {
             try {
-                mAudioThread.join();
+                // Bounded wait: read() can block until the next audio buffer.
+                mAudioThread.join(1000);
             } catch (InterruptedException e) {
                 e.printStackTrace();
             }
@@ -140,10 +154,11 @@ public class LiveSubtitleService extends Service {
 
     private void setupOverlay() {
         mWindowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
-        
+
         LayoutInflater inflater = LayoutInflater.from(this);
         mOverlayView = inflater.inflate(R.layout.service_subtitle, null);
-        
+
+        mMaxLines = SubtitlePrefs.getMaxLines(this);
         mSubtitleText = mOverlayView.findViewById(R.id.subs_text);
         mSubtitleText.setText("Waiting for audio...");
         
@@ -279,13 +294,86 @@ public class LiveSubtitleService extends Service {
         Log.d(TAG, "Audio loop finished");
     }
 
-    // Called from Rust
-    public void onSubtitleText(String text) {
+    // Transcript state: finalized text plus the partial hypothesis for the
+    // segment currently being spoken. Partials replace each other; finals are
+    // appended once.
+    private final StringBuilder mCommittedText = new StringBuilder();
+    private static final int MAX_COMMITTED_CHARS = 600;
+    // Absolute offset of mCommittedText[0] within the whole session transcript
+    // (grows when the buffer is trimmed at the front).
+    private long mCommittedBase = 0;
+    // Absolute offset where the caption window starts. Only ever moves
+    // forward — this is what keeps old sentences from sliding back into view
+    // when a hypothesis is revised or a segment finalizes. Positions inside
+    // the partial region drift by at most a few characters when a hypothesis
+    // is revised, which is invisible compared to a window jump.
+    private long mWindowStartAbs = 0;
+    // Line limit for the overlay (0 = unlimited), from SubtitlePrefs.
+    private int mMaxLines = SubtitlePrefs.DEFAULT_MAX_LINES;
+    // Absolute offset of the end of the currently displayed transcript.
+    private long mDisplayedEndAbs = 0;
+
+    // Called from Rust (worker thread). isFinal=true commits the text;
+    // isFinal=false is a partial hypothesis that replaces the previous one.
+    public void onSubtitleText(String text, boolean isFinal) {
         mMainHandler.post(() -> {
-            if (mSubtitleText != null) {
-                mSubtitleText.setText(text);
+            if (mSubtitleText == null) return;
+            if (isFinal) {
+                if (text.isEmpty()) return; // nothing new — leave display alone
+                if (mCommittedText.length() > 0) mCommittedText.append(' ');
+                mCommittedText.append(text);
+                int excess = mCommittedText.length() - MAX_COMMITTED_CHARS;
+                if (excess > 0) {
+                    mCommittedText.delete(0, excess);
+                    mCommittedBase += excess;
+                }
+                updateDisplay("");
+            } else {
+                updateDisplay(text);
             }
         });
+    }
+
+    /** Renders committed text + partial through the forward-only caption window. */
+    private void updateDisplay(String partial) {
+        String full = partial.isEmpty()
+                ? mCommittedText.toString()
+                : (mCommittedText.length() == 0 ? partial : mCommittedText + " " + partial);
+
+        // A final can end before the partial that was just on screen (the
+        // forced-cut remainder belongs to the next segment, and the final
+        // transcription may stop earlier than the last hypothesis). Redrawing
+        // then would make already-read words vanish and "pop up" again with
+        // the next partial — so only redraw once the transcript reaches at
+        // least as far as what is currently displayed.
+        long fullEndAbs = mCommittedBase + full.length();
+        if (fullEndAbs < mDisplayedEndAbs) return;
+        mDisplayedEndAbs = fullEndAbs;
+
+        if (mMaxLines <= 0) {
+            mSubtitleText.setText(full);
+            return;
+        }
+
+        int rel = (int) Math.max(0, Math.min(mWindowStartAbs - mCommittedBase, full.length()));
+        // Cosmetic: never start the window on the separator space.
+        while (rel < full.length() && full.charAt(rel) == ' ') rel++;
+        String visible = full.substring(rel);
+
+        int width = mSubtitleText.getWidth()
+                - mSubtitleText.getPaddingLeft() - mSubtitleText.getPaddingRight();
+        if (width > 0 && !visible.isEmpty()) {
+            StaticLayout layout = StaticLayout.Builder
+                    .obtain(visible, 0, visible.length(), mSubtitleText.getPaint(), width)
+                    .build();
+            int lineCount = layout.getLineCount();
+            if (lineCount > mMaxLines) {
+                int cut = layout.getLineStart(lineCount - mMaxLines);
+                visible = visible.substring(cut);
+                mWindowStartAbs = mCommittedBase + rel + cut;
+            }
+        }
+        mSubtitleText.setText(visible);
     }
 
     private void createNotificationChannel() {
@@ -314,6 +402,14 @@ public class LiveSubtitleService extends Service {
     }
 
     @Override
+    public void onDestroy() {
+        // Make sure the overlay and capture are torn down even if the service
+        // is killed without an explicit ACTION_STOP.
+        stopSubtitleSession();
+        super.onDestroy();
+    }
+
+    @Override
     public IBinder onBind(Intent intent) {
         return null;
     }
@@ -322,5 +418,4 @@ public class LiveSubtitleService extends Service {
     private native void initNative(LiveSubtitleService service);
     private native void cleanupNative();
     private native void pushAudio(float[] data, int length);
-    private native void setUpdateInterval(float seconds);
 }

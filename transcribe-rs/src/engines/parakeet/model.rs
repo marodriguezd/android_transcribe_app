@@ -21,9 +21,13 @@ const MAX_TOKENS_PER_STEP: usize = 10;
 /// 60 seconds of audio ≈ 750 encoder frames, safely under the limit.
 const MAX_CHUNK_SAMPLES: usize = 60 * 16_000; // 60 seconds
 
-/// Overlap between consecutive chunks in samples (16 kHz).
-/// 1 second of overlap so words at chunk boundaries aren't cut.
-const CHUNK_OVERLAP_SAMPLES: usize = 1 * 16_000; // 1 second
+/// When chunking long audio, the split point is searched between this many
+/// samples and `MAX_CHUNK_SAMPLES`, at the quietest spot — so chunks break in
+/// a pause rather than mid-word and nothing is duplicated or lost.
+const CHUNK_SPLIT_SEARCH_START: usize = 45 * 16_000; // 45 seconds
+
+/// Energy-window size used when searching for the quietest split point.
+const SPLIT_WINDOW_SAMPLES: usize = 1_600; // 100 ms
 
 static DECODE_SPACE_RE: Lazy<Result<Regex, regex::Error>> =
     Lazy::new(|| Regex::new(r"\A\s|\s\B|(\s)\b"));
@@ -433,21 +437,25 @@ impl ParakeetModel {
 
             // TDT logic
             let probs_squeezed = probs.remove_axis(ndarray::Axis(0));
-            let vocab_logits_slice: &[f32] = probs_squeezed.as_slice().ok_or_else(|| {
+            let logits: &[f32] = probs_squeezed.as_slice().ok_or_else(|| {
                 ParakeetError::Shape(ndarray::ShapeError::from_kind(ndarray::ErrorKind::IncompatibleShape))
             })?;
 
-            let vocab_logits = if probs_squeezed.len() > self.vocab_size {
-                &vocab_logits_slice[..self.vocab_size]
+            let (vocab_logits, duration_logits) = if logits.len() > self.vocab_size {
+                logits.split_at(self.vocab_size)
             } else {
-                vocab_logits_slice
+                (logits, &[][..])
             };
 
-            let token = vocab_logits
-                .iter()
-                .enumerate()
-                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
-                .map(|(idx, _)| idx as i32)
+            let argmax = |xs: &[f32]| {
+                xs.iter()
+                    .enumerate()
+                    .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+                    .map(|(idx, _)| idx)
+            };
+
+            let token = argmax(vocab_logits)
+                .map(|idx| idx as i32)
                 .unwrap_or(self.blank_idx);
 
             if token != self.blank_idx {
@@ -458,9 +466,20 @@ impl ParakeetModel {
                 emitted_tokens += 1;
             }
 
-            if token == self.blank_idx || emitted_tokens == MAX_TOKENS_PER_STEP {
-                t += 1;
-                emitted_tokens = 0;
+            if !duration_logits.is_empty() {
+                let mut jump = argmax(duration_logits).unwrap_or(1);
+                if jump == 0 && (token == self.blank_idx || emitted_tokens >= MAX_TOKENS_PER_STEP) {
+                    jump = 1;
+                }
+                if jump > 0 {
+                    t += jump;
+                    emitted_tokens = 0;
+                }
+            } else {
+                if token == self.blank_idx || emitted_tokens >= MAX_TOKENS_PER_STEP {
+                    t += 1;
+                    emitted_tokens = 0;
+                }
             }
         }
 
@@ -542,8 +561,9 @@ impl ParakeetModel {
             return self.transcribe_chunk(samples);
         }
 
-        // Long audio: split into overlapping chunks to stay within the
-        // encoder's maximum positional-encoding length.
+        // Long audio: split into non-overlapping chunks, cutting at the
+        // quietest point near each chunk boundary so we never split mid-word
+        // (and never repeat words, as the previous overlap-based merge did).
         log::info!(
             "Audio has {} samples ({:.1}s), chunking into ≤{:.0}s segments",
             samples.len(),
@@ -551,15 +571,22 @@ impl ParakeetModel {
             MAX_CHUNK_SAMPLES as f64 / 16_000.0,
         );
 
-        let step = MAX_CHUNK_SAMPLES - CHUNK_OVERLAP_SAMPLES;
         let mut merged_text = String::new();
         let mut merged_tokens: Vec<String> = Vec::new();
         let mut merged_timestamps: Vec<f32> = Vec::new();
 
         let mut offset: usize = 0;
         while offset < samples.len() {
-            let end = (offset + MAX_CHUNK_SAMPLES).min(samples.len());
-            let chunk = samples[offset..end].to_vec();
+            let remaining = samples.len() - offset;
+            let end = if remaining <= MAX_CHUNK_SAMPLES {
+                samples.len()
+            } else {
+                find_quietest_split(
+                    &samples,
+                    offset + CHUNK_SPLIT_SEARCH_START,
+                    offset + MAX_CHUNK_SAMPLES,
+                )
+            };
             let chunk_time_offset = offset as f32 / 16_000.0;
 
             log::info!(
@@ -568,52 +595,21 @@ impl ParakeetModel {
                 end as f32 / 16_000.0,
             );
 
-            let result = self.transcribe_chunk(chunk)?;
+            let result = self.transcribe_chunk(samples[offset..end].to_vec())?;
 
-            if !result.text.is_empty() {
-                // For chunks after the first one we need to trim the overlap
-                // region to avoid duplicating words at the boundary.
-                if offset > 0 && !result.timestamps.is_empty() {
-                    let overlap_time = CHUNK_OVERLAP_SAMPLES as f32 / 16_000.0;
-                    // Find the first token whose timestamp is past the overlap
-                    let skip = result
-                        .timestamps
-                        .iter()
-                        .position(|&t| t >= overlap_time)
-                        .unwrap_or(0);
-
-                    if skip < result.tokens.len() {
-                        if !merged_text.is_empty() {
-                            merged_text.push(' ');
-                        }
-                        // Reconstruct text from the kept tokens
-                        let kept_tokens = &result.tokens[skip..];
-                        let kept_text: String = kept_tokens.join("");
-                        // Clean leading space from subword tokens
-                        merged_text.push_str(kept_text.trim_start());
-
-                        for (token, &ts) in result.tokens[skip..]
-                            .iter()
-                            .zip(result.timestamps[skip..].iter())
-                        {
-                            merged_tokens.push(token.clone());
-                            merged_timestamps.push(ts + chunk_time_offset);
-                        }
-                    }
-                } else {
-                    // First chunk — take everything
-                    merged_text.push_str(&result.text);
-                    for (token, &ts) in result.tokens.iter().zip(result.timestamps.iter()) {
-                        merged_tokens.push(token.clone());
-                        merged_timestamps.push(ts + chunk_time_offset);
-                    }
+            let trimmed = result.text.trim();
+            if !trimmed.is_empty() {
+                if !merged_text.is_empty() {
+                    merged_text.push(' ');
+                }
+                merged_text.push_str(trimmed);
+                for (token, &ts) in result.tokens.iter().zip(result.timestamps.iter()) {
+                    merged_tokens.push(token.clone());
+                    merged_timestamps.push(ts + chunk_time_offset);
                 }
             }
 
-            if end >= samples.len() {
-                break;
-            }
-            offset += step;
+            offset = end;
         }
 
         Ok(TimestampedResult {
@@ -622,4 +618,30 @@ impl ParakeetModel {
             tokens: merged_tokens,
         })
     }
+}
+
+/// Find the centre of the quietest `SPLIT_WINDOW_SAMPLES` window in
+/// `samples[from..to]`, used as a chunk boundary for long audio. Falls back to
+/// `to` if the range is degenerate.
+fn find_quietest_split(samples: &[f32], from: usize, to: usize) -> usize {
+    let to = to.min(samples.len());
+    if from + SPLIT_WINDOW_SAMPLES > to {
+        return to;
+    }
+
+    let mut best_pos = to;
+    let mut best_energy = f32::MAX;
+    let mut i = from;
+    while i + SPLIT_WINDOW_SAMPLES <= to {
+        let energy: f32 = samples[i..i + SPLIT_WINDOW_SAMPLES]
+            .iter()
+            .map(|&x| x * x)
+            .sum();
+        if energy < best_energy {
+            best_energy = energy;
+            best_pos = i + SPLIT_WINDOW_SAMPLES / 2;
+        }
+        i += SPLIT_WINDOW_SAMPLES / 2;
+    }
+    best_pos
 }

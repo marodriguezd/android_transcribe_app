@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Material 3 keyboard key: subtle tonal surface with a ripple. Theme attrs are
+     resolved against the M3-themed context the IME inflates with. -->
+<ripple xmlns:android="http://schemas.android.com/apk/res/android"
+    android:color="?attr/colorControlHighlight">
+    <item>
+        <shape android:shape="rectangle">
+            <solid android:color="?attr/colorSurfaceContainerHighest" />
+            <corners android:radius="12dp" />
+        </shape>
+    </item>
+</ripple>

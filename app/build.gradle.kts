@@ -14,7 +14,7 @@ android {
         applicationId = "dev.notune.transcribe"
         minSdk = 26
         targetSdk = 35
-        versionCode = 16
+        versionCode = 18
         versionName = "0.4.0"
         ndk {
             abiFilters += "arm64-v8a"
@@ -85,10 +85,22 @@ if (!isBundle) {
 }
 
 dependencies {
+    // Material Components (Material 3 / Material You). Pulls in AppCompat.
+    implementation("com.google.android.material:material:1.12.0")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.25.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     testImplementation("org.robolectric:robolectric:4.11.1")
     testImplementation("junit:junit:4.13.2")
+
+    // Material/AppCompat transitively pull the legacy kotlin-stdlib-jdk7/jdk8:1.6.21
+    // (via kotlinx-coroutines-android), whose classes were folded into
+    // kotlin-stdlib in Kotlin 1.8 — causing duplicate-class build failures.
+    // Align them with the resolved kotlin-stdlib (1.8.22), where they are empty
+    // stubs. See https://kotlinlang.org/docs/whatsnew18.html#kotlin-stdlib
+    constraints {
+        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22")
+        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22")
+    }
 }
 
 // Dedicated configuration to resolve the ORT AAR for the Rust build
@@ -159,6 +171,10 @@ val cargoNdkBuild by tasks.registering(Exec::class) {
     }
 
     outputs.dir(jniLibsDir)
+    // No input tracking — always run and let cargo's own incremental build
+    // decide what to recompile (a no-op cargo invocation is fast). Without
+    // this, Gradle sees unchanged outputs and skips Rust rebuilds entirely.
+    outputs.upToDateWhen { false }
 }
 
 // Wire the cargo-ndk build into the Android build lifecycle

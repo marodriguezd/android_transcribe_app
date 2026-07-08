@@ -41,7 +41,7 @@
 
         <!-- Enable Switch Card -->
         <LinearLayout
-            style="@style/CardStyle"
+            
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
@@ -63,7 +63,7 @@
 
         <!-- API Config Card -->
         <LinearLayout
-            style="@style/CardStyle"
+            
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical">
@@ -150,7 +150,7 @@
 
         <!-- Prompt Card -->
         <LinearLayout
-            style="@style/CardStyle"
+            
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="vertical">
@@ -185,7 +185,7 @@
 
         <Button
             android:id="@+id/btn_save"
-            style="@style/ButtonStyle"
+            style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="@string/btn_save"

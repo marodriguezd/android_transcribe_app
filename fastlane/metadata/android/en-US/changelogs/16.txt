@@ -1,0 +1,3 @@
+- redesign in material 3 for consistency
+- add dark mode
+- add clearer explanation/setup for using voice input in your standard keyboard

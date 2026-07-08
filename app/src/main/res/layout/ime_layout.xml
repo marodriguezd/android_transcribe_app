@@ -25,6 +25,14 @@
             android:textAppearance="?attr/textAppearanceBodyMedium"
             android:paddingStart="4dp"/>
 
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/ime_post_process_switch"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="AI Fix"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:layout_marginEnd="8dp"/>
+
         <ProgressBar
             android:id="@+id/ime_progress"
             style="?android:attr/progressBarStyleSmall"

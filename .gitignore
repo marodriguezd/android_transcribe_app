@@ -46,3 +46,11 @@ app/src/main/jniLibs/
 MEMORY.md
 .gemini/
 release.md
+.agents/
+ORIGINAL_REQUEST.md
+PROJECT.md
+TEST_INFRA.md
+TEST_READY.md
+ours.patch
+ours_strings.xml
+run_e2e_tests.sh

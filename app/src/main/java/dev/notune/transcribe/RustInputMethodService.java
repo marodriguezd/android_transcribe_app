@@ -222,6 +222,7 @@ public class RustInputMethodService extends InputMethodService {
                         audioPauser.request(this);
                         pauseAudioActive = true;
                     }
+                    applyHotwords();
                     startRecording();
                     updateRecordButtonUI(true);
                 }
@@ -247,6 +248,7 @@ public class RustInputMethodService extends InputMethodService {
                     audioPauser.request(this);
                     pauseAudioActive = true;
                 }
+                applyHotwords();
                 startRecording();
                 updateRecordButtonUI(true);
             }
@@ -326,6 +328,16 @@ public class RustInputMethodService extends InputMethodService {
     private native void startRecording();
     private native void stopRecording();
     private native void cancelRecording();
+    private native void setHotwords(String[] words);
+
+    private void applyHotwords() {
+        if (settingsManager != null) {
+            java.util.Set<String> words = settingsManager.getHotwords();
+            if (words != null) {
+                setHotwords(words.toArray(new String[0]));
+            }
+        }
+    }
 
     // Called from Rust
     public void onStatusUpdate(String status) {

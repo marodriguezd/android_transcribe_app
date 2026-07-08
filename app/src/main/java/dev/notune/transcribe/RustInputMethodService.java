@@ -107,10 +107,15 @@ public class RustInputMethodService extends InputMethodService {
             switchKeyboardButton = view.findViewById(R.id.ime_switch_keyboard);
             
             com.google.android.material.materialswitch.MaterialSwitch aiSwitch = view.findViewById(R.id.ime_post_process_switch);
-            aiSwitch.setChecked(settingsManager.isPostProcessEnabled());
-            aiSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
-                settingsManager.setPostProcessEnabled(isChecked);
-            });
+            if (settingsManager.getApiKey() == null || settingsManager.getApiKey().trim().isEmpty()) {
+                aiSwitch.setVisibility(android.view.View.GONE);
+            } else {
+                aiSwitch.setVisibility(android.view.View.VISIBLE);
+                aiSwitch.setChecked(settingsManager.isPostProcessEnabled());
+                aiSwitch.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                    settingsManager.setPostProcessEnabled(isChecked);
+                });
+            }
 
             switchKeyboardButton.setOnClickListener(v -> {
                 if (isRecording) {

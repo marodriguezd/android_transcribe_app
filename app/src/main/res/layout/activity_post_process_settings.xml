@@ -84,6 +84,8 @@
                 android:hint="https://api.openai.com/v1"
                 android:inputType="textUri"
                 android:textSize="16sp"
+                android:textColor="@color/textPrimary"
+                android:textColorHint="@color/textSecondary"
                 android:layout_marginBottom="16dp" />
 
             <TextView
@@ -102,6 +104,8 @@
                 android:hint="sk-..."
                 android:inputType="textPassword"
                 android:textSize="16sp"
+                android:textColor="@color/textPrimary"
+                android:textColorHint="@color/textSecondary"
                 android:layout_marginBottom="16dp" />
 
             <TextView
@@ -127,6 +131,8 @@
                     android:hint="gpt-4o-mini"
                     android:inputType="text"
                     android:textSize="16sp"
+                    android:textColor="@color/textPrimary"
+                    android:textColorHint="@color/textSecondary"
                     android:completionThreshold="1" />
 
                 <ProgressBar
@@ -172,6 +178,8 @@
                 android:inputType="textMultiLine"
                 android:minLines="4"
                 android:gravity="top"
+                android:textColor="@color/textPrimary"
+                android:textColorHint="@color/textSecondary"
                 android:textSize="15sp" />
             
             <TextView

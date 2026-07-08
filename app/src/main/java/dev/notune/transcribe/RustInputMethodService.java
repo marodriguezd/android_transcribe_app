@@ -84,7 +84,8 @@ public class RustInputMethodService extends InputMethodService {
     public View onCreateInputView() {
         Log.d(TAG, "onCreateInputView");
         try {
-            View view = getLayoutInflater().inflate(R.layout.ime_layout, null);
+            android.view.ContextThemeWrapper ctx = new android.view.ContextThemeWrapper(this, R.style.AppTheme);
+            View view = android.view.LayoutInflater.from(ctx).inflate(R.layout.ime_layout, null);
             inputView = view;
 
             // Handle window insets for avoiding navigation bar overlap

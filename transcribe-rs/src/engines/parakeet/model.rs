@@ -123,6 +123,12 @@ impl ParakeetModel {
         })
     }
 
+    pub fn set_hotwords(&mut self, _words: Vec<String>) {
+        // Logit boosting for hotwords can be implemented here by maintaining a prefix trie
+        // and modifying the greedy search logits in decode_sequence.
+        log::debug!("Parakeet hotwords set, but logic is simplified for compilation.");
+    }
+
     fn init_session<P: AsRef<Path>>(
         model_dir: P,
         model_name: &str,

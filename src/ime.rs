@@ -57,3 +57,32 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_RustInputMethodService_
         voice_session::cancel_recording(env, state);
     }
 }
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_notune_transcribe_RustInputMethodService_setHotwords(
+    mut env: JNIEnv,
+    _class: JClass,
+    string_array: jni::objects::JObjectArray,
+) {
+    let mut words = Vec::new();
+    let length = env.get_array_length(&string_array).unwrap_or(0);
+    for i in 0..length {
+        if let Ok(jstr_obj) = env.get_object_array_element(&string_array, i) {
+            let string_val = {
+                let jstr: jni::objects::JString = jstr_obj.into();
+                env.get_string(&jstr).map(|s| s.to_string_lossy().into_owned()).unwrap_or_default()
+            };
+            if !string_val.is_empty() {
+                words.push(string_val);
+            }
+        }
+    }
+    
+    // Pass words to the parakeet engine
+    if let Some(engine) = crate::engine::get_engine() {
+        use transcribe_rs::TranscriptionEngine;
+        if let Ok(mut eng) = engine.lock() {
+            eng.set_hotwords(words);
+        }
+    }
+}

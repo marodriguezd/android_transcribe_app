@@ -15,6 +15,7 @@ public class SettingsManager {
     private static final String KEY_SELECT_TRANSCRIPTION = "select_transcription";
     private static final String KEY_PAUSE_AUDIO = "pause_audio";
 
+    private static final String KEY_HOTWORDS = "custom_hotwords";
     private static final String DEFAULT_API_URL = "https://api.openai.com/v1";
     private static final String DEFAULT_MODEL = "gpt-4o-mini";
     private static final String DEFAULT_PROMPT = "Eres un motor de post-procesamiento. Corrige la gramática, ortografía y puntuación del siguiente texto, manteniendo el estilo original: ${output}";
@@ -87,5 +88,13 @@ public class SettingsManager {
 
     public void setPauseAudio(boolean enabled) {
         prefs.edit().putBoolean(KEY_PAUSE_AUDIO, enabled).apply();
+    }
+
+    public java.util.Set<String> getHotwords() {
+        return prefs.getStringSet(KEY_HOTWORDS, new java.util.HashSet<>());
+    }
+
+    public void setHotwords(java.util.Set<String> words) {
+        prefs.edit().putStringSet(KEY_HOTWORDS, words).apply();
     }
 }

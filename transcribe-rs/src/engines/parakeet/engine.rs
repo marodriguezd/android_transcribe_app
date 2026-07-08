@@ -292,6 +292,12 @@ impl TranscriptionEngine for ParakeetEngine {
         self.model = None;
     }
 
+    fn set_hotwords(&mut self, words: Vec<String>) {
+        if let Some(model) = self.model.as_mut() {
+            model.set_hotwords(words);
+        }
+    }
+
     fn transcribe_samples(
         &mut self,
         samples: Vec<f32>,

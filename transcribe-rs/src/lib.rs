@@ -159,6 +159,15 @@ pub trait TranscriptionEngine {
     /// Unload the currently loaded model and free associated resources.
     fn unload_model(&mut self);
 
+    /// Set a list of custom hotwords to boost during decoding.
+    ///
+    /// # Arguments
+    ///
+    /// * `words` - A vector of custom word strings
+    fn set_hotwords(&mut self, _words: Vec<String>) {
+        // Default implementation does nothing (engine may not support hotwords)
+    }
+
     /// Transcribe audio samples directly.
     ///
     /// # Arguments

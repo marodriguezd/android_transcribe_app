@@ -15,15 +15,16 @@ height="80">](https://github.com/marodriguezd/android_transcribe_app/releases/la
 - **Supported Languages:** Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Slovak, Slovenian, Spanish, Swedish, Russian, Ukrainian
 - **Voice Input Keyboard** Use your voice as a text field input method.
 - **Live Subtitles:** Real-time captions for any audio/video playing on your device, with automatic silence detection and clearing.
-- **AI Post-Processing:** Optional text refinement using LLMs (OpenAI, Gemini, Ollama). Refine your transcriptions with custom prompts, model discovery, and base URL support—similar to [Handy.computer](https://handy.computer).
+- **AI Post-Processing:** Optional text refinement using LLMs (OpenAI, Gemini, Ollama). Refine your transcriptions with custom prompts, model discovery, and base URL support—similar to [Handy.computer](https://handy.computer). Features strict language preservation to perfectly maintain your original language.
+- **Custom Dictionary & Hotwords:** Use a custom dictionary to instantly fix common misspellings (`error=correction`) or provide AI context hints for your specific vocabulary.
 - **Privacy-First:** No audio data leaves your device. Local transcription by default.
 - **Rust Backend:** High-performance native code using **transcribe-rs** and **ONNX Runtime 1.25.0**.
 
 ## Screenshots
 <p float="left">
-  <img src=".screenshots/screenshot_home.png" width="30%" />
-  <img src=".screenshots/screenshot_handy.png" width="30%" /> 
-  <img src=".screenshots/screenshot_ime.png" width="30%" />
+  <img src=".screenshots/screenshot_1.png" width="30%" />
+  <img src=".screenshots/screenshot_2.png" width="30%" /> 
+  <img src=".screenshots/screenshot_3.png" width="30%" />
 </p>
 
 ## Prerequisites
@@ -32,7 +33,7 @@ height="80">](https://github.com/marodriguezd/android_transcribe_app/releases/la
 |---|---|
 | **JDK 17** | Android Studio (bundled) or `sudo pacman -S jdk17-openjdk` |
 | **Android SDK** | Via Android Studio or `sdkmanager` |
-| **Android NDK** | `sdkmanager "ndk;28.0.13004108"` |
+| **Android NDK** | `sdkmanager "ndk;28.2.13676358"` |
 | **Rust** | [rustup.rs](https://rustup.rs) + `rustup target add aarch64-linux-android` |
 | **cargo-ndk** | `cargo install cargo-ndk` |
 

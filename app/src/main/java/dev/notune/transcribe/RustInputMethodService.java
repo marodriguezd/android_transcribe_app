@@ -100,6 +100,7 @@ public class RustInputMethodService extends InputMethodService {
             progressBar = view.findViewById(R.id.ime_progress);
             recordContainer = view.findViewById(R.id.ime_record_container);
             micIcon = view.findViewById(R.id.ime_mic_icon);
+            micIcon.setColorFilter(0xFF2196F3); // Blue
             hintView = view.findViewById(R.id.ime_hint);
             backspaceButton = view.findViewById(R.id.ime_backspace);
             spaceButton = view.findViewById(R.id.ime_space);

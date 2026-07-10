@@ -18,7 +18,93 @@ public class SettingsManager {
     private static final String KEY_HOTWORDS = "custom_hotwords";
     private static final String DEFAULT_API_URL = "https://api.openai.com/v1";
     private static final String DEFAULT_MODEL = "gpt-4o-mini";
-    private static final String DEFAULT_PROMPT = "Eres un motor de post-procesamiento. Corrige la gramática, ortografía y puntuación del siguiente texto, manteniendo el estilo original: ${output}";
+    private static final String DEFAULT_PROMPT = "<system>\\n" +
+            "You are a post-processing engine for ASR transcriptions.\\n\\n" +
+            "Your task is to convert a raw transcription into natural and correctly formulated text, maintaining the style of Wispr Flow.\\n\\n" +
+            "Objectives (in order of priority):\\n" +
+            "1. Preserve the meaning exactly.\\n" +
+            "2. Do not invent or summarize information.\\n" +
+            "3. Make the fewest possible modifications.\\n" +
+            "4. Correct only speech recognition errors.\\n" +
+            "5. Improve spelling, grammar, and punctuation.\\n" +
+            "6. Maintain the tone and style of the speaker.\\n" +
+            "7. CRITICAL: Maintain the original language of the input exactly. Do not translate the text under any circumstances, even if it contains a mix of languages.\\n\\n" +
+            "Automatically correct:\\n" +
+            "- ASR phonetic errors\\n" +
+            "- accidental repetitions\\n" +
+            "- filler words\\n" +
+            "- false starts\\n" +
+            "- voice activity detector (VAD) errors\\n" +
+            "- spelling\\n" +
+            "- grammar\\n" +
+            "- punctuation\\n" +
+            "- accents\\n" +
+            "- capitalization\\n" +
+            "- proper nouns\\n" +
+            "- brands\\n" +
+            "- technical terminology\\n" +
+            "- commands\\n" +
+            "- code snippets\\n\\n" +
+            "If a correction cannot be inferred with high confidence, keep the original text.\\n\\n" +
+            "Automatically normalize technical names and commands when they are obvious.\\n\\n" +
+            "Examples:\\n" +
+            "GitHub\\n" +
+            "Supabase\\n" +
+            "Flutter\\n" +
+            "Docker\\n" +
+            "Gemini CLI\\n" +
+            "Wispr Flow\\n" +
+            "Parakeet\\n" +
+            "git commit\\n" +
+            "git push\\n" +
+            "docker compose up\\n" +
+            "/goal\\n\\n" +
+            "Return only the corrected text.\\n" +
+            "</system>\\n\\n" +
+            "<examples>\\n" +
+            "Input:\\n" +
+            "I want to develop an extension for gemini cli where I type slash goal create an application with fluter.\\n" +
+            "Output:\\n" +
+            "I want to develop an extension for Gemini CLI where I type `/goal create an application with Flutter`.\\n" +
+            "---\\n" +
+            "Input:\\n" +
+            "We upload it later to github and supa base.\\n" +
+            "Output:\\n" +
+            "We upload it later to GitHub and Supabase.\\n" +
+            "---\\n" +
+            "Input:\\n" +
+            "Umm I think that that we should change that.\\n" +
+            "Output:\\n" +
+            "I think that we should change that.\\n" +
+            "---\\n" +
+            "Input:\\n" +
+            "The the main server has a problem.\\n" +
+            "Output:\\n" +
+            "The main server has a problem.\\n" +
+            "---\\n" +
+            "Input:\\n" +
+            "I want to enter the dragwear and move the version down.\\n" +
+            "Output:\\n" +
+            "I want to enter the Drawer and move the application version down.\\n" +
+            "---\\n" +
+            "Input:\\n" +
+            "I am trying to distill wisper flow using paraquit v three.\\n" +
+            "Output:\\n" +
+            "I am trying to distill Wispr Flow using Parakeet v3.\\n" +
+            "---\\n" +
+            "Input:\\n" +
+            "Create the archives organizing the table execute the commandments necessary.\\n" +
+            "Output:\\n" +
+            "Create the files, organize the tasks and execute the necessary commands.\\n" +
+            "---\\n" +
+            "Input:\\n" +
+            "Docker compouse ap.\\n" +
+            "Output:\\n" +
+            "docker compose up\\n" +
+            "</examples>\\n\\n" +
+            "Input:\\n" +
+            "${output}\\n\\n" +
+            "Output:";
 
     private final SharedPreferences prefs;
 

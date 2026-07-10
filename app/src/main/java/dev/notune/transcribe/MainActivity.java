@@ -194,11 +194,26 @@ public class MainActivity extends AppCompatActivity {
         voiceGrantButton.setVisibility(View.GONE);
         voiceTryButton.setEnabled(true);
 
-        if (isOurAppDefaultRecognizer()) {
+        if (isOurAppDefaultRecognizer() || isOurImeEnabled()) {
             setVoiceStatus(true, getString(R.string.voice_status_ready));
         } else {
-            setVoiceStatus(false, getString(R.string.voice_status_almost));
+            // It's not an error if they just haven't set it as default yet, but we use a warning color
+            // Or we can just set it as ready anyway to avoid the red exclamation mark annoying the user.
+            // Let's just use the blue/neutral color for the "Almost there" message by using setVoiceStatusInfo.
+            setVoiceStatusInfo(getString(R.string.voice_status_almost));
         }
+    }
+
+    private boolean isOurImeEnabled() {
+        android.view.inputmethod.InputMethodManager imm = (android.view.inputmethod.InputMethodManager) getSystemService(android.content.Context.INPUT_METHOD_SERVICE);
+        if (imm != null) {
+            for (android.view.inputmethod.InputMethodInfo imi : imm.getEnabledInputMethodList()) {
+                if (imi.getPackageName().equals(getPackageName())) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     /** True if our RecognizeActivity is what RECOGNIZE_SPEECH resolves to. */
@@ -216,6 +231,15 @@ public class MainActivity extends AppCompatActivity {
         int tint = ready
                 ? ContextCompat.getColor(this, R.color.status_ok)
                 : themeColor(com.google.android.material.R.attr.colorError);
+        ImageViewCompat.setImageTintList(voiceStatusIcon, ColorStateList.valueOf(tint));
+        voiceStatusIcon.setContentDescription(message);
+    }
+
+    private void setVoiceStatusInfo(String message) {
+        voiceStatusText.setText(message);
+        // Use the error icon (exclamation mark) but tint it with the primary color to act as info
+        voiceStatusIcon.setImageResource(R.drawable.ic_error); 
+        int tint = themeColor(com.google.android.material.R.attr.colorPrimary);
         ImageViewCompat.setImageTintList(voiceStatusIcon, ColorStateList.valueOf(tint));
         voiceStatusIcon.setContentDescription(message);
     }

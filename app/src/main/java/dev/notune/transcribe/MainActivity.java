@@ -297,7 +297,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void openHotwordsDialog(SettingsManager settingsManager) {
         android.widget.EditText editText = new android.widget.EditText(this);
-        editText.setHint("Palabra o error=corrección");
+        editText.setHint("Word or error=correction");
         editText.setMinLines(5);
         editText.setMaxLines(10);
         editText.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
@@ -324,7 +324,7 @@ public class MainActivity extends AppCompatActivity {
                         }
                     }
                     settingsManager.setHotwords(newHotwords);
-                    snackbar("Palabras guardadas");
+                    snackbar("Words saved");
                 })
                 .setNegativeButton(android.R.string.cancel, null)
                 .show();

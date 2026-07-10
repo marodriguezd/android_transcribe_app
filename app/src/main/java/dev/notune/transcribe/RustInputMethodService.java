@@ -344,12 +344,8 @@ public class RustInputMethodService extends InputMethodService {
     private native void setHotwords(String[] words);
 
     private void applyHotwords() {
-        if (settingsManager != null) {
-            java.util.Set<String> words = settingsManager.getHotwords();
-            if (words != null) {
-                setHotwords(words.toArray(new String[0]));
-            }
-        }
+        // Hotwords are no longer sent to the ASR engine to prevent hallucination.
+        // They are instead processed in PostProcessor.java as dictionary replacements and LLM hints.
     }
 
     // Called from Rust

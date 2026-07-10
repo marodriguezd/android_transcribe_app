@@ -79,6 +79,6 @@
     <string name="msg_models_ready">Lista de modelos actualizada</string>
     
     <string name="section_hotwords">Palabras Personalizadas</string>
-    <string name="desc_hotwords">Agrega palabras clave o nombres para que el reconocedor las detecte mejor.</string>
+    <string name="desc_hotwords">Añade palabras como contexto para la IA, o usa el formato \'incorrecta=correcta\' para reemplazos directos (ej: paraquid=Parakeet).</string>
     <string name="btn_hotwords_settings">Editar Palabras</string>
 </resources>

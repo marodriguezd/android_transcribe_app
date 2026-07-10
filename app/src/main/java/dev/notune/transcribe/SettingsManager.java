@@ -183,4 +183,22 @@ public class SettingsManager {
     public void setHotwords(java.util.Set<String> words) {
         prefs.edit().putStringSet(KEY_HOTWORDS, words).apply();
     }
+
+    public String applyDictionary(String text) {
+        java.util.Set<String> words = getHotwords();
+        if (words == null || words.isEmpty()) return text;
+        
+        String processed = text;
+        for (String line : words) {
+            if (line.contains("=")) {
+                String[] parts = line.split("=", 2);
+                String key = parts[0].trim();
+                String value = parts[1].trim();
+                if (!key.isEmpty() && !value.isEmpty()) {
+                    processed = processed.replaceAll("(?i)\\b" + java.util.regex.Pattern.quote(key) + "\\b", value);
+                }
+            }
+        }
+        return processed;
+    }
 }

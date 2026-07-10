@@ -43,21 +43,13 @@ public class PostProcessor {
         String model = settings.getModelName();
         String promptTemplate = settings.getSystemPrompt();
 
-        String processedText = rawText;
+        String processedText = rawText; // text is already passed through applyDictionary
         StringBuilder hints = new StringBuilder();
         java.util.Set<String> hotwords = settings.getHotwords();
         
         if (hotwords != null) {
             for (String line : hotwords) {
-                if (line.contains("=")) {
-                    String[] parts = line.split("=", 2);
-                    String key = parts[0].trim();
-                    String value = parts[1].trim();
-                    if (!key.isEmpty() && !value.isEmpty()) {
-                        // Case-insensitive exact word replacement
-                        processedText = processedText.replaceAll("(?i)\\b" + java.util.regex.Pattern.quote(key) + "\\b", value);
-                    }
-                } else if (!line.trim().isEmpty()) {
+                if (!line.contains("=") && !line.trim().isEmpty()) {
                     hints.append("- ").append(line.trim()).append("\n");
                 }
             }

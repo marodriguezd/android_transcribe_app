@@ -403,9 +403,10 @@ public class RustInputMethodService extends InputMethodService {
     // Called from Rust
     public void onTextTranscribed(String text) {
         mainHandler.post(() -> {
+            String processed = settingsManager.applyDictionary(text);
             if (settingsManager.isPostProcessEnabled()) {
                 if (statusView != null) statusView.setText("Refining text...");
-                postProcessor.process(text, new PostProcessor.PostProcessCallback() {
+                postProcessor.process(processed, new PostProcessor.PostProcessCallback() {
                     @Override
                     public void onSuccess(String refinedText) {
                         mainHandler.post(() -> finalizeTranscription(refinedText));
@@ -414,12 +415,12 @@ public class RustInputMethodService extends InputMethodService {
                     @Override
                     public void onError(String error) {
                         Log.e(TAG, "Post-process error: " + error);
-                        // Fallback to raw text
-                        mainHandler.post(() -> finalizeTranscription(text));
+                        // Fallback to dictionary-processed text
+                        mainHandler.post(() -> finalizeTranscription(processed));
                     }
                 });
             } else {
-                finalizeTranscription(text);
+                finalizeTranscription(processed);
             }
         });
     }

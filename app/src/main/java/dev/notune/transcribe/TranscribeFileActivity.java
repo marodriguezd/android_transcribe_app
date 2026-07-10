@@ -120,16 +120,18 @@ public class TranscribeFileActivity extends AppCompatActivity {
     // Called from Rust with transcription result
     public void onTextTranscribed(String text) {
         runOnUiThread(() -> {
+            String processed = new SettingsManager(TranscribeFileActivity.this).applyDictionary(text);
+            
             // Hide progress, show result
             progressArea.setVisibility(View.GONE);
             resultArea.setVisibility(View.VISIBLE);
             copyButton.setVisibility(View.VISIBLE);
 
-            resultText.setText(text);
+            resultText.setText(processed);
 
             // Auto-copy to clipboard
             ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-            ClipData clip = ClipData.newPlainText("Transcription", text);
+            ClipData clip = ClipData.newPlainText("Transcription", processed);
             clipboard.setPrimaryClip(clip);
 
             Toast.makeText(this, "Transcription copied to clipboard", Toast.LENGTH_LONG).show();

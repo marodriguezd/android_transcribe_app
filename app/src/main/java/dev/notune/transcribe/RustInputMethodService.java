@@ -71,13 +71,15 @@ public class RustInputMethodService extends InputMethodService {
         super.onCreate();
         mainHandler = new Handler(Looper.getMainLooper());
         Log.d(TAG, "Service onCreate");
-        try {
-            initNative(this);
-            settingsManager = new SettingsManager(this);
-            postProcessor = new PostProcessor(settingsManager);
-        } catch (Exception e) {
-            Log.e(TAG, "Error in initNative", e);
-        }
+        settingsManager = new SettingsManager(this);
+        postProcessor = new PostProcessor(settingsManager);
+        new Thread(() -> {
+            try {
+                initNative(this);
+            } catch (Exception e) {
+                Log.e(TAG, "Error in initNative", e);
+            }
+        }).start();
     }
 
     @Override
@@ -403,7 +405,9 @@ public class RustInputMethodService extends InputMethodService {
     // Called from Rust
     public void onTextTranscribed(String text) {
         mainHandler.post(() -> {
-            String processed = settingsManager.applyDictionary(text);
+            String lang = getResources().getConfiguration().locale.getLanguage();
+            String filtered = WordCorrector.filterTranscriptionOutput(text, lang);
+            String processed = settingsManager.applyDictionary(filtered);
             if (settingsManager.isPostProcessEnabled()) {
                 if (statusView != null) statusView.setText("Refining text...");
                 postProcessor.process(processed, new PostProcessor.PostProcessCallback() {

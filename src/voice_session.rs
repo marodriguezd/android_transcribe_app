@@ -3,8 +3,6 @@ use std::sync::{Arc, Mutex};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use jni::objects::{GlobalRef, JObject};
 use jni::JNIEnv;
-use transcribe_rs::TranscriptionEngine;
-
 use crate::engine;
 
 pub struct SendStream(#[allow(dead_code)] pub cpal::Stream);
@@ -192,10 +190,10 @@ pub fn stop_recording(mut env: JNIEnv, state: &mut VoiceSessionState) {
             }
         }
 
-        if let Some(eng_arc) = engine::get_engine() {
+        if let Some((_variant, eng_arc)) = engine::get_engine() {
             let res = {
                 let mut eng = eng_arc.lock().unwrap();
-                eng.transcribe_samples(buffer, None)
+                eng.transcribe_samples(buffer)
             };
 
             match res {

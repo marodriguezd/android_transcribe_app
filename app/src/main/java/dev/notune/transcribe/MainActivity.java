@@ -4,7 +4,9 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.res.ColorStateList;
+import android.net.Uri;
 import android.os.Bundle;
+import android.os.PowerManager;
 import android.provider.Settings;
 import android.speech.RecognizerIntent;
 import android.util.Log;
@@ -13,6 +15,9 @@ import android.view.View;
 import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.ImageView;
+import android.widget.ProgressBar;
+import android.widget.RadioButton;
+import android.widget.SeekBar;
 import android.widget.RadioGroup;
 import android.widget.TextView;
 
@@ -24,14 +29,18 @@ import androidx.core.widget.ImageViewCompat;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
 
+import android.widget.ImageButton;
+
 import java.io.File;
 import java.io.IOException;
+import java.lang.ref.WeakReference;
 import java.util.ArrayList;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
     private static final int PERM_REQ_CODE = 101;
     private static final int REQ_VOICE_TEST = 202;
+    private static final int PERM_REQ_NOTIFICATIONS = 103;
 
     static {
         try {
@@ -49,6 +58,19 @@ public class MainActivity extends AppCompatActivity {
     private Button voiceGrantButton;
     private Button voiceTryButton;
     private Button startSubsButton;
+    private SettingsManager settingsManager;
+    private RadioButton rbModelFast;
+    private RadioButton rbModelPrecise;
+
+    private RadioGroup modelGroup;
+    private TextView modelStatus;
+    private ProgressBar modelProgress;
+    private ImageButton btnDeleteFast;
+    private ImageButton btnDeletePrecise;
+    private Button btnRetry;
+    private SeekBar seekThreshold;
+    private boolean firstLaunchDialogShown = false;
+    private boolean modelSelectionChanging = false;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -79,8 +101,8 @@ public class MainActivity extends AppCompatActivity {
         });
 
         SettingsManager settingsManager = new SettingsManager(this);
+        this.settingsManager = settingsManager;
 
-        // Bind SettingsManager to the Material3 switches
         com.google.android.material.materialswitch.MaterialSwitch swAuto = findViewById(R.id.switch_auto_record);
         if (swAuto != null) {
             swAuto.setChecked(settingsManager.isAutoRecord());
@@ -108,14 +130,31 @@ public class MainActivity extends AppCompatActivity {
 
         Button hotwordsButton = findViewById(R.id.btn_hotwords_settings);
         if (hotwordsButton != null) {
-            hotwordsButton.setOnClickListener(v -> openHotwordsDialog(settingsManager));
+            hotwordsButton.setOnClickListener(v -> {
+                startActivity(new Intent(this, DictionaryListActivity.class));
+            });
         }
 
-        // Record-in-background defaults to ON; its marker file is the opt-out.
+        seekThreshold = findViewById(R.id.seek_threshold);
+        if (seekThreshold != null) {
+            int initialProgress = (int) Math.round(settingsManager.getWordCorrectionThreshold() * 100);
+            seekThreshold.setProgress(initialProgress);
+            seekThreshold.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+                @Override
+                public void onProgressChanged(SeekBar seekBar, int progress, boolean fromUser) {
+                    double threshold = progress / 100.0;
+                    settingsManager.setWordCorrectionThreshold(threshold);
+                    updateThresholdLabel(progress);
+                }
+                @Override public void onStartTrackingTouch(SeekBar seekBar) {}
+                @Override public void onStopTrackingTouch(SeekBar seekBar) {}
+            });
+            updateThresholdLabel(initialProgress);
+        }
+
         bindMarkerSwitch(R.id.switch_record_background, "stop_on_hide", true);
         bindMarkerSwitch(R.id.switch_auto_stop, "auto_stop", false);
 
-        // Live subtitle line limit: 2 (default), 4, or 0 = unlimited.
         RadioGroup subsLinesGroup = findViewById(R.id.rg_subtitle_lines);
         int subsLines = SubtitlePrefs.getMaxLines(this);
         if (subsLines == 4) {
@@ -157,29 +196,81 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // Initial check
+        setupModelSelection(settingsManager);
+
+        requestNotificationPermissionIfNeeded();
+        requestBatteryOptimizationExemption();
         updateVoiceInputStatus();
 
-        // Start init
-        initNative(this);
+        new Thread(() -> initNative(this)).start();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
-        // Re-check on return from the keyboard chooser, settings, or a test run.
         updateVoiceInputStatus();
+        reconnectDownloadCallbacks();
+        updateModelSelectionUI();
+        if (!firstLaunchDialogShown && modelGroup != null && settingsManager != null) {
+            boolean anyDownloaded = settingsManager.isModelDownloaded("0.6b")
+                    || settingsManager.isModelDownloaded("1.1b");
+            if (!anyDownloaded) {
+                firstLaunchDialogShown = true;
+                showFirstLaunchDownloadDialog(settingsManager);
+            }
+        }
     }
 
-    /**
-     * Reflects whether the primary voice-input flow is ready. Apps (SwiftKey,
-     * Firefox, …) fire {@link RecognizerIntent#ACTION_RECOGNIZE_SPEECH} via
-     * {@code startActivityForResult}, which {@link RecognizeActivity} handles.
-     * The flow works when (a) the mic permission is granted and (b) our activity
-     * is what Android resolves that intent to — either because it is the sole
-     * handler or because the user picked us as the default. This is deliberately
-     * judged on the activity path, NOT on being the default {@code RecognitionService}.
-     */
+    @Override
+    protected void onPause() {
+        super.onPause();
+    }
+
+    private void reconnectDownloadCallbacks() {
+        ModelDownloadManager dm = ((App) getApplication()).getDownloadManager();
+        if (dm != null && dm.isDownloading()) {
+            attachDownloadCallbacks(dm);
+            // Restore current progress state
+            modelProgress.setVisibility(View.VISIBLE);
+            modelProgress.setProgress(dm.getCurrentPercent());
+            modelStatus.setText(getString(R.string.model_status_downloading, dm.getCurrentPercent()));
+            btnRetry.setVisibility(View.GONE);
+        } else if (dm != null && dm.isDownloadActive()) {
+            // Download just finished while we were away
+            modelProgress.setVisibility(View.GONE);
+            btnRetry.setVisibility(View.GONE);
+            updateModelStatus(modelStatus, dm.getVariant(), settingsManager);
+            updateDeleteButtons(btnDeleteFast, btnDeletePrecise, settingsManager);
+        }
+    }
+
+    private void updateModelSelectionUI() {
+        if (modelGroup == null || settingsManager == null) return;
+        if (rbModelFast == null || rbModelPrecise == null) return;
+        SettingsManager sm = settingsManager;
+        String current = sm.getModelVariant();
+        boolean fastChecked = rbModelFast.isChecked();
+        boolean preciseChecked = rbModelPrecise.isChecked();
+        boolean correctState = ("1.1b".equals(current) && preciseChecked)
+                || ("0.6b".equals(current) && fastChecked);
+        if (!correctState) {
+            modelSelectionChanging = true;
+            rbModelFast.setChecked(!"1.1b".equals(current));
+            rbModelPrecise.setChecked("1.1b".equals(current));
+            modelSelectionChanging = false;
+        }
+        updateModelStatus(modelStatus, current, sm);
+        updateDeleteButtons(btnDeleteFast, btnDeletePrecise, sm);
+
+        ModelDownloadManager dm = ((App) getApplication()).getDownloadManager();
+        if (dm != null && dm.isDownloading()) {
+            modelProgress.setVisibility(View.VISIBLE);
+            modelProgress.setProgress(dm.getCurrentPercent());
+            modelStatus.setText(getString(R.string.model_status_downloading, dm.getCurrentPercent()));
+            btnRetry.setVisibility(View.GONE);
+        }
+    }
+
     private void updateVoiceInputStatus() {
         boolean micGranted = checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
                 == PackageManager.PERMISSION_GRANTED;
@@ -197,9 +288,6 @@ public class MainActivity extends AppCompatActivity {
         if (isOurAppDefaultRecognizer() || isOurImeEnabled()) {
             setVoiceStatus(true, getString(R.string.voice_status_ready));
         } else {
-            // It's not an error if they just haven't set it as default yet, but we use a warning color
-            // Or we can just set it as ready anyway to avoid the red exclamation mark annoying the user.
-            // Let's just use the blue/neutral color for the "Almost there" message by using setVoiceStatusInfo.
             setVoiceStatusInfo(getString(R.string.voice_status_almost));
         }
     }
@@ -216,7 +304,6 @@ public class MainActivity extends AppCompatActivity {
         return false;
     }
 
-    /** True if our RecognizeActivity is what RECOGNIZE_SPEECH resolves to. */
     private boolean isOurAppDefaultRecognizer() {
         Intent recog = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         ResolveInfo resolved = getPackageManager()
@@ -237,8 +324,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void setVoiceStatusInfo(String message) {
         voiceStatusText.setText(message);
-        // Use the error icon (exclamation mark) but tint it with the primary color to act as info
-        voiceStatusIcon.setImageResource(R.drawable.ic_error); 
+        voiceStatusIcon.setImageResource(R.drawable.ic_error);
         int tint = themeColor(com.google.android.material.R.attr.colorPrimary);
         ImageViewCompat.setImageTintList(voiceStatusIcon, ColorStateList.valueOf(tint));
         voiceStatusIcon.setContentDescription(message);
@@ -250,12 +336,6 @@ public class MainActivity extends AppCompatActivity {
         return tv.resourceId != 0 ? ContextCompat.getColor(this, tv.resourceId) : tv.data;
     }
 
-    /**
-     * One-tap self-test: fires the exact intent a keyboard's mic does. If ours is
-     * the sole handler it launches straight away; if several apps handle it the
-     * system shows a chooser, where the user can pick us and "Always" — which sets
-     * the default and flips the status to ready on return.
-     */
     private void launchVoiceTest() {
         Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
@@ -279,7 +359,6 @@ public class MainActivity extends AppCompatActivity {
                     ? getString(R.string.voice_test_ok, heard)
                     : getString(R.string.voice_test_empty));
         }
-        // onResume() also refreshes, but do it here too for an immediate update.
         updateVoiceInputStatus();
     }
 
@@ -295,45 +374,6 @@ public class MainActivity extends AppCompatActivity {
         Snackbar.make(findViewById(android.R.id.content), message, Snackbar.LENGTH_LONG).show();
     }
 
-    private void openHotwordsDialog(SettingsManager settingsManager) {
-        android.widget.EditText editText = new android.widget.EditText(this);
-        editText.setHint("Word or error=correction");
-        editText.setMinLines(5);
-        editText.setMaxLines(10);
-        editText.setGravity(android.view.Gravity.TOP | android.view.Gravity.START);
-        
-        java.util.Set<String> currentHotwords = settingsManager.getHotwords();
-        editText.setText(String.join("\n", currentHotwords));
-        
-        int padding = (int) (16 * getResources().getDisplayMetrics().density);
-        android.widget.FrameLayout container = new android.widget.FrameLayout(this);
-        container.setPadding(padding, padding, padding, padding);
-        container.addView(editText);
-
-        new MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.section_hotwords)
-                .setMessage(R.string.desc_hotwords)
-                .setView(container)
-                .setPositiveButton(android.R.string.ok, (dialog, which) -> {
-                    String[] lines = editText.getText().toString().split("\n");
-                    java.util.Set<String> newHotwords = new java.util.HashSet<>();
-                    for (String line : lines) {
-                        String clean = line.trim();
-                        if (!clean.isEmpty()) {
-                            newHotwords.add(clean);
-                        }
-                    }
-                    settingsManager.setHotwords(newHotwords);
-                    snackbar("Words saved");
-                })
-                .setNegativeButton(android.R.string.cancel, null)
-                .show();
-    }
-
-    /**
-     * Binds a switch to a marker file in filesDir. With {@code inverted}, the
-     * file's presence means the switch is OFF (used for default-on settings).
-     */
     private void bindMarkerSwitch(int switchId, String fileName, boolean inverted) {
         CompoundButton sw = findViewById(switchId);
         File marker = new File(getFilesDir(), fileName);
@@ -358,14 +398,41 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void requestNotificationPermissionIfNeeded() {
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(
+                        new String[]{android.Manifest.permission.POST_NOTIFICATIONS},
+                        PERM_REQ_NOTIFICATIONS);
+            }
+        }
+    }
+
+    private void requestBatteryOptimizationExemption() {
+        if (android.os.Build.VERSION.SDK_INT >= 23) {
+            PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+            if (pm != null && !pm.isIgnoringBatteryOptimizations(getPackageName())) {
+                try {
+                    Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
+                    intent.setData(Uri.parse("package:" + getPackageName()));
+                    startActivity(intent);
+                } catch (Exception e) {
+                    Log.w(TAG, "Could not request battery optimization exemption", e);
+                }
+            }
+        }
+    }
+
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
         if (requestCode == PERM_REQ_CODE) {
             updateVoiceInputStatus();
+        } else if (requestCode == PERM_REQ_NOTIFICATIONS) {
+            // Permission result handled; notification will work if granted
         }
     }
 
-    // Called from Rust
     public void onStatusUpdate(String status) {
         runOnUiThread(() -> {
             statusText.setText("Status: " + status);
@@ -376,4 +443,230 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private native void initNative(MainActivity activity);
+
+    private native void switchModel(MainActivity activity, String variant);
+
+    private void setupModelSelection(SettingsManager sm) {
+        modelGroup = findViewById(R.id.rg_model);
+        modelStatus = findViewById(R.id.text_model_status);
+        modelProgress = findViewById(R.id.progress_model_download);
+        btnDeleteFast = findViewById(R.id.btn_delete_model_fast);
+        btnDeletePrecise = findViewById(R.id.btn_delete_model_precise);
+        btnRetry = findViewById(R.id.btn_model_retry);
+        rbModelFast = findViewById(R.id.rb_model_fast);
+        rbModelPrecise = findViewById(R.id.rb_model_precise);
+
+        String current = sm.getModelVariant();
+        rbModelFast.setChecked(!"1.1b".equals(current));
+        rbModelPrecise.setChecked("1.1b".equals(current));
+
+        updateModelStatus(modelStatus, current, sm);
+        updateDeleteButtons(btnDeleteFast, btnDeletePrecise, sm);
+
+        btnDeleteFast.setOnClickListener(v -> confirmDeleteModel("0.6b", sm));
+        btnDeletePrecise.setOnClickListener(v -> confirmDeleteModel("1.1b", sm));
+
+        btnRetry.setOnClickListener(v -> {
+            String variant = sm.getModelVariant();
+            btnRetry.setVisibility(View.GONE);
+            startDownload(variant, sm);
+        });
+
+        modelGroup.setOnCheckedChangeListener((group, checkedId) -> {
+            if (modelSelectionChanging) return;
+            if (checkedId == -1) return;
+
+            String variant = checkedId == R.id.rb_model_precise ? "1.1b" : "0.6b";
+            sm.setModelVariant(variant);
+            btnRetry.setVisibility(View.GONE);
+
+            if (sm.isModelDownloaded(variant)) {
+                updateModelStatus(modelStatus, variant, sm);
+                statusText.setText("Status: Switching model\u2026");
+                new Thread(() -> switchModel(this, variant)).start();
+            } else {
+                startDownload(variant, sm);
+            }
+        });
+    }
+
+    private void startDownload(String variant, SettingsManager sm) {
+        modelProgress.setVisibility(View.VISIBLE);
+        modelProgress.setProgress(0);
+        btnRetry.setVisibility(View.GONE);
+        modelStatus.setText(getString(R.string.model_status_downloading, 0));
+
+        Intent intent = new Intent(this, ModelDownloadForegroundService.class);
+        intent.setAction(ModelDownloadForegroundService.ACTION_START);
+        intent.putExtra("variant", variant);
+        try {
+            startForegroundService(intent);
+        } catch (Exception e) {
+            Log.w(TAG, "Foreground service start failed, falling back to direct download", e);
+            ModelDownloadManager.ProgressCallback cb = createDownloadCallback(variant);
+            ((App) getApplication()).startDownload(variant, cb);
+        }
+    }
+
+    private void attachDownloadCallbacks(ModelDownloadManager dm) {
+        dm.setCallback(createDownloadCallback(dm.getVariant()));
+    }
+
+    private ModelDownloadManager.ProgressCallback createDownloadCallback(String variant) {
+        WeakReference<MainActivity> activityRef = new WeakReference<>(this);
+        return new ModelDownloadManager.ProgressCallback() {
+            @Override
+            public void onProgress(String fileName, int percent, long bytesDownloaded, long totalBytes) {
+                MainActivity a = activityRef.get();
+                if (a == null || a.isFinishing() || a.isDestroyed()) return;
+                a.modelProgress.setProgress(percent);
+                a.modelStatus.setText(a.getString(R.string.model_status_downloading, percent));
+            }
+
+            @Override
+            public void onRetry(String fileName, int attempt, long waitMs) {
+                MainActivity a = activityRef.get();
+                if (a == null || a.isFinishing() || a.isDestroyed()) return;
+                a.modelStatus.setText("Retrying " + fileName + " (attempt " + attempt + ")\u2026");
+            }
+
+            @Override
+            public void onComplete() {
+                MainActivity a = activityRef.get();
+                if (a == null || a.isFinishing() || a.isDestroyed()) return;
+                a.modelProgress.setVisibility(View.GONE);
+                a.btnRetry.setVisibility(View.GONE);
+                SettingsManager sm = a.settingsManager;
+                String v = ((App) a.getApplication()).getDownloadManager().getVariant();
+                updateModelStatus(a.modelStatus, v, sm);
+                updateDeleteButtons(a.btnDeleteFast, a.btnDeletePrecise, sm);
+                a.statusText.setText("Status: Switching model\u2026");
+                new Thread(() -> {
+                    MainActivity alive = activityRef.get();
+                    if (alive == null || alive.isFinishing() || alive.isDestroyed()) return;
+                    try {
+                        switchModel(alive, v);
+                    } catch (Exception e) {
+                        Log.e(TAG, "switchModel native call failed", e);
+                        alive.runOnUiThread(() -> {
+                            if (!alive.isFinishing() && !alive.isDestroyed()) {
+                                alive.statusText.setText("Status: Failed to load model");
+                            }
+                        });
+                    }
+                }).start();
+            }
+
+            @Override
+            public void onError(String error, boolean retryable) {
+                MainActivity a = activityRef.get();
+                if (a == null || a.isFinishing() || a.isDestroyed()) return;
+                a.modelProgress.setVisibility(View.GONE);
+                a.modelStatus.setText(a.getString(R.string.model_download_error, error));
+                if (retryable) {
+                    a.btnRetry.setVisibility(View.VISIBLE);
+                } else {
+                    SettingsManager sm = a.settingsManager;
+                    String current = sm.getModelVariant();
+                    a.runOnUiThread(() -> {
+                        if (a.isFinishing() || a.isDestroyed()) return;
+                        a.modelSelectionChanging = true;
+                        if (a.rbModelFast != null) a.rbModelFast.setChecked(!"1.1b".equals(current));
+                        if (a.rbModelPrecise != null) a.rbModelPrecise.setChecked("1.1b".equals(current));
+                        a.modelSelectionChanging = false;
+                    });
+                }
+            }
+        };
+    }
+
+    private void confirmDeleteModel(String variant, SettingsManager sm) {
+        String modelName = "0.6b".equals(variant) ? "Fast (0.6B)" : "Precise (1.1B)";
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.model_delete_title)
+                .setMessage(getString(R.string.model_delete_confirm, modelName))
+                .setNegativeButton(R.string.btn_delete, (d, w) -> {
+                    App app = (App) getApplication();
+                    ModelDownloadManager dm = app.getDownloadManager();
+                    if (dm != null
+                            && dm.getVariant().equals(variant)
+                            && dm.isDownloading()) {
+                        dm.cancel();
+                    }
+
+                    sm.deleteModel(variant);
+
+                    if (sm.getModelVariant().equals(variant)) {
+                        String other = "0.6b".equals(variant) ? "1.1b" : "0.6b";
+                        sm.setModelVariant(other);
+                        rbModelFast.setChecked(!"1.1b".equals(other));
+                        rbModelPrecise.setChecked("1.1b".equals(other));
+                        if (sm.isModelDownloaded(other)) {
+                            statusText.setText("Status: Switching model\u2026");
+                            new Thread(() -> {
+                                try {
+                                    switchModel(MainActivity.this, other);
+                                } catch (Exception e) {
+                                    Log.e(TAG, "switchModel native call failed", e);
+                                    runOnUiThread(() -> statusText.setText("Status: Failed to load model"));
+                                }
+                            }).start();
+                        }
+                    }
+
+                    updateModelStatus(modelStatus, sm.getModelVariant(), sm);
+                    updateDeleteButtons(btnDeleteFast, btnDeletePrecise, sm);
+                })
+                .setPositiveButton(android.R.string.cancel, null)
+                .show();
+    }
+
+    private void updateDeleteButtons(ImageButton btnDeleteFast, ImageButton btnDeletePrecise,
+                                     SettingsManager sm) {
+        btnDeleteFast.setVisibility(sm.isModelDownloaded("0.6b") ? View.VISIBLE : View.GONE);
+        btnDeletePrecise.setVisibility(sm.isModelDownloaded("1.1b") ? View.VISIBLE : View.GONE);
+    }
+
+    private void updateThresholdLabel(int progress) {
+        double threshold = progress / 100.0;
+        String label = "Threshold: " + String.format("%.2f", threshold)
+            + (progress <= 10 ? " (Strict)" : progress >= 80 ? " (Lenient)" : "");
+        TextView labelView = findViewById(R.id.label_threshold);
+        if (labelView != null) labelView.setText(label);
+    }
+
+    private void showFirstLaunchDownloadDialog(SettingsManager sm) {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.welcome_model_title)
+                .setMessage(R.string.welcome_model_subtitle)
+                .setCancelable(false)
+                .setPositiveButton(R.string.welcome_btn_fast, (d, w) -> {
+                    sm.setModelVariant("0.6b");
+                    modelSelectionChanging = true;
+                    rbModelPrecise.setChecked(false);
+                    rbModelFast.setChecked(true);
+                    modelSelectionChanging = false;
+                    startDownload("0.6b", sm);
+                })
+                .setNeutralButton(R.string.welcome_btn_precise, (d, w) -> {
+                    sm.setModelVariant("1.1b");
+                    modelSelectionChanging = true;
+                    rbModelFast.setChecked(false);
+                    rbModelPrecise.setChecked(true);
+                    modelSelectionChanging = false;
+                    startDownload("1.1b", sm);
+                })
+                .setNegativeButton(R.string.welcome_btn_skip, (d, w) -> {
+                    // User chose to skip
+                })
+                .show();
+    }
+
+    private void updateModelStatus(TextView tv, String variant, SettingsManager sm) {
+        if (sm.isModelDownloaded(variant)) {
+            tv.setText(R.string.model_status_downloaded);
+        } else {
+            tv.setText(R.string.model_status_not_downloaded);
+        }
+    }
 }

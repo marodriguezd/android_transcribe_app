@@ -16,6 +16,8 @@ public class SettingsManager {
     private static final String KEY_PAUSE_AUDIO = "pause_audio";
 
     private static final String KEY_HOTWORDS = "custom_hotwords";
+    private static final String KEY_MODEL_VARIANT = "model_variant";
+    private static final String KEY_WORD_CORRECTION_THRESHOLD = "word_correction_threshold";
     private static final String DEFAULT_API_URL = "https://api.openai.com/v1";
     private static final String DEFAULT_MODEL = "gpt-4o-mini";
     private static final String DEFAULT_PROMPT = "<system>\n" +
@@ -107,9 +109,15 @@ public class SettingsManager {
             "Output:";
 
     private final SharedPreferences prefs;
+    private final Context prefs_context;
 
     public SettingsManager(Context context) {
         this.prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        this.prefs_context = context;
+    }
+
+    public Context getContext() {
+        return prefs_context;
     }
 
     public boolean isPostProcessEnabled() {
@@ -176,29 +184,67 @@ public class SettingsManager {
         prefs.edit().putBoolean(KEY_PAUSE_AUDIO, enabled).apply();
     }
 
-    public java.util.Set<String> getHotwords() {
-        return prefs.getStringSet(KEY_HOTWORDS, new java.util.HashSet<>());
+    public double getWordCorrectionThreshold() {
+        return prefs.getFloat(KEY_WORD_CORRECTION_THRESHOLD, 0.18f);
     }
 
-    public void setHotwords(java.util.Set<String> words) {
-        prefs.edit().putStringSet(KEY_HOTWORDS, words).apply();
+    public void setWordCorrectionThreshold(double threshold) {
+        prefs.edit().putFloat(KEY_WORD_CORRECTION_THRESHOLD, (float) threshold).apply();
     }
 
     public String applyDictionary(String text) {
-        java.util.Set<String> words = getHotwords();
+        java.util.List<String> words = new DictionaryManager(prefs_context).getActiveWordsList();
         if (words == null || words.isEmpty()) return text;
-        
-        String processed = text;
-        for (String line : words) {
-            if (line.contains("=")) {
-                String[] parts = line.split("=", 2);
-                String key = parts[0].trim();
-                String value = parts[1].trim();
-                if (!key.isEmpty() && !value.isEmpty()) {
-                    processed = processed.replaceAll("(?i)\\b" + java.util.regex.Pattern.quote(key) + "\\b", value);
+        double threshold = getWordCorrectionThreshold();
+        WordCorrector corrector = new WordCorrector(words, threshold);
+        return corrector.applyCustomWords(text);
+    }
+
+    public String getModelVariant() {
+        return prefs.getString(KEY_MODEL_VARIANT, "0.6b");
+    }
+
+    public void setModelVariant(String variant) {
+        prefs.edit().putString(KEY_MODEL_VARIANT, variant).apply();
+    }
+
+    public boolean isModelDownloaded(String variant) {
+        java.io.File dir = new java.io.File(
+            prefs_context.getFilesDir(),
+            "models/parakeet-tdt-" + variant + "-v3-int8"
+        );
+        if (!dir.exists()) return false;
+        java.io.File[] files = dir.listFiles();
+        return files != null && files.length >= 4;
+    }
+
+    public boolean deleteModel(String variant) {
+        java.io.File dir = new java.io.File(
+            prefs_context.getFilesDir(),
+            "models/parakeet-tdt-" + variant + "-v3-int8"
+        );
+        if (!dir.exists()) return true;
+        return deleteRecursive(dir);
+    }
+
+    private boolean deleteRecursive(java.io.File fileOrDir) {
+        if (fileOrDir.isDirectory()) {
+            java.io.File[] children = fileOrDir.listFiles();
+            if (children != null) {
+                for (java.io.File child : children) {
+                    if (!deleteRecursive(child)) {
+                        return false;
+                    }
                 }
             }
         }
-        return processed;
+        return fileOrDir.delete();
+    }
+
+    public java.io.File getModelDir(String variant) {
+        return new java.io.File(
+            prefs_context.getFilesDir(),
+            "models/parakeet-tdt-" + variant + "-v3-int8"
+        );
     }
 }

@@ -14,8 +14,8 @@ android {
         applicationId = "dev.notune.transcribe"
         minSdk = 26
         targetSdk = 35
-        versionCode = 20
-        versionName = "0.6.0"
+        versionCode = 21
+        versionName = "0.7.0"
         ndk {
             abiFilters += "arm64-v8a"
         }
@@ -59,28 +59,8 @@ android {
         }
     }
 
-    // Play Asset Delivery: large model files go into a separate asset pack
-    // so the base module stays under the 200 MB Play Store limit.
-    assetPacks += listOf(":model_assets")
-
     androidResources {
         noCompress += "onnx"
-    }
-}
-
-// For APK builds (assemble/install), asset packs are ignored by AGP so we
-// must include the asset-pack assets as an extra source directory.  For
-// bundle builds the asset pack module handles delivery and we must NOT add
-// the directory here (would cause duplicate-resource errors).
-val isBundle = gradle.startParameter.taskNames.any {
-    it.contains("bundle", ignoreCase = true)
-}
-if (!isBundle) {
-    android.sourceSets.getByName("main") {
-        assets.srcDirs(
-            "src/main/assets",
-            rootProject.file("model_assets/src/main/assets")
-        )
     }
 }
 

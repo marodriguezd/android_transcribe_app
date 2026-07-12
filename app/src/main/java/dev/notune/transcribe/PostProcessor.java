@@ -45,11 +45,11 @@ public class PostProcessor {
 
         String processedText = rawText; // text is already passed through applyDictionary
         StringBuilder hints = new StringBuilder();
-        java.util.Set<String> hotwords = settings.getHotwords();
+        java.util.List<String> hotwords = new DictionaryManager(settings.getContext()).getActiveWordsList();
         
         if (hotwords != null) {
             for (String line : hotwords) {
-                if (!line.contains("=") && !line.trim().isEmpty()) {
+                if (!line.trim().isEmpty()) {
                     hints.append("- ").append(line.trim()).append("\n");
                 }
             }

@@ -5,8 +5,6 @@ use jni::sys::jint;
 use jni::JNIEnv;
 use once_cell::sync::Lazy;
 
-use transcribe_rs::TranscriptionEngine;
-
 use crate::engine;
 
 struct TranscribeFileState {
@@ -135,12 +133,12 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_TranscribeFileActivity_
             }
         }
 
-        if let Some(eng_arc) = engine::get_engine() {
+        if let Some((_variant, eng_arc)) = engine::get_engine() {
             notify_status(&mut env, obj, "Transcribing...");
 
             let res = {
                 let mut eng = eng_arc.lock().unwrap();
-                eng.transcribe_samples(buffer, None)
+                eng.transcribe_samples(buffer)
             };
 
             match res {

@@ -18,8 +18,6 @@ use jni::JNIEnv;
 use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use transcribe_rs::TranscriptionEngine;
-
 use crate::engine;
 
 const SAMPLE_RATE: usize = 16_000;
@@ -167,12 +165,12 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_ini
                     );
                     gap_pending = true;
                 }
-            } else if let Some(engine_arc) = engine::get_engine() {
+            } else if let Some((_variant, engine_arc)) = engine::get_engine() {
                 let audio_secs = job.samples.len() as f64 / SAMPLE_RATE as f64;
                 let started = std::time::Instant::now();
                 let res = {
                     let mut eng = engine_arc.lock().unwrap();
-                    eng.transcribe_samples(job.samples, None)
+                    eng.transcribe_samples(job.samples)
                 };
                 let elapsed = started.elapsed().as_secs_f64();
                 log::info!(

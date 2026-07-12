@@ -120,7 +120,9 @@ public class TranscribeFileActivity extends AppCompatActivity {
     // Called from Rust with transcription result
     public void onTextTranscribed(String text) {
         runOnUiThread(() -> {
-            String processed = new SettingsManager(TranscribeFileActivity.this).applyDictionary(text);
+            String lang = getResources().getConfiguration().locale.getLanguage();
+            String filtered = WordCorrector.filterTranscriptionOutput(text, lang);
+            String processed = new SettingsManager(TranscribeFileActivity.this).applyDictionary(filtered);
             
             // Hide progress, show result
             progressArea.setVisibility(View.GONE);

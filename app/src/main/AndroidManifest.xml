@@ -5,9 +5,12 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
     <!-- Package visibility (Android 11+): lets resolveActivity()/queryIntentActivities()
          for the speech intent see other handlers, so MainActivity can tell whether this
@@ -41,6 +44,18 @@
         <activity
             android:name=".PostProcessSettingsActivity"
             android:label="Ajustes de Post-Proceso"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:exported="false" />
+
+        <activity
+            android:name=".DictionaryListActivity"
+            android:label="Dictionaries"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:exported="false" />
+
+        <activity
+            android:name=".DictionaryEditActivity"
+            android:label="Edit Dictionary"
             android:configChanges="orientation|keyboardHidden|screenSize"
             android:exported="false" />
 
@@ -95,6 +110,12 @@
         <service
             android:name=".LiveSubtitleService"
             android:foregroundServiceType="mediaProjection"
+            android:exported="false" />
+
+        <!-- Model Download Foreground Service -->
+        <service
+            android:name=".ModelDownloadForegroundService"
+            android:foregroundServiceType="dataSync"
             android:exported="false" />
 
         <!-- Speech-to-text provider for other keyboards (SwiftKey, Gboard, …).

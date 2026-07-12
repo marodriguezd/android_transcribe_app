@@ -80,8 +80,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_RustInputMethodService_
     }
     
     // Pass words to the parakeet engine
-    if let Some(engine) = crate::engine::get_engine() {
-        use transcribe_rs::TranscriptionEngine;
+    if let Some((_variant, engine)) = crate::engine::get_engine() {
         if let Ok(mut eng) = engine.lock() {
             eng.set_hotwords(words);
         }

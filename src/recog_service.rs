@@ -16,8 +16,6 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use jni::objects::{GlobalRef, JClass, JObject};
 use jni::JNIEnv;
 use once_cell::sync::Lazy;
-use transcribe_rs::TranscriptionEngine;
-
 use crate::engine;
 use crate::voice_session::SendStream;
 
@@ -374,10 +372,10 @@ fn finalize(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>>) {
     }
 
     match engine::get_engine() {
-        Some(eng_arc) => {
+        Some((_variant, eng_arc)) => {
             let res = {
                 let mut eng = eng_arc.lock().unwrap();
-                eng.transcribe_samples(buffer, None)
+                eng.transcribe_samples(buffer)
             };
             match res {
                 Ok(r) if !r.text.trim().is_empty() => call_results(&mut env, target, &r.text),

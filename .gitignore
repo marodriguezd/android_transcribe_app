@@ -47,6 +47,7 @@ MEMORY.md
 .gemini/
 release.md
 .agents/
+.opencode/
 ORIGINAL_REQUEST.md
 PROJECT.md
 TEST_INFRA.md

@@ -132,15 +132,43 @@ public class RecognizeActivity extends Activity {
     // Called from Rust – keep same method name as IME for code reuse
     public void onTextTranscribed(String text) {
         runOnUiThread(() -> {
-            String processed = new SettingsManager(RecognizeActivity.this).applyDictionary(text);
-            ArrayList<String> results = new ArrayList<>();
-            results.add(processed);
+            String lang = getResources().getConfiguration().locale.getLanguage();
+            String filtered = WordCorrector.filterTranscriptionOutput(text, lang);
+            String processed = new SettingsManager(RecognizeActivity.this).applyDictionary(filtered);
+            SettingsManager sm = new SettingsManager(RecognizeActivity.this);
+            if (sm.isPostProcessEnabled()) {
+                new PostProcessor(sm).process(processed, new PostProcessor.PostProcessCallback() {
+                    @Override
+                    public void onSuccess(String refinedText) {
+                        runOnUiThread(() -> {
+                            ArrayList<String> results = new ArrayList<>();
+                            results.add(refinedText);
+                            Intent data = new Intent();
+                            data.putStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS, results);
+                            setResult(Activity.RESULT_OK, data);
+                            finish();
+                        });
+                    }
 
-            Intent data = new Intent();
-            data.putStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS, results);
-
-            setResult(Activity.RESULT_OK, data);
-            finish();
+                    @Override
+                    public void onError(String error) {
+                        Log.e(TAG, "Post-process error: " + error);
+                        ArrayList<String> results = new ArrayList<>();
+                        results.add(processed);
+                        Intent data = new Intent();
+                        data.putStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS, results);
+                        setResult(Activity.RESULT_OK, data);
+                        finish();
+                    }
+                });
+            } else {
+                ArrayList<String> results = new ArrayList<>();
+                results.add(processed);
+                Intent data = new Intent();
+                data.putStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS, results);
+                setResult(Activity.RESULT_OK, data);
+                finish();
+            }
         });
     }
 

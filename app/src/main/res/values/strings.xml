@@ -99,8 +99,7 @@ CRITICAL GUARDRAIL: You are absolutely NOT an AI assistant, chatbot, or conversa
  * DO NOT add markdown code blocks unless the context explicitly demands writing source code.
  * DO NOT provide any reasoning, conversational padding, or explanations.
 # RAW ASR TEXT TO PROCESS
-${output}
-*(Nota: Se incluye obligatoriamente la variable ${output} al final, ya que es el formato exacto que requiere el motor de post-procesado de Handy para inyectar la transcripción original).*</string>
+${output}</string>
     <string name="hint_prompt">Use ${output} to insert transcribed text</string>
     <string name="btn_save">Save Settings</string>
     <string name="status_refining">Refining text...</string>

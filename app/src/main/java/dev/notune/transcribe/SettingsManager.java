@@ -48,8 +48,7 @@ public class SettingsManager {
             " * DO NOT add markdown code blocks unless the context explicitly demands writing source code.\n" +
             " * DO NOT provide any reasoning, conversational padding, or explanations.\n" +
             "# RAW ASR TEXT TO PROCESS\n" +
-            "${output}\n" +
-            "*(Nota: Se incluye obligatoriamente la variable ${output} al final, ya que es el formato exacto que requiere el motor de post-procesado de Handy para inyectar la transcripción original).*";
+            "${output}";
 
     private final SharedPreferences prefs;
     private final Context prefs_context;

@@ -1,7 +1,5 @@
 package dev.notune.transcribe;
 
-import android.app.Notification;
-import android.app.NotificationManager;
 import android.content.Context;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
@@ -9,8 +7,6 @@ import android.os.Handler;
 import android.os.Looper;
 import android.os.PowerManager;
 import android.util.Log;
-
-import androidx.core.app.NotificationCompat;
 
 import java.io.BufferedInputStream;
 import java.io.File;
@@ -32,8 +28,6 @@ public class ModelDownloadManager {
     private static final long[] BACKOFF_MS = {2_000, 4_000, 8_000};
     private static final long NETWORK_POLL_INTERVAL_MS = 2_000;
     private static final long NETWORK_WAIT_TIMEOUT_MS = 60_000;
-    private static final int NOTIFICATION_ID = 77701;
-
     private static final Map<String, String> BASE_URLS = new HashMap<>();
     static {
         BASE_URLS.put("0.6b",
@@ -172,7 +166,6 @@ public class ModelDownloadManager {
             currentTotalBytes = 0;
             downloadActive = true;
             acquireWakeLock();
-            showNotification(0);
             executor.execute(() -> {
                 try {
                     downloadFiles();
@@ -249,7 +242,6 @@ public class ModelDownloadManager {
         }
 
         mainHandler.post(() -> {
-            cancelNotification();
             for (ProgressCallback cb : callbacks) cb.onComplete();
         });
     }
@@ -377,7 +369,6 @@ public class ModelDownloadManager {
                             lastNotificationTime = now;
                             lastNotificationPercent = pct;
                             mainHandler.post(() -> {
-                                updateNotification(pct);
                                 for (ProgressCallback cb : callbacks) cb.onProgress(fn, pct, dl, tl);
                             });
                         }
@@ -448,47 +439,7 @@ public class ModelDownloadManager {
 
     private void postError(String msg, boolean retryable) {
         mainHandler.post(() -> {
-            cancelNotification();
             for (ProgressCallback cb : callbacks) cb.onError(msg, retryable);
         });
-    }
-
-    private void showNotification(int percent) {
-        String modelName = "0.6b".equals(variant) ? "Fast (0.6B)" : "Precise (Canary 1B v2)";
-        NotificationManager nm = context.getSystemService(NotificationManager.class);
-        if (nm == null) return;
-
-        Notification notification = new NotificationCompat.Builder(context, App.CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.stat_sys_download)
-                .setContentTitle("Downloading " + modelName + " model")
-                .setContentText(percent + "% complete")
-                .setProgress(100, percent, percent == 0)
-                .setOngoing(true)
-                .setSilent(true)
-                .build();
-        nm.notify(NOTIFICATION_ID, notification);
-    }
-
-    private void updateNotification(int percent) {
-        String modelName = "0.6b".equals(variant) ? "Fast (0.6B)" : "Precise (Canary 1B v2)";
-        NotificationManager nm = context.getSystemService(NotificationManager.class);
-        if (nm == null) return;
-
-        Notification notification = new NotificationCompat.Builder(context, App.CHANNEL_ID)
-                .setSmallIcon(android.R.drawable.stat_sys_download)
-                .setContentTitle("Downloading " + modelName + " model")
-                .setContentText(percent + "% complete")
-                .setProgress(100, percent, false)
-                .setOngoing(true)
-                .setSilent(true)
-                .build();
-        nm.notify(NOTIFICATION_ID, notification);
-    }
-
-    private void cancelNotification() {
-        NotificationManager nm = context.getSystemService(NotificationManager.class);
-        if (nm != null) {
-            nm.cancel(NOTIFICATION_ID);
-        }
     }
 }

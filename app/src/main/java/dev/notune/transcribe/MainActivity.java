@@ -516,6 +516,7 @@ public class MainActivity extends AppCompatActivity {
                 if (a == null || a.isFinishing() || a.isDestroyed()) return;
                 a.runOnUiThread(() -> {
                     a.modelProgress.setProgress(percent);
+                    a.modelStatus.setText(a.getString(R.string.model_status_downloading, percent));
                 });
             }
 

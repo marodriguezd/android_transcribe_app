@@ -39,7 +39,7 @@ public class ModelDownloadManager {
         BASE_URLS.put("0.6b",
                 "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main");
         BASE_URLS.put("1.1b",
-                "https://huggingface.co/jenerallee78/parakeet-tdt-1.1b-onnx/resolve/main");
+                "https://huggingface.co/istupakov/canary-1b-v2-onnx/resolve/main");
     }
 
     private static final Map<String, String[]> MODEL_FILES = new HashMap<>();
@@ -70,7 +70,7 @@ public class ModelDownloadManager {
     private static final long NOTIFICATION_THROTTLE_MS = 500;
     private static final int NOTIFICATION_THROTTLE_PCT = 2;
 
-    private ProgressCallback callback;
+    private final java.util.List<ProgressCallback> callbacks = new java.util.concurrent.CopyOnWriteArrayList<>();
     private volatile int currentPercent;
     private volatile String currentFileName;
     private volatile long currentBytesDownloaded;
@@ -97,7 +97,9 @@ public class ModelDownloadManager {
     }
 
     public void setCallback(ProgressCallback callback) {
-        this.callback = callback;
+        if (callback != null && !callbacks.contains(callback)) {
+            callbacks.add(callback);
+        }
     }
 
     public boolean isDownloading() {
@@ -162,7 +164,7 @@ public class ModelDownloadManager {
     }
 
     public void download(ProgressCallback callback) {
-        this.callback = callback;
+        setCallback(callback);
         if (downloading.compareAndSet(false, true)) {
             currentPercent = 0;
             currentFileName = null;
@@ -248,7 +250,7 @@ public class ModelDownloadManager {
 
         mainHandler.post(() -> {
             cancelNotification();
-            if (callback != null) callback.onComplete();
+            for (ProgressCallback cb : callbacks) cb.onComplete();
         });
     }
 
@@ -268,7 +270,7 @@ public class ModelDownloadManager {
                 final int a = attempt;
                 final long w = waitMs;
                 mainHandler.post(() -> {
-                    if (callback != null) callback.onRetry(fileName, a, w);
+                    for (ProgressCallback cb : callbacks) cb.onRetry(fileName, a, w);
                 });
 
                 if (!sleepWithNetworkPoll(waitMs)) {
@@ -376,7 +378,7 @@ public class ModelDownloadManager {
                             lastNotificationPercent = pct;
                             mainHandler.post(() -> {
                                 updateNotification(pct);
-                                if (callback != null) callback.onProgress(fn, pct, dl, tl);
+                                for (ProgressCallback cb : callbacks) cb.onProgress(fn, pct, dl, tl);
                             });
                         }
                     }
@@ -447,12 +449,12 @@ public class ModelDownloadManager {
     private void postError(String msg, boolean retryable) {
         mainHandler.post(() -> {
             cancelNotification();
-            if (callback != null) callback.onError(msg, retryable);
+            for (ProgressCallback cb : callbacks) cb.onError(msg, retryable);
         });
     }
 
     private void showNotification(int percent) {
-        String modelName = "0.6b".equals(variant) ? "Fast (0.6B)" : "Precise (1.1B)";
+        String modelName = "0.6b".equals(variant) ? "Fast (0.6B)" : "Precise (Canary 1B v2)";
         NotificationManager nm = context.getSystemService(NotificationManager.class);
         if (nm == null) return;
 
@@ -468,7 +470,7 @@ public class ModelDownloadManager {
     }
 
     private void updateNotification(int percent) {
-        String modelName = "0.6b".equals(variant) ? "Fast (0.6B)" : "Precise (1.1B)";
+        String modelName = "0.6b".equals(variant) ? "Fast (0.6B)" : "Precise (Canary 1B v2)";
         NotificationManager nm = context.getSystemService(NotificationManager.class);
         if (nm == null) return;
 

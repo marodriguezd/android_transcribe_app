@@ -53,9 +53,14 @@ public class ModelDownloadForegroundService extends Service {
 
         String modelName = getModelName(variant);
         try {
-            startForeground(NOTIFICATION_ID,
-                    createProgressNotification(0, modelName),
-                    ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID,
+                        createProgressNotification(0, modelName),
+                        ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC);
+            } else {
+                startForeground(NOTIFICATION_ID,
+                        createProgressNotification(0, modelName));
+            }
         } catch (Exception e) {
             Log.w(TAG, "startForeground failed, continuing without notification", e);
         }

@@ -491,20 +491,31 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void startDownload(String variant, SettingsManager sm) {
-        modelProgress.setVisibility(View.VISIBLE);
-        modelProgress.setProgress(0);
-        btnRetry.setVisibility(View.GONE);
-        modelStatus.setText(getString(R.string.model_status_downloading, 0));
-
-        Intent intent = new Intent(this, ModelDownloadForegroundService.class);
-        intent.setAction(ModelDownloadForegroundService.ACTION_START);
-        intent.putExtra("variant", variant);
         try {
-            startForegroundService(intent);
-        } catch (Exception e) {
-            Log.w(TAG, "Foreground service start failed, falling back to direct download", e);
+            if (modelProgress != null) {
+                modelProgress.setVisibility(View.VISIBLE);
+                modelProgress.setProgress(0);
+            }
+            if (btnRetry != null) btnRetry.setVisibility(View.GONE);
+            if (modelStatus != null) modelStatus.setText(getString(R.string.model_status_downloading, 0));
+
             ModelDownloadManager.ProgressCallback cb = createDownloadCallback(variant);
             ((App) getApplication()).startDownload(variant, cb);
+
+            Intent intent = new Intent(this, ModelDownloadForegroundService.class);
+            intent.setAction(ModelDownloadForegroundService.ACTION_START);
+            intent.putExtra("variant", variant);
+            try {
+                startForegroundService(intent);
+            } catch (Exception e) {
+                Log.w(TAG, "Foreground service start failed", e);
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "Instant crash caught in startDownload", t);
+            runOnUiThread(() -> {
+                if (modelStatus != null) modelStatus.setText("Error: " + t.getMessage());
+                if (btnRetry != null) btnRetry.setVisibility(View.VISIBLE);
+            });
         }
     }
 
@@ -519,57 +530,19 @@ public class MainActivity extends AppCompatActivity {
             public void onProgress(String fileName, int percent, long bytesDownloaded, long totalBytes) {
                 MainActivity a = activityRef.get();
                 if (a == null || a.isFinishing() || a.isDestroyed()) return;
-                a.modelProgress.setProgress(percent);
-                a.modelStatus.setText(a.getString(R.string.model_status_downloading, percent));
-            }
-
-            @Override
-            public void onRetry(String fileName, int attempt, long waitMs) {
-                MainActivity a = activityRef.get();
-                if (a == null || a.isFinishing() || a.isDestroyed()) return;
-                a.modelStatus.setText("Retrying " + fileName + " (attempt " + attempt + ")\u2026");
+                a.runOnUiThread(() -> {
+                    a.modelProgress.setProgress(percent);
+                });
             }
 
             @Override
             public void onComplete() {
                 MainActivity a = activityRef.get();
                 if (a == null || a.isFinishing() || a.isDestroyed()) return;
-                a.modelProgress.setVisibility(View.GONE);
-                a.btnRetry.setVisibility(View.GONE);
-                SettingsManager sm = a.settingsManager;
-                String v = ((App) a.getApplication()).getDownloadManager().getVariant();
-                updateModelStatus(a.modelStatus, v, sm);
-                updateDeleteButtons(a.btnDeleteFast, a.btnDeletePrecise, sm);
-                a.statusText.setText("Status: Switching model\u2026");
-                new Thread(() -> {
-                    MainActivity alive = activityRef.get();
-                    if (alive == null || alive.isFinishing() || alive.isDestroyed()) return;
-                    try {
-                        switchModel(alive, v);
-                    } catch (Exception e) {
-                        Log.e(TAG, "switchModel native call failed", e);
-                        alive.runOnUiThread(() -> {
-                            if (!alive.isFinishing() && !alive.isDestroyed()) {
-                                alive.statusText.setText("Status: Failed to load model");
-                            }
-                        });
-                    }
-                }).start();
-            }
-
-            @Override
-            public void onError(String error, boolean retryable) {
-                MainActivity a = activityRef.get();
-                if (a == null || a.isFinishing() || a.isDestroyed()) return;
-                a.modelProgress.setVisibility(View.GONE);
-                a.modelStatus.setText(a.getString(R.string.model_download_error, error));
-                if (retryable) {
-                    a.btnRetry.setVisibility(View.VISIBLE);
-                } else {
+                a.runOnUiThread(() -> {
+                    a.modelProgress.setVisibility(View.GONE);
+                    a.btnRetry.setVisibility(View.GONE);
                     SettingsManager sm = a.settingsManager;
-                    String current = sm.getModelVariant();
-                    a.runOnUiThread(() -> {
-                        if (a.isFinishing() || a.isDestroyed()) return;
                         a.modelSelectionChanging = true;
                         if (a.rbModelFast != null) a.rbModelFast.setChecked(!"1.1b".equals(current));
                         if (a.rbModelPrecise != null) a.rbModelPrecise.setChecked("1.1b".equals(current));

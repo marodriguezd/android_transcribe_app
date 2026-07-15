@@ -32,7 +32,9 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/`. Download
 | `PostProcessor.java` | AI post-processing (LLM) with prompt template |
 | `PostProcessSettingsActivity.java` | Settings UI for post-processing config |
 | `WordCorrector.java` | Fuzzy matching (Levenshtein + Soundex) for custom words |
-| `DictionaryManager.java` | Manages dictionary entries with JSON persistence |
+| `DictionaryManager.java` | Manages dictionary entries with JSON persistence, import/export |
+| `DictionaryListActivity.java` | List/manage dictionaries, import/export UI |
+| `DictionaryEditActivity.java` | Edit individual dictionary entries |
 | `src/engine.rs` | Global engine singleton, model loading/switching |
 | `src/main_activity.rs` | JNI bridge for initNative/switchModel |
 
@@ -54,3 +56,4 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/`. Download
 - `ModelDownloadForegroundService.onStartCommand()` must NOT call `App.startDownload()` with a new callback if a download is already in progress for the same variant (it will just add the callback, not restart)
 - `POST_NOTIFICATIONS` permission on Android 13+ is requested in `onCreate()` but may not be resolved before download starts — `startForeground()` in ForegroundService catches the `SecurityException` and continues without notification
 - Post-processing field shows `DEFAULT_PROMPT` from `SettingsManager` as the text, and `label_prompt` from `strings.xml` as the hint
+- Dictionary import uses `ActivityResultContracts.OpenDocument` for JSON/text files; export uses `ActivityResultContracts.CreateDocument("application/json")`

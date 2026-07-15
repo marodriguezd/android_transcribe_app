@@ -108,13 +108,12 @@ ${output}
     <string name="msg_models_ready">Models list updated</string>
     
     <string name="section_hotwords">Custom Words</string>
-    <string name="desc_hotwords">Add words as context for the AI, or use the format \'incorrect=correct\' for direct replacements (e.g. paraquid=Parakeet).</string>
+    <string name="desc_hotwords">Add words for the AI to recognize correctly. The system uses fuzzy matching to automatically fix similar misspellings based on your correction threshold.</string>
     <string name="btn_hotwords_settings">Edit Words</string>
 
     <string name="section_model">Transcription Model</string>
-    <string name="desc_model">Choose between a smaller, faster model or a larger, more accurate one.</string>
+    <string name="desc_model">Fast transcription model using Parakeet V3 (~640 MB download).</string>
     <string name="model_fast">Fast (0.6B) — ~640 MB download</string>
-    <string name="model_precise">Precise (1.1B) — ~3.8 GB download</string>
     <string name="model_status_downloaded">Downloaded</string>
     <string name="model_status_not_downloaded">Not downloaded</string>
     <string name="model_status_downloading">Downloading… %1$d%%</string>
@@ -126,10 +125,8 @@ ${output}
     <string name="model_download_error">Download failed: %1$s</string>
 
     <string name="welcome_model_title">Download a model</string>
-    <string name="welcome_model_subtitle">Choose a transcription model to get started. The fast model is quick and lightweight; the precise model is more accurate but larger.</string>
+    <string name="welcome_model_subtitle">Download the transcription model to get started. You can skip this and download later.</string>
     <string name="welcome_btn_fast">Fast (0.6B, ~640 MB)</string>
-    <string name="welcome_btn_precise">Precise (1.1B, ~3.8 GB)</string>
-    <string name="welcome_btn_both">Download both</string>
     <string name="welcome_btn_skip">Use without model</string>
 
     <!-- Dictionary List -->

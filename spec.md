@@ -217,18 +217,6 @@ protected void onResume() {
 Wrap all view accesses in null checks. This is purely defensive but prevents
 crashes if the activity was recreated while the dialog was alive.
 
-In the neutral button handler (line 574-578):
-```java
-.setNeutralButton(R.string.welcome_btn_precise, (d, w) -> {
-    sm.setModelVariant("1.1b");
-    if (rbModelFast != null) rbModelFast.setChecked(false);
-    if (rbModelPrecise != null) rbModelPrecise.setChecked(true);
-    startDownload("1.1b", sm);
-})
-```
-
-Same for the positive button handler (lines 568-572).
-
 ### Step 6 — Remove unused `encoder.int8.weights` from 1.1B file list
 
 **File**: `app/src/main/java/dev/notune/transcribe/ModelDownloadManager.java`  

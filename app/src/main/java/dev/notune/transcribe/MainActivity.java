@@ -60,13 +60,10 @@ public class MainActivity extends AppCompatActivity {
     private Button startSubsButton;
     private SettingsManager settingsManager;
     private RadioButton rbModelFast;
-    private RadioButton rbModelPrecise;
-
     private RadioGroup modelGroup;
     private TextView modelStatus;
     private ProgressBar modelProgress;
     private ImageButton btnDeleteFast;
-    private ImageButton btnDeletePrecise;
     private Button btnRetry;
     private SeekBar seekThreshold;
     private boolean firstLaunchDialogShown = false;
@@ -212,8 +209,7 @@ public class MainActivity extends AppCompatActivity {
         reconnectDownloadCallbacks();
         updateModelSelectionUI();
         if (!firstLaunchDialogShown && modelGroup != null && settingsManager != null) {
-            boolean anyDownloaded = settingsManager.isModelDownloaded("0.6b")
-                    || settingsManager.isModelDownloaded("1.1b");
+            boolean anyDownloaded = settingsManager.isModelDownloaded("0.6b");
             if (!anyDownloaded) {
                 firstLaunchDialogShown = true;
                 showFirstLaunchDownloadDialog(settingsManager);
@@ -240,27 +236,20 @@ public class MainActivity extends AppCompatActivity {
             modelProgress.setVisibility(View.GONE);
             btnRetry.setVisibility(View.GONE);
             updateModelStatus(modelStatus, dm.getVariant(), settingsManager);
-            updateDeleteButtons(btnDeleteFast, btnDeletePrecise, settingsManager);
+            updateDeleteButtons(btnDeleteFast, settingsManager);
         }
     }
 
     private void updateModelSelectionUI() {
         if (modelGroup == null || settingsManager == null) return;
-        if (rbModelFast == null || rbModelPrecise == null) return;
+        if (rbModelFast == null) return;
         SettingsManager sm = settingsManager;
         String current = sm.getModelVariant();
-        boolean fastChecked = rbModelFast.isChecked();
-        boolean preciseChecked = rbModelPrecise.isChecked();
-        boolean correctState = ("1.1b".equals(current) && preciseChecked)
-                || ("0.6b".equals(current) && fastChecked);
-        if (!correctState) {
-            modelSelectionChanging = true;
-            rbModelFast.setChecked(!"1.1b".equals(current));
-            rbModelPrecise.setChecked("1.1b".equals(current));
-            modelSelectionChanging = false;
-        }
+        modelSelectionChanging = true;
+        rbModelFast.setChecked(true);
+        modelSelectionChanging = false;
         updateModelStatus(modelStatus, current, sm);
-        updateDeleteButtons(btnDeleteFast, btnDeletePrecise, sm);
+        updateDeleteButtons(btnDeleteFast, sm);
 
         ModelDownloadManager dm = ((App) getApplication()).getDownloadManager();
         if (dm != null && dm.isDownloading()) {
@@ -451,20 +440,15 @@ public class MainActivity extends AppCompatActivity {
         modelStatus = findViewById(R.id.text_model_status);
         modelProgress = findViewById(R.id.progress_model_download);
         btnDeleteFast = findViewById(R.id.btn_delete_model_fast);
-        btnDeletePrecise = findViewById(R.id.btn_delete_model_precise);
         btnRetry = findViewById(R.id.btn_model_retry);
         rbModelFast = findViewById(R.id.rb_model_fast);
-        rbModelPrecise = findViewById(R.id.rb_model_precise);
-
         String current = sm.getModelVariant();
-        rbModelFast.setChecked(!"1.1b".equals(current));
-        rbModelPrecise.setChecked("1.1b".equals(current));
+        rbModelFast.setChecked(true);
 
         updateModelStatus(modelStatus, current, sm);
-        updateDeleteButtons(btnDeleteFast, btnDeletePrecise, sm);
+        updateDeleteButtons(btnDeleteFast, sm);
 
         btnDeleteFast.setOnClickListener(v -> confirmDeleteModel("0.6b", sm));
-        btnDeletePrecise.setOnClickListener(v -> confirmDeleteModel("1.1b", sm));
 
         btnRetry.setOnClickListener(v -> {
             String variant = sm.getModelVariant();
@@ -476,7 +460,7 @@ public class MainActivity extends AppCompatActivity {
             if (modelSelectionChanging) return;
             if (checkedId == -1) return;
 
-            String variant = checkedId == R.id.rb_model_precise ? "1.1b" : "0.6b";
+            String variant = "0.6b";
             sm.setModelVariant(variant);
             btnRetry.setVisibility(View.GONE);
 
@@ -542,19 +526,38 @@ public class MainActivity extends AppCompatActivity {
                 a.runOnUiThread(() -> {
                     a.modelProgress.setVisibility(View.GONE);
                     a.btnRetry.setVisibility(View.GONE);
-                    SettingsManager sm = a.settingsManager;
-                        a.modelSelectionChanging = true;
-                        if (a.rbModelFast != null) a.rbModelFast.setChecked(!"1.1b".equals(current));
-                        if (a.rbModelPrecise != null) a.rbModelPrecise.setChecked("1.1b".equals(current));
-                        a.modelSelectionChanging = false;
-                    });
-                }
+                    a.modelSelectionChanging = true;
+                    if (a.rbModelFast != null) a.rbModelFast.setChecked(true);
+                    a.modelSelectionChanging = false;
+                });
+            }
+
+            @Override
+            public void onRetry(String fileName, int attempt, long waitMs) {
+                MainActivity a = activityRef.get();
+                if (a == null || a.isFinishing() || a.isDestroyed()) return;
+                a.runOnUiThread(() -> {
+                    a.modelStatus.setText(getString(R.string.model_status_waiting));
+                });
+            }
+
+            @Override
+            public void onError(String error, boolean retryable) {
+                MainActivity a = activityRef.get();
+                if (a == null || a.isFinishing() || a.isDestroyed()) return;
+                a.runOnUiThread(() -> {
+                    a.modelProgress.setVisibility(View.GONE);
+                    a.modelStatus.setText(getString(R.string.model_download_error, error));
+                    if (retryable && a.btnRetry != null) {
+                        a.btnRetry.setVisibility(View.VISIBLE);
+                    }
+                });
             }
         };
     }
 
     private void confirmDeleteModel(String variant, SettingsManager sm) {
-        String modelName = "0.6b".equals(variant) ? "Fast (0.6B)" : "Precise (1.1B)";
+        String modelName = "Fast (0.6B)";
         new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.model_delete_title)
                 .setMessage(getString(R.string.model_delete_confirm, modelName))
@@ -570,34 +573,18 @@ public class MainActivity extends AppCompatActivity {
                     sm.deleteModel(variant);
 
                     if (sm.getModelVariant().equals(variant)) {
-                        String other = "0.6b".equals(variant) ? "1.1b" : "0.6b";
-                        sm.setModelVariant(other);
-                        rbModelFast.setChecked(!"1.1b".equals(other));
-                        rbModelPrecise.setChecked("1.1b".equals(other));
-                        if (sm.isModelDownloaded(other)) {
-                            statusText.setText("Status: Switching model\u2026");
-                            new Thread(() -> {
-                                try {
-                                    switchModel(MainActivity.this, other);
-                                } catch (Exception e) {
-                                    Log.e(TAG, "switchModel native call failed", e);
-                                    runOnUiThread(() -> statusText.setText("Status: Failed to load model"));
-                                }
-                            }).start();
-                        }
+                        rbModelFast.setChecked(true);
                     }
 
                     updateModelStatus(modelStatus, sm.getModelVariant(), sm);
-                    updateDeleteButtons(btnDeleteFast, btnDeletePrecise, sm);
+                    updateDeleteButtons(btnDeleteFast, sm);
                 })
                 .setPositiveButton(android.R.string.cancel, null)
                 .show();
     }
 
-    private void updateDeleteButtons(ImageButton btnDeleteFast, ImageButton btnDeletePrecise,
-                                     SettingsManager sm) {
+    private void updateDeleteButtons(ImageButton btnDeleteFast, SettingsManager sm) {
         btnDeleteFast.setVisibility(sm.isModelDownloaded("0.6b") ? View.VISIBLE : View.GONE);
-        btnDeletePrecise.setVisibility(sm.isModelDownloaded("1.1b") ? View.VISIBLE : View.GONE);
     }
 
     private void updateThresholdLabel(int progress) {
@@ -616,18 +603,9 @@ public class MainActivity extends AppCompatActivity {
                 .setPositiveButton(R.string.welcome_btn_fast, (d, w) -> {
                     sm.setModelVariant("0.6b");
                     modelSelectionChanging = true;
-                    rbModelPrecise.setChecked(false);
                     rbModelFast.setChecked(true);
                     modelSelectionChanging = false;
                     startDownload("0.6b", sm);
-                })
-                .setNeutralButton(R.string.welcome_btn_precise, (d, w) -> {
-                    sm.setModelVariant("1.1b");
-                    modelSelectionChanging = true;
-                    rbModelFast.setChecked(false);
-                    rbModelPrecise.setChecked(true);
-                    modelSelectionChanging = false;
-                    startDownload("1.1b", sm);
                 })
                 .setNegativeButton(R.string.welcome_btn_skip, (d, w) -> {
                     // User chose to skip

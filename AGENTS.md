@@ -42,8 +42,7 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-{variant}-v3-int8/`. No 
 
 ## Common pitfalls
 
-- `rbModelFast`/`rbModelPrecise` may be null if `setupModelSelection` hasn't run
-- `modelSelectionChanging` flag prevents RadioGroup callback re-entrancy
+- `rbModelFast` may be null if `setupModelSelection` hasn't run
 - Download callbacks should use `WeakReference<MainActivity>` with lifecycle checks
 - `onCheckedChangeListener` must guard against `checkedId == -1` (RadioGroup cleared state)
 - Model files moved from APK assets to internal storage in v0.7.0

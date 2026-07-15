@@ -46,6 +46,10 @@ public class App extends Application {
 
     public void startDownload(String variant, ModelDownloadManager.ProgressCallback callback) {
         if (downloadManager != null && downloadManager.isDownloading()) {
+            if (variant.equals(downloadManager.getVariant())) {
+                downloadManager.setCallback(callback);
+                return;
+            }
             downloadManager.cancel();
         }
         downloadManager = new ModelDownloadManager(this.getApplicationContext(), variant);

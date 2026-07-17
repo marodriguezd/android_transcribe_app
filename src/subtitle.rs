@@ -13,7 +13,7 @@
 //! - Final jobs are always queued (FIFO), so committed text is never lost.
 
 use crossbeam_channel;
-use jni::objects::{JClass, JObject};
+use jni::objects::JObject;
 use jni::JNIEnv;
 use once_cell::sync::Lazy;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
@@ -84,20 +84,28 @@ struct LiveSubtitleState {
 
 static LIVE_STATE: Lazy<Mutex<Option<LiveSubtitleState>>> = Lazy::new(|| Mutex::new(None));
 
+fn live_state_lock() -> std::sync::MutexGuard<'static, Option<LiveSubtitleState>> {
+    LIVE_STATE.lock().unwrap_or_else(|poisoned| {
+        log::error!("LIVE_STATE mutex poisoned, recovering");
+        poisoned.into_inner()
+    })
+}
+
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_initNative(
-    env: JNIEnv,
-    _class: JClass,
+    mut env: JNIEnv,
+    _class: JObject,
     service: JObject,
 ) {
     android_logger::init_once(
         android_logger::Config::default().with_max_level(log::LevelFilter::Info),
     );
-    let vm = match env.get_java_vm() {
-        Ok(vm) => Arc::new(vm),
-        Err(_) => return,
-    };
-    let service_ref = match env.new_global_ref(&service) {
+
+    let (vm, service_ref) = match env.with_local_frame(16, |env| {
+        let vm = env.get_java_vm()?;
+        let service_ref = env.new_global_ref(&service)?;
+        Ok::<_, jni::errors::Error>((Arc::new(vm), service_ref))
+    }) {
         Ok(r) => r,
         Err(_) => return,
     };
@@ -108,7 +116,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_ini
     let pending_finals = Arc::new(AtomicUsize::new(0));
     let rtf_milli = Arc::new(AtomicU32::new(0));
 
-    *LIVE_STATE.lock().unwrap() = Some(LiveSubtitleState {
+    *live_state_lock() = Some(LiveSubtitleState {
         segment: Vec::new(),
         preroll: Vec::new(),
         has_speech: false,
@@ -136,12 +144,15 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_ini
 
         let deliver = |env: &mut jni::JNIEnv, text: &str, is_final: bool| {
             if let Ok(jtxt) = env.new_string(text) {
-                let _ = env.call_method(
+                if let Err(err) = env.call_method(
                     service_obj,
                     "onSubtitleText",
                     "(Ljava/lang/String;Z)V",
                     &[(&jtxt).into(), is_final.into()],
-                );
+                ) {
+                    log::error!("deliver call_method error: {}", err);
+                    let _ = env.exception_clear();
+                }
             }
         };
 
@@ -169,7 +180,13 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_ini
                 let audio_secs = job.samples.len() as f64 / SAMPLE_RATE as f64;
                 let started = std::time::Instant::now();
                 let res = {
-                    let mut eng = engine_arc.lock().unwrap();
+                    let mut eng = match engine_arc.lock() {
+                        Ok(g) => g,
+                        Err(poisoned) => {
+                            log::error!("engine mutex poisoned, recovering");
+                            poisoned.into_inner()
+                        }
+                    };
                     eng.transcribe_samples(job.samples)
                 };
                 let elapsed = started.elapsed().as_secs_f64();
@@ -200,6 +217,12 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_ini
                         deliver(&mut env, text, job.is_final);
                     }
                 }
+            } else if job.is_final {
+                log::warn!(
+                    "Final dropped: engine not loaded (lag {:.1}s)",
+                    lag as f64 / SAMPLE_RATE as f64,
+                );
+                gap_pending = true;
             }
 
             if job.is_final {
@@ -213,16 +236,16 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_ini
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_cleanupNative(
     _env: JNIEnv,
-    _class: JClass,
+    _class: JObject,
 ) {
     // Dropping the state drops the sender; the worker exits once the queue drains.
-    *LIVE_STATE.lock().unwrap() = None;
+    *live_state_lock() = None;
 }
 
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_pushAudio(
-    env: JNIEnv,
-    _class: JClass,
+    mut env: JNIEnv,
+    _class: JObject,
     data: jni::objects::JFloatArray,
     length: jni::sys::jint,
 ) {
@@ -231,11 +254,14 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_pus
         return;
     }
     let mut input = vec![0.0f32; len];
-    if env.get_float_array_region(&data, 0, &mut input).is_err() {
+    let read_ok: Result<(), jni::errors::Error> = env.with_local_frame(16, |env| {
+        env.get_float_array_region(&data, 0, &mut input)
+    });
+    if read_ok.is_err() {
         return;
     }
 
-    let mut guard = LIVE_STATE.lock().unwrap();
+    let mut guard = live_state_lock();
     let state = match guard.as_mut() {
         Some(s) => s,
         None => return,
@@ -278,7 +304,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_pus
         let mut samples = std::mem::take(&mut state.segment);
         if silence_done {
             // Drop most of the trailing silence; keep a short tail.
-            let keep = samples.len() - state.silence_run + FINAL_TAIL_SAMPLES;
+            let keep = samples.len().saturating_sub(state.silence_run) + FINAL_TAIL_SAMPLES;
             samples.truncate(keep.min(samples.len()));
             state.has_speech = false;
             state.preroll.clear();

@@ -10,15 +10,14 @@ Rust + JNI Android app for offline speech-to-text using NVIDIA Parakeet models.
 
 ## Model variants
 
-Only the 0.6B Fast model is available in the UI. The 1.1B Precise model was removed in v0.7.0.
-
 | Variant | Size | Files | Engine |
 |---------|------|-------|--------|
+| 180m (fastest) | ~395 MB | `encoder-model.int8.onnx`, `decoder-model.int8.onnx`, `vocab.txt` | `Parakeet180mModel` (model_180m.rs in transcribe-rs) |
 | 0.6B (fast) | ~640 MB | `encoder-model.int8.onnx`, `decoder_joint-model.int8.onnx`, `nemo128.onnx`, `vocab.txt` | `ParakeetEngine` (engine.rs in transcribe-rs) |
 
 ## Model loading
 
-Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/`. Downloaded via `ModelDownloadManager` from Hugging Face.
+Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/` for 0.6B and `getFilesDir()/models/canary-180m-flash-int8/` for 180M. Downloaded via `ModelDownloadManager` from Hugging Face.
 
 ## Key files
 
@@ -40,7 +39,7 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/`. Download
 
 ## Important patterns
 
-- Engine singleton: `GLOBAL_ENGINE` (`Lazy<Mutex<Option<(ModelVariant, Arc<Mutex<EngineWrapper>>)>>>`)
+- Engine singleton: `GLOBAL_ENGINE` (`Lazy<Mutex<Option<(ModelVariant, Arc<Mutex<EngineWrapper>>)>>>`) — variants: V0_6b, V180m
 - Loading coordination: `LOAD_STATE` mutex + Condvar to serialize loads
 - Model switching: `switch_model()` first acquires LOAD_STATE lock, then clears engine
 - ORT providers on Android: NNAPI, XNNPACK, CPU (in priority order)
@@ -50,10 +49,11 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/`. Download
 
 ## Common pitfalls
 
-- `rbModelFast` may be null if `setupModelSelection` hasn't run
+- `rbModelFast` and `rbModelFastest` may be null if `setupModelSelection` hasn't run
 - `App.startDownload()` is idempotent for the same variant — it won't cancel an active download, only adds the callback
 - Download callbacks should use `WeakReference<MainActivity>` with lifecycle checks
 - `ModelDownloadForegroundService.onStartCommand()` must NOT call `App.startDownload()` with a new callback if a download is already in progress for the same variant (it will just add the callback, not restart)
 - `POST_NOTIFICATIONS` permission on Android 13+ is requested in `onCreate()` but may not be resolved before download starts — `startForeground()` in ForegroundService catches the `SecurityException` and continues without notification
 - Post-processing field shows `DEFAULT_PROMPT` from `SettingsManager` as the text, and `label_prompt` from `strings.xml` as the hint
 - Dictionary import uses `ActivityResultContracts.OpenDocument` for JSON/text files; export uses `ActivityResultContracts.CreateDocument("application/json")`
+- The 180M AED model does not support hotwords yet

@@ -3,6 +3,7 @@ package dev.notune.transcribe;
 import android.app.Application;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.content.Intent;
 import android.os.Build;
 
 import com.google.android.material.color.DynamicColors;
@@ -51,7 +52,9 @@ public class App extends Application {
                 return;
             }
             downloadManager.cancel();
+            downloadManager.shutdown();
         }
+        stopService(new Intent(this, ModelDownloadForegroundService.class));
         downloadManager = new ModelDownloadManager(this.getApplicationContext(), variant);
         downloadManager.download(callback);
     }

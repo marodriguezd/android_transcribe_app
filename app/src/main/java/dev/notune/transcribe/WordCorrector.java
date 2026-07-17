@@ -15,12 +15,12 @@ public class WordCorrector {
             if (word == null || word.isEmpty()) continue;
             String normalized = normalize(word);
             if (!normalized.isEmpty()) {
-                entries.add(new NormalizedEntry(normalized, word));
+                entries.add(new NormalizedEntry(normalized, word, soundex(normalized)));
             }
             if (word.contains("&")) {
                 String expanded = normalizeExpanded(word);
                 if (!expanded.isEmpty() && !expanded.equals(normalized)) {
-                    entries.add(new NormalizedEntry(expanded, word));
+                    entries.add(new NormalizedEntry(expanded, word, soundex(expanded)));
                 }
             }
         }
@@ -77,6 +77,7 @@ public class WordCorrector {
     private BestMatch findBestMatch(String joined) {
         BestMatch best = null;
         double bestScore = threshold;
+        String joinedSoundex = soundex(joined);
         for (NormalizedEntry entry : entries) {
             int maxLen = Math.max(joined.length(), entry.length);
             if (maxLen == 0) continue;
@@ -84,10 +85,8 @@ public class WordCorrector {
             if (lenDiff >= threshold) continue;
             double levDist = levenshtein(joined, entry.normalized);
             double levScore = levDist / maxLen;
-            String soundex1 = soundex(joined);
-            String soundex2 = soundex(entry.normalized);
             double combinedScore;
-            if (!soundex1.isEmpty() && soundex1.equals(soundex2)) {
+            if (!joinedSoundex.isEmpty() && joinedSoundex.equals(entry.soundexCode)) {
                 combinedScore = levScore * 0.3;
             } else {
                 combinedScore = levScore;
@@ -218,10 +217,12 @@ public class WordCorrector {
         String normalized;
         String original;
         int length;
-        NormalizedEntry(String normalized, String original) {
+        String soundexCode;
+        NormalizedEntry(String normalized, String original, String soundexCode) {
             this.normalized = normalized;
             this.original = original;
             this.length = normalized.length();
+            this.soundexCode = soundexCode;
         }
     }
 

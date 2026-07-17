@@ -105,6 +105,18 @@ public class RecognizeActivity extends Activity {
     }
 
     @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putBoolean("isRecording", isRecording);
+    }
+
+    @Override
+    protected void onRestoreInstanceState(Bundle savedInstanceState) {
+        super.onRestoreInstanceState(savedInstanceState);
+        isRecording = savedInstanceState.getBoolean("isRecording", false);
+    }
+
+    @Override
     protected void onDestroy() {
         super.onDestroy();
         pollHandler.removeCallbacks(pollRunnable);

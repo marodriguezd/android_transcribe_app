@@ -1,12 +1,12 @@
 use crate::engine;
-use jni::objects::{JClass, JObject, JString};
+use jni::objects::{JObject, JString};
 use jni::JNIEnv;
 use std::sync::Arc;
 
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_notune_transcribe_MainActivity_initNative(
-    env: JNIEnv,
-    _class: JClass,
+    mut env: JNIEnv,
+    _class: JObject,
     activity: JObject,
 ) {
     android_logger::init_once(
@@ -15,11 +15,17 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_MainActivity_initNative
 
     let _ = ort::init().commit();
 
-    let vm = env.get_java_vm().expect("Failed to get JavaVM");
-    let vm_arc = Arc::new(vm);
-    let activity_ref = env
-        .new_global_ref(&activity)
-        .expect("Failed to ref activity");
+    let (vm_arc, activity_ref) = match env.with_local_frame(16, |env| {
+        let vm = env.get_java_vm()?;
+        let activity_ref = env.new_global_ref(&activity)?;
+        Ok::<_, jni::errors::Error>((Arc::new(vm), activity_ref))
+    }) {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("JNI initNative failed: {}", e);
+            return;
+        }
+    };
 
     std::thread::spawn(move || {
         let _ = engine::ensure_loaded_from_thread(&vm_arc, &activity_ref);
@@ -29,21 +35,23 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_MainActivity_initNative
 /// Switch the loaded model variant. Called from Java after the user selects
 /// a different model and the download (if needed) has completed.
 ///
-/// `variant_str` must be `"0.6b"` or `"1.1b"`.
+/// `variant_str` must be `"0.6b"` or `"180m"`.
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_notune_transcribe_MainActivity_switchModel(
     mut env: JNIEnv,
-    _class: JClass,
+    _class: JObject,
     activity: JObject,
     variant_str: JString,
 ) {
-    let variant: String = match env.get_string(&variant_str) {
-        Ok(s) => s.into(),
+    let variant: String = match env.with_local_frame(16, |env| {
+        env.get_string(&variant_str).map(|s| s.into())
+    }) {
+        Ok(s) => s,
         Err(_) => return,
     };
 
     let model_variant = match variant.as_str() {
-        "1.1b" => engine::ModelVariant::V1_1b,
+        "180m" => engine::ModelVariant::V180m,
         _ => engine::ModelVariant::V0_6b,
     };
 

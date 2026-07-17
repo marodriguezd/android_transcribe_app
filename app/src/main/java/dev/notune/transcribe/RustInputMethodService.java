@@ -54,6 +54,7 @@ public class RustInputMethodService extends InputMethodService {
     private boolean pauseAudioActive = false;
     private SettingsManager settingsManager;
     private PostProcessor postProcessor;
+    private volatile boolean destroyed = false;
     // Whether an editor is currently focused/started for input. Tracked via
     // onStartInput/onFinishInput because getCurrentInputConnection() returns a
     // non-null no-op connection when nothing is focused, so commitText would be
@@ -75,7 +76,7 @@ public class RustInputMethodService extends InputMethodService {
         postProcessor = new PostProcessor(settingsManager);
         new Thread(() -> {
             try {
-                initNative(this);
+                if (!destroyed) initNative(RustInputMethodService.this);
             } catch (Exception e) {
                 Log.e(TAG, "Error in initNative", e);
             }
@@ -329,7 +330,12 @@ public class RustInputMethodService extends InputMethodService {
 
     @Override
     public void onDestroy() {
+        destroyed = true;
         super.onDestroy();
+        if (mainHandler != null) {
+            mainHandler.removeCallbacks(backspaceRepeatRunnable);
+            mainHandler.removeCallbacks(spaceRepeatRunnable);
+        }
         cleanupNative();
         if (pauseAudioActive) {
             audioPauser.abandon(this);

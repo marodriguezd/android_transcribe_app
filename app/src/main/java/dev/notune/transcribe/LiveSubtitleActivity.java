@@ -58,6 +58,20 @@ public class LiveSubtitleActivity extends Activity {
     }
 
     @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putBoolean("mWaitingForOverlayPermission", mWaitingForOverlayPermission);
+        outState.putBoolean("mProjectionStarted", mProjectionStarted);
+    }
+
+    @Override
+    protected void onRestoreInstanceState(Bundle savedInstanceState) {
+        super.onRestoreInstanceState(savedInstanceState);
+        mWaitingForOverlayPermission = savedInstanceState.getBoolean("mWaitingForOverlayPermission", false);
+        mProjectionStarted = savedInstanceState.getBoolean("mProjectionStarted", false);
+    }
+
+    @Override
     protected void onResume() {
         super.onResume();
         

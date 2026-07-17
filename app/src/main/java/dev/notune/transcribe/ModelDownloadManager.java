@@ -32,8 +32,8 @@ public class ModelDownloadManager {
     static {
         BASE_URLS.put("0.6b",
                 "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main");
-        BASE_URLS.put("1.1b",
-                "https://huggingface.co/istupakov/canary-1b-v2-onnx/resolve/main");
+        BASE_URLS.put("180m",
+                "https://huggingface.co/istupakov/canary-180m-flash-onnx/resolve/main");
     }
 
     private static final Map<String, String[]> MODEL_FILES = new HashMap<>();
@@ -44,11 +44,10 @@ public class ModelDownloadManager {
                 "nemo128.onnx",
                 "vocab.txt"
         });
-        MODEL_FILES.put("1.1b", new String[]{
-                "encoder.int8.onnx",
-                "decoder.int8.onnx",
-                "joiner.int8.onnx",
-                "tokens.txt"
+        MODEL_FILES.put("180m", new String[]{
+                "encoder-model.int8.onnx",
+                "decoder-model.int8.onnx",
+                "vocab.txt"
         });
     }
 
@@ -70,7 +69,7 @@ public class ModelDownloadManager {
     private volatile long currentBytesDownloaded;
     private volatile long currentTotalBytes;
     private volatile boolean downloadActive;
-    private PowerManager.WakeLock wakeLock;
+    private volatile PowerManager.WakeLock wakeLock;
 
     public interface ProgressCallback {
         void onProgress(String fileName, int percent, long bytesDownloaded, long totalBytes);
@@ -94,6 +93,14 @@ public class ModelDownloadManager {
         if (callback != null && !callbacks.contains(callback)) {
             callbacks.add(callback);
         }
+    }
+
+    public void removeCallback(ProgressCallback callback) {
+        callbacks.remove(callback);
+    }
+
+    public void clearCallbacks() {
+        callbacks.clear();
     }
 
     public boolean isDownloading() {
@@ -135,6 +142,9 @@ public class ModelDownloadManager {
     }
 
     public File getModelDir() {
+        if ("180m".equals(variant)) {
+            return new File(context.getFilesDir(), "models/canary-180m-flash-int8");
+        }
         return new File(context.getFilesDir(), "models/parakeet-tdt-" + variant + "-v3-int8");
     }
 
@@ -180,7 +190,13 @@ public class ModelDownloadManager {
 
     public void cancel() {
         downloading.set(false);
+        executor.shutdownNow();
+        callbacks.clear();
         releaseWakeLock();
+    }
+
+    public void shutdown() {
+        executor.shutdownNow();
     }
 
     private void acquireWakeLock() {
@@ -190,7 +206,7 @@ public class ModelDownloadManager {
                 wakeLock = pm.newWakeLock(
                         PowerManager.PARTIAL_WAKE_LOCK,
                         "TranscribeApp::ModelDownload");
-                wakeLock.acquire(30 * 60 * 1000L); // 30 min max safety timeout
+                wakeLock.acquire(5 * 60 * 1000L); // 5 min max safety timeout
             }
         }
     }
@@ -218,14 +234,14 @@ public class ModelDownloadManager {
             if (!dir.mkdirs()) {
                 Log.e(TAG, "mkdirs still failed; parent exists=" + modelsParent.exists()
                         + " isDir=" + modelsParent.isDirectory());
-                postError("Failed to create model directory", true);
+                postError("Cannot create model directory. Storage may be full.", false);
                 return;
             }
         }
 
         for (String fileName : modelFiles) {
             if (!downloading.get()) {
-                postError("Download canceled", false);
+                Log.d(TAG, "Download canceled by user");
                 return;
             }
 
@@ -243,6 +259,7 @@ public class ModelDownloadManager {
 
         mainHandler.post(() -> {
             for (ProgressCallback cb : callbacks) cb.onComplete();
+            callbacks.clear();
         });
     }
 
@@ -252,7 +269,7 @@ public class ModelDownloadManager {
         for (int attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             if (!downloading.get()) {
                 downloadActive = false;
-                postError("Download canceled", false);
+                Log.d(TAG, "Download canceled by user");
                 return false;
             }
 
@@ -272,7 +289,7 @@ public class ModelDownloadManager {
 
             if (!downloading.get()) {
                 downloadActive = false;
-                postError("Download canceled", false);
+                Log.d(TAG, "Download canceled by user");
                 return false;
             }
 
@@ -380,7 +397,12 @@ public class ModelDownloadManager {
                 throw new IOException("Failed to rename temp file to " + destFile.getName());
             }
 
-            Log.d(TAG, "Downloaded " + fileName + " (" + destFile.length() + " bytes)");
+            File finalFile = new File(destFile.getParent(), fileName);
+            if (finalFile.exists() && finalFile.length() > 0) {
+                Log.d(TAG, "Downloaded " + fileName + ": " + finalFile.length() + " bytes");
+            } else {
+                throw new IOException("Downloaded file is empty or missing: " + fileName);
+            }
         } finally {
             if (conn != null) conn.disconnect();
         }
@@ -440,6 +462,7 @@ public class ModelDownloadManager {
     private void postError(String msg, boolean retryable) {
         mainHandler.post(() -> {
             for (ProgressCallback cb : callbacks) cb.onError(msg, retryable);
+            callbacks.clear();
         });
     }
 }

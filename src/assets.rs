@@ -78,6 +78,10 @@ pub fn mmap_asset(
 
     // Get page size
     let page_size = unsafe { libc::sysconf(libc::_SC_PAGESIZE) } as usize;
+    if length <= 0 || length > isize::MAX as i64 {
+        unsafe { libc::close(dup_fd); }
+        return Err(anyhow::anyhow!("Invalid asset length: {}", length));
+    }
     let offset = start_offset as usize;
     let aligned_offset = (offset / page_size) * page_size;
     let alignment_difference = offset - aligned_offset;
@@ -88,7 +92,7 @@ pub fn mmap_asset(
             std::ptr::null_mut(),
             mapped_length,
             libc::PROT_READ,
-            libc::MAP_SHARED,
+            libc::MAP_PRIVATE,
             dup_fd,
             aligned_offset as libc::off_t,
         )

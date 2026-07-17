@@ -30,6 +30,7 @@ public class TranscribeFileActivity extends AppCompatActivity {
 
     private static final String TAG = "OfflineVoiceInput";
     private static final int TARGET_SAMPLE_RATE = 16000;
+    private static final long MAX_AUDIO_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
     static {
         try {

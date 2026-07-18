@@ -119,7 +119,7 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
         settingsManager.setModelName(editModelName.getText().toString().trim());
         settingsManager.setSystemPrompt(editPrompt.getText().toString().trim());
 
-        Toast.makeText(this, "Configuración guardada", Toast.LENGTH_SHORT).show();
+        Toast.makeText(this, R.string.post_process_settings_saved, Toast.LENGTH_SHORT).show();
         finish();
     }
 }

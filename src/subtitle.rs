@@ -16,6 +16,7 @@ use crossbeam_channel;
 use jni::objects::JObject;
 use jni::JNIEnv;
 use once_cell::sync::Lazy;
+use zeroize::Zeroize;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use crate::engine;
@@ -205,17 +206,20 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_ini
                 let ema = if old == 0 { sample } else { (old * 7 + sample * 3) / 10 };
                 rtf_milli.store(ema, Ordering::SeqCst);
 
-                if let Ok(r) = res {
-                    let text = r.text.trim();
-                    if !text.is_empty() && gap_pending {
-                        // Mark the dropped stretch so the transcript doesn't
-                        // silently glue unrelated sentences together.
-                        deliver(&mut env, "…", true);
-                        gap_pending = false;
+                if let Ok(mut r) = res {
+                    {
+                        let text = r.text.trim();
+                        if !text.is_empty() && gap_pending {
+                            // Mark the dropped stretch so the transcript doesn't
+                            // silently glue unrelated sentences together.
+                            deliver(&mut env, "…", true);
+                            gap_pending = false;
+                        }
+                        if !text.is_empty() || job.is_final {
+                            deliver(&mut env, text, job.is_final);
+                        }
                     }
-                    if !text.is_empty() || job.is_final {
-                        deliver(&mut env, text, job.is_final);
-                    }
+                    Zeroize::zeroize(&mut r.text);
                 }
             } else if job.is_final {
                 log::warn!(
@@ -235,9 +239,10 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_ini
 
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_cleanupNative(
-    _env: JNIEnv,
+    mut _env: JNIEnv,
     _class: JObject,
 ) {
+    let _auto_frame = crate::AutoLocalFrame::new(&_env, 16);
     // Dropping the state drops the sender; the worker exits once the queue drains.
     *live_state_lock() = None;
 }

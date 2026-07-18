@@ -4,6 +4,7 @@ use jni::objects::{JFloatArray, JObject};
 use jni::sys::jint;
 use jni::JNIEnv;
 use once_cell::sync::Lazy;
+use zeroize::Zeroize;
 
 use crate::engine;
 
@@ -88,9 +89,10 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_TranscribeFileActivity_
 
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_notune_transcribe_TranscribeFileActivity_cleanupNative(
-    _env: JNIEnv,
+    mut _env: JNIEnv,
     _class: JObject,
 ) {
+    let _auto_frame = crate::AutoLocalFrame::new(&_env, 16);
     *state_lock() = None;
 }
 
@@ -168,8 +170,9 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_TranscribeFileActivity_
         };
 
         match res {
-            Ok(r) => {
+            Ok(mut r) => {
                 notify_text(&mut env, obj, &r.text);
+                Zeroize::zeroize(&mut r.text);
             }
             Err(e) => {
                 notify_status(&mut env, obj, &format!("Error: {}", e));

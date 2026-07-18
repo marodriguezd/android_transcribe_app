@@ -135,7 +135,8 @@ public class LiveSubtitleService extends Service {
                 // Bounded wait: read() can block until the next audio buffer.
                 mAudioThread.join(1000);
             } catch (InterruptedException e) {
-                e.printStackTrace();
+                Log.e(TAG, "Audio thread join interrupted", e);
+                Thread.currentThread().interrupt();
             }
             mAudioThread = null;
         }

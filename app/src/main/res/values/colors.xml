@@ -12,6 +12,10 @@
     <color name="overlay_bg">#99000000</color>
     <color name="card_bg">#FFFFFF</color>
 
+    <!-- IME mic icon colors -->
+    <color name="mic_active">#2196F3</color>
+    <color name="mic_error">#F44336</color>
+
     <!-- Keyboard / IME (overridden in values-night) -->
     <color name="ime_bg">#F0F0F0</color>
     <color name="ime_card_bg">#FFFFFF</color>

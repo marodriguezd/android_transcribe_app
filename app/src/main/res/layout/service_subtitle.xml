@@ -34,7 +34,8 @@
             android:src="@android:drawable/ic_delete"
             android:background="?android:attr/selectableItemBackgroundBorderless"
             android:tint="#FF5555"
-            android:padding="8dp"/>
+            android:padding="8dp"
+            android:contentDescription="@string/desc_close_subs"/>
 
     </LinearLayout>
 </FrameLayout>

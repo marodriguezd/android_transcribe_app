@@ -38,6 +38,12 @@ pub struct Parakeet180mModel {
     transcribe_input: Vec<i64>,
 }
 
+impl Drop for Parakeet180mModel {
+    fn drop(&mut self) {
+        log::info!("Dropping Parakeet180mModel, releasing ORT sessions");
+    }
+}
+
 impl Parakeet180mModel {
     pub fn from_memory(
         encoder_bytes: &[u8],

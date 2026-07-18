@@ -167,4 +167,54 @@ ${output}</string>
     <string name="btn_export">Export</string>
     <string name="msg_word_exists">This word already exists</string>
     <string name="msg_word_empty">Word cannot be empty</string>
+
+    <!-- Post-Process Settings -->
+    <string name="post_process_settings_saved">Configuración guardada</string>
+
+    <!-- Dictionary -->
+    <string name="dictionary_exported">Dictionary exported</string>
+
+    <!-- IME -->
+    <string name="ime_no_mic_permission">No mic permission - grant in app</string>
+    <string name="ime_open_app_for_permission">Open the app to grant permission</string>
+    <string name="ime_listening">Listening…</string>
+    <string name="ime_tap_to_stop">Tap to Stop</string>
+    <string name="ime_processing">Processing…</string>
+    <string name="ime_tap_to_record">Tap to Record</string>
+    <string name="model_switch_timeout">Model switch timed out. Please try again.</string>
+
+    <!-- RecognizeActivity -->
+    <string name="recog_mic_permission_required">Microphone permission required.\nGrant it in the main app.</string>
+    <string name="recog_listening">Listening… (Tap to stop)</string>
+    <string name="recog_ready">Ready (Tap to stop)</string>
+
+    <!-- TranscribeFileActivity -->
+    <string name="copied_to_clipboard">Copied to clipboard</string>
+    <string name="transcribe_error_no_audio">Error: No audio file received</string>
+    <string name="transcribe_loading_model">Loading model…</string>
+    <string name="transcribe_decoding_audio">Decoding audio…</string>
+    <string name="transcription_copied">Transcription copied to clipboard</string>
+    <string name="transcribe_error_no_audio_file">Error: No audio file</string>
+    <string name="transcribing">Transcribing…</string>
+
+    <!-- Live Subtitles -->
+    <string name="subs_grant_overlay_permission">Please grant \'Display over other apps\' permission</string>
+    <string name="subs_enable_overlay">Enable \'Display over other apps\' in app settings</string>
+    <string name="subs_require_overlay">Please enable overlay permission in Settings</string>
+    <string name="subs_overlay_required">Overlay permission required for subtitles</string>
+    <string name="subs_screen_capture_denied">Screen Capture denied</string>
+
+    <!-- Accessibility content descriptions -->
+    <string name="desc_close">Close</string>
+    <string name="desc_close_subs">Close subtitles</string>
+    <string name="desc_record">Record</string>
+    <string name="btn_refresh_models">Refresh models</string>
+    <string name="desc_switch_keyboard">Switch keyboard</string>
+    <string name="desc_space">Space</string>
+    <string name="desc_enter">Enter</string>
+    <string name="desc_backspace">Backspace</string>
+    <string name="desc_enable_dictionary">Enable dictionary</string>
+
+    <!-- Errors -->
+    <string name="error_prefix">Error: %1$s</string>
 </resources>

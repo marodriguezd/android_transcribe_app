@@ -31,9 +31,10 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_RustInputMethodService_
 
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_notune_transcribe_RustInputMethodService_cleanupNative(
-    _env: JNIEnv,
+    mut _env: JNIEnv,
     _class: JObject,
 ) {
+    let _auto_frame = crate::AutoLocalFrame::new(&_env, 16);
     *ime_lock() = None;
 }
 

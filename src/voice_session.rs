@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use jni::objects::{GlobalRef, JObject};
 use jni::JNIEnv;
+use zeroize::Zeroize;
 use crate::engine;
 
 pub struct SendStream(#[allow(dead_code)] pub cpal::Stream);
@@ -119,7 +120,10 @@ pub fn start_recording(env: &mut JNIEnv, state: &mut VoiceSessionState) {
     let stream_result = device.build_input_stream(
         &config,
         move |data: &[f32], _: &_| {
-            buffer_clone_f32.lock().unwrap().extend_from_slice(data);
+            buffer_clone_f32.lock().unwrap_or_else(|poisoned| {
+                log::error!("audio buffer (f32) mutex poisoned, recovering");
+                poisoned.into_inner()
+            }).extend_from_slice(data);
 
             // compute RMS
             let mut sum = 0.0f32;
@@ -144,7 +148,10 @@ pub fn start_recording(env: &mut JNIEnv, state: &mut VoiceSessionState) {
                 &config,
                 move |data: &[i16], _: &_| {
                     let f32_data: Vec<f32> = data.iter().map(|&x| x as f32 / 32768.0).collect();
-                    buffer_clone_i16.lock().unwrap().extend_from_slice(&f32_data);
+                    buffer_clone_i16.lock().unwrap_or_else(|poisoned| {
+                        log::error!("audio buffer (i16) mutex poisoned, recovering");
+                        poisoned.into_inner()
+                    }).extend_from_slice(&f32_data);
 
                     let mut sum = 0.0f32;
                     for &x in &f32_data {
@@ -229,9 +236,10 @@ pub fn stop_recording(env: &mut JNIEnv, state: &mut VoiceSessionState) {
         };
 
         match res {
-            Ok(r) => {
+            Ok(mut r) => {
                 notify_status(&mut env, obj, "Ready");
                 notify_text(&mut env, obj, &r.text);
+                Zeroize::zeroize(&mut r.text);
             }
             Err(e) => notify_status(&mut env, obj, &format!("Error: {}", e)),
         }

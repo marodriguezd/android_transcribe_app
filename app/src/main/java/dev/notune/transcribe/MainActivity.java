@@ -525,7 +525,7 @@ public class MainActivity extends AppCompatActivity {
                 String switchMsg = getString(R.string.model_switch_restart);
                 mainHandler.postDelayed(() -> {
                     if (switchMsg.equals(statusText.getText().toString())) {
-                        statusText.setText("Status: Model switch timed out. Please try again.");
+                        statusText.setText(getString(R.string.model_switch_timeout));
                     }
                 }, 30000);
             } else {

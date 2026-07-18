@@ -165,7 +165,7 @@ public class DictionaryListActivity extends AppCompatActivity {
                             dictionaryManager.exportDictionary(pendingExportId,
                                     getContentResolver().openOutputStream(uri));
                             Snackbar.make(findViewById(android.R.id.content),
-                                    "Dictionary exported", Snackbar.LENGTH_SHORT).show();
+                                    R.string.dictionary_exported, Snackbar.LENGTH_SHORT).show();
                         } catch (Exception e) {
                             Snackbar.make(findViewById(android.R.id.content),
                                     R.string.msg_import_error, Snackbar.LENGTH_LONG).show();

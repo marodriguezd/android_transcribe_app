@@ -66,10 +66,7 @@ pub struct ParakeetModel {
 
 impl Drop for ParakeetModel {
     fn drop(&mut self) {
-        log::debug!(
-            "Dropping ParakeetModel with {} vocab tokens",
-            self.vocab.len()
-        );
+        log::info!("Dropping ParakeetModel (0.6B), releasing ORT sessions");
     }
 }
 

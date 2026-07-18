@@ -8,9 +8,7 @@ import android.app.Service;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
 import android.os.Build;
-import android.os.Handler;
 import android.os.IBinder;
-import android.os.Looper;
 import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
@@ -19,6 +17,7 @@ public class ModelDownloadForegroundService extends Service {
     private static final String TAG = "ModelDlFgService";
     public static final String ACTION_START = "dev.notune.transcribe.START_MODEL_DOWNLOAD";
     public static final String ACTION_STOP = "dev.notune.transcribe.STOP_MODEL_DOWNLOAD";
+    public static final String ACTION_RETRY = "dev.notune.transcribe.action.RETRY_DOWNLOAD";
     public static final String EXTRA_VARIANT = "variant";
     private static final String CHANNEL_ID = "model_download_fg";
     private static final int NOTIFICATION_ID = 77702;
@@ -43,7 +42,7 @@ public class ModelDownloadForegroundService extends Service {
             return START_REDELIVER_INTENT;
         }
 
-        if (!ACTION_START.equals(action)) {
+        if (!ACTION_START.equals(action) && !ACTION_RETRY.equals(action)) {
             return START_NOT_STICKY;
         }
 
@@ -93,20 +92,27 @@ public class ModelDownloadForegroundService extends Service {
             @Override
             public void onError(String error, boolean retryable) {
                 Log.e(TAG, "Download error: " + error + " retryable=" + retryable);
+                Intent retryIntent = new Intent(ModelDownloadForegroundService.this, ModelDownloadForegroundService.class);
+                retryIntent.setAction(ACTION_RETRY);
+                retryIntent.putExtra(EXTRA_VARIANT, variant);
+                PendingIntent retryPendingIntent = PendingIntent.getService(
+                        ModelDownloadForegroundService.this,
+                        0,
+                        retryIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
                 NotificationManager notificationManager = getSystemService(NotificationManager.class);
                 if (notificationManager != null) {
                     Notification errorNotif = new NotificationCompat.Builder(ModelDownloadForegroundService.this, CHANNEL_ID)
                             .setSmallIcon(android.R.drawable.stat_notify_error)
                             .setContentTitle("Download failed")
-                            .setContentText(error)
+                            .setContentText("Failed to download " + getModelName(variant))
                             .setAutoCancel(true)
+                            .addAction(android.R.drawable.ic_menu_rotate, "Retry", retryPendingIntent)
                             .build();
                     notificationManager.notify(NOTIFICATION_ID, errorNotif);
                 }
-                new Handler(Looper.getMainLooper()).postDelayed(() -> {
-                    stopForeground(STOP_FOREGROUND_DETACH);
-                    stopSelf();
-                }, 2000);
+                stopForeground(STOP_FOREGROUND_DETACH);
+                stopSelf();
             }
 
             @Override

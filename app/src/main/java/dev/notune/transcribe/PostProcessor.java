@@ -6,6 +6,9 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.util.concurrent.TimeUnit;
+
+import javax.net.ssl.HostnameVerifier;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -23,7 +26,19 @@ public class PostProcessor {
     private final SettingsManager settings;
 
     public PostProcessor(SettingsManager settings) {
-        this.client = new OkHttpClient();
+        HostnameVerifier defaultVerifier = javax.net.ssl.HttpsURLConnection.getDefaultHostnameVerifier();
+        this.client = new OkHttpClient.Builder()
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .readTimeout(60, TimeUnit.SECONDS)
+                .writeTimeout(60, TimeUnit.SECONDS)
+                .hostnameVerifier((hostname, session) -> {
+                    if (!defaultVerifier.verify(hostname, session)) {
+                        Log.w(TAG, "Hostname verification failed for: " + hostname);
+                        return false;
+                    }
+                    return true;
+                })
+                .build();
         this.settings = settings;
     }
 
@@ -87,7 +102,7 @@ public class PostProcessor {
             client.newCall(request).enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
-                    Log.e(TAG, "API call failed", e);
+                    Log.e(TAG, "API call failed: " + e.getMessage());
                     callback.onError(e.getMessage());
                 }
 
@@ -95,7 +110,7 @@ public class PostProcessor {
                 public void onResponse(Call call, Response response) throws IOException {
                     if (!response.isSuccessful()) {
                         String errorBody = response.body() != null ? response.body().string() : "Unknown error";
-                        Log.e(TAG, "API error: " + response.code() + " - " + errorBody);
+                        Log.e(TAG, "API error: code=" + response.code());
                         callback.onError("API Error " + response.code());
                         return;
                     }
@@ -113,14 +128,14 @@ public class PostProcessor {
                             callback.onError("Empty response from AI");
                         }
                     } catch (Exception e) {
-                        Log.e(TAG, "Failed to parse API response", e);
+                        Log.e(TAG, "Failed to parse API response: " + e.getMessage());
                         callback.onError("Parse error: " + e.getMessage());
                     }
                 }
             });
 
         } catch (Exception e) {
-            Log.e(TAG, "Failed to create request", e);
+            Log.e(TAG, "Failed to create request: " + e.getMessage());
             callback.onError(e.getMessage());
         }
     }

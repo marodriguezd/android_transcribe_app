@@ -57,7 +57,8 @@
                     <com.google.android.material.materialswitch.MaterialSwitch
                         android:id="@+id/switch_enable"
                         android:layout_width="wrap_content"
-                        android:layout_height="wrap_content" />
+                        android:layout_height="wrap_content"
+                        android:contentDescription="@string/label_enable_post_process" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
@@ -90,7 +91,8 @@
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_marginBottom="16dp"
-                        android:hint="@string/label_api_key">
+                        android:hint="@string/label_api_key"
+                        app:endIconMode="password_toggle">
 
                         <com.google.android.material.textfield.TextInputEditText
                             android:id="@+id/edit_api_key"
@@ -135,7 +137,7 @@
                             android:background="?attr/selectableItemBackgroundBorderless"
                             android:src="@android:drawable/ic_popup_sync"
                             app:tint="?attr/colorPrimary"
-                            android:contentDescription="Refresh Models" />
+                            android:contentDescription="@string/btn_refresh_models" />
                     </LinearLayout>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>

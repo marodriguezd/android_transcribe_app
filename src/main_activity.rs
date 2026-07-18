@@ -13,8 +13,6 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_MainActivity_initNative
         android_logger::Config::default().with_max_level(log::LevelFilter::Info),
     );
 
-    let _ = ort::init().commit();
-
     let (vm_arc, activity_ref) = match env.with_local_frame(16, |env| {
         let vm = env.get_java_vm()?;
         let activity_ref = env.new_global_ref(&activity)?;

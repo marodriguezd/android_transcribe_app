@@ -47,7 +47,8 @@
         android:layout_width="match_parent"
         android:layout_height="200dp"
         android:clickable="true"
-        android:focusable="true">
+        android:focusable="true"
+        android:contentDescription="@string/desc_record">
 
         <dev.notune.transcribe.MicLevelView
             android:id="@+id/ime_mic_level"
@@ -100,7 +101,7 @@
             android:clickable="true"
             android:focusable="true"
             android:layout_marginEnd="8dp"
-            android:contentDescription="Switch keyboard"/>
+            android:contentDescription="@string/desc_switch_keyboard"/>
 
         <ImageView
             android:id="@+id/ime_space"
@@ -114,7 +115,7 @@
             android:clickable="true"
             android:focusable="true"
             android:layout_marginEnd="8dp"
-            android:contentDescription="Space"/>
+            android:contentDescription="@string/desc_space"/>
 
         <ImageView
             android:id="@+id/ime_enter"
@@ -127,7 +128,7 @@
             android:clickable="true"
             android:focusable="true"
             android:layout_marginEnd="8dp"
-            android:contentDescription="Enter"/>
+            android:contentDescription="@string/desc_enter"/>
 
         <ImageView
             android:id="@+id/ime_backspace"
@@ -139,7 +140,7 @@
             android:tint="?attr/colorOnSurfaceVariant"
             android:clickable="true"
             android:focusable="true"
-            android:contentDescription="Backspace"/>
+            android:contentDescription="@string/desc_backspace"/>
     </LinearLayout>
 
 </LinearLayout>

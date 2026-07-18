@@ -2,6 +2,7 @@ package dev.notune.transcribe;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.util.Log;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.Set;
 
 public class DictionaryManager {
+    private static final String TAG = "DictionaryManager";
     private static final String FILE_NAME = "dictionaries.json";
     private static final String KEY_HOTWORDS = "custom_hotwords";
     private static final String PREFS_NAME = "transcribe_settings";
@@ -64,7 +66,7 @@ public class DictionaryManager {
                 }
             }
         } catch (JSONException | IOException e) {
-            e.printStackTrace();
+            Log.e(TAG, "Failed to load dictionaries", e);
         }
         return list;
     }
@@ -83,7 +85,7 @@ public class DictionaryManager {
                 writer.write(root.toString());
             }
         } catch (JSONException | IOException e) {
-            e.printStackTrace();
+            Log.e(TAG, "Failed to save dictionaries", e);
         }
     }
 

@@ -2,6 +2,10 @@ package dev.notune.transcribe;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.util.Log;
+
+import androidx.security.crypto.EncryptedSharedPreferences;
+import androidx.security.crypto.MasterKey;
 
 public class SettingsManager {
     private static final String PREFS_NAME = "transcribe_settings";
@@ -81,11 +85,41 @@ public class SettingsManager {
     }
 
     public String getApiKey() {
-        return prefs.getString(KEY_API_KEY, "");
+        try {
+            MasterKey masterKey = new MasterKey.Builder(prefs_context)
+                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                    .build();
+            SharedPreferences encryptedPrefs = EncryptedSharedPreferences.create(
+                    prefs_context,
+                    PREFS_NAME + "_encrypted",
+                    masterKey,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            );
+            return encryptedPrefs.getString(KEY_API_KEY, "");
+        } catch (Exception e) {
+            Log.e("SettingsManager", "Failed to read encrypted API key", e);
+            return prefs.getString(KEY_API_KEY, ""); // fallback
+        }
     }
 
     public void setApiKey(String key) {
-        prefs.edit().putString(KEY_API_KEY, key).apply();
+        try {
+            MasterKey masterKey = new MasterKey.Builder(prefs_context)
+                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                    .build();
+            SharedPreferences encryptedPrefs = EncryptedSharedPreferences.create(
+                    prefs_context,
+                    PREFS_NAME + "_encrypted",
+                    masterKey,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            );
+            encryptedPrefs.edit().putString(KEY_API_KEY, key).apply();
+        } catch (Exception e) {
+            Log.e("SettingsManager", "Failed to write encrypted API key", e);
+            prefs.edit().putString(KEY_API_KEY, key).apply(); // fallback
+        }
     }
 
     public String getModelName() {

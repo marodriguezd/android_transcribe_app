@@ -77,7 +77,7 @@ public class RecognizeActivity extends Activity {
             if (isRecording) {
                 isRecording = false;
                 pollHandler.removeCallbacks(pollRunnable);
-                status.setText("Processing...");
+                status.setText(getString(R.string.ime_processing));
                 stopRecording();
                 if (pauseAudioActive) {
                     audioPauser.abandon(this);
@@ -89,13 +89,13 @@ public class RecognizeActivity extends Activity {
         // Permission check
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
                 != PackageManager.PERMISSION_GRANTED) {
-            status.setText("Microphone permission required.\nGrant it in the main app.");
+            status.setText(getString(R.string.recog_mic_permission_required));
             return;
         }
 
         initNative(this);
         isRecording = true;
-        status.setText("Listening... (Tap to stop)");
+        status.setText(getString(R.string.recog_listening));
         if (isPauseAudioEnabled()) {
             audioPauser.request(this);
             pauseAudioActive = true;
@@ -131,9 +131,9 @@ public class RecognizeActivity extends Activity {
     public void onStatusUpdate(String s) {
         final String shown;
         if ("Ready".equals(s)) {
-            shown = "Ready (Tap to stop)";
+            shown = getString(R.string.recog_ready);
         } else if ("Listening...".equals(s)) {
-            shown = "Listening... (Tap to stop)";
+            shown = getString(R.string.recog_listening);
         } else {
             shown = s;
         }

@@ -16,6 +16,7 @@ use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use jni::objects::{GlobalRef, JObject};
 use jni::JNIEnv;
 use once_cell::sync::Lazy;
+use zeroize::Zeroize;
 use crate::engine;
 use crate::voice_session::SendStream;
 
@@ -255,9 +256,10 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
 /// with whatever we've captured so far.
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService_stopListening(
-    _env: JNIEnv,
+    mut _env: JNIEnv,
     _class: JObject,
 ) {
+    let _auto_frame = crate::AutoLocalFrame::new(&_env, 16);
     let session = session_lock().as_ref().map(|s| (s.shared.clone(), s.stream.clone()));
     if let Some((shared, stream)) = session {
         std::thread::spawn(move || finalize(shared, stream));
@@ -267,9 +269,10 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
 /// Called from `onCancel`: discard everything, return nothing.
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService_cancelNative(
-    _env: JNIEnv,
+    mut _env: JNIEnv,
     _class: JObject,
 ) {
+    let _auto_frame = crate::AutoLocalFrame::new(&_env, 16);
     let mut guard = session_lock();
     if let Some(session) = guard.as_ref() {
         session.shared.cancelled.store(true, Ordering::SeqCst);
@@ -441,8 +444,14 @@ fn finalize(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>>) {
         eng.transcribe_samples(buffer)
     };
     match res {
-        Ok(r) if !r.text.trim().is_empty() => call_results(&mut env, target, &r.text),
-        Ok(_) => call_error(&mut env, target, ERROR_NO_MATCH),
+        Ok(mut r) => {
+            if !r.text.trim().is_empty() {
+                call_results(&mut env, target, &r.text);
+            } else {
+                call_error(&mut env, target, ERROR_NO_MATCH);
+            }
+            Zeroize::zeroize(&mut r.text);
+        }
         Err(e) => {
             log::error!("Transcription failed: {}", e);
             call_error(&mut env, target, ERROR_SERVER);

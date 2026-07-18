@@ -37,7 +37,7 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/` for 0.6B 
 | `src/engine.rs` | Global engine singleton, model loading/switching |
 | `src/main_activity.rs` | JNI bridge for initNative/switchModel |
 
-## Safety & hardening (v0.7.0+)
+## Safety & hardening (v0.8.0+)
 
 ### Rust
 - `LOAD_STATE` wrapped in `catch_unwind(AssertUnwindSafe(...))` — panics during `do_load` transition to `Failed` state + `cvar.notify_all()`, preventing permanent deadlock

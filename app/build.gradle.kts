@@ -14,8 +14,8 @@ android {
         applicationId = "dev.notune.transcribe"
         minSdk = 26
         targetSdk = 35
-        versionCode = 22
-        versionName = "0.7.0"
+        versionCode = 23
+        versionName = "0.8.0"
         ndk {
             abiFilters += "arm64-v8a"
         }
@@ -69,6 +69,7 @@ dependencies {
     implementation("com.google.android.material:material:1.12.0")
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.25.0")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
     testImplementation("org.robolectric:robolectric:4.11.1")
     testImplementation("junit:junit:4.13.2")
 

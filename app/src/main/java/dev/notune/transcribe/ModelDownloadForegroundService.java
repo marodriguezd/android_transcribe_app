@@ -17,11 +17,13 @@ public class ModelDownloadForegroundService extends Service {
     private static final String TAG = "ModelDlFgService";
     public static final String ACTION_START = "dev.notune.transcribe.START_MODEL_DOWNLOAD";
     public static final String ACTION_STOP = "dev.notune.transcribe.STOP_MODEL_DOWNLOAD";
+    public static final String ACTION_RETRY = "dev.notune.transcribe.action.RETRY_DOWNLOAD";
     public static final String EXTRA_VARIANT = "variant";
     private static final String CHANNEL_ID = "model_download_fg";
     private static final int NOTIFICATION_ID = 77702;
 
     private ModelDownloadManager downloadManager;
+    private ModelDownloadManager.ProgressCallback currentCallback;
 
     @Override
     public void onCreate() {
@@ -40,7 +42,7 @@ public class ModelDownloadForegroundService extends Service {
             return START_REDELIVER_INTENT;
         }
 
-        if (!ACTION_START.equals(action)) {
+        if (!ACTION_START.equals(action) && !ACTION_RETRY.equals(action)) {
             return START_NOT_STICKY;
         }
 
@@ -65,7 +67,14 @@ public class ModelDownloadForegroundService extends Service {
             Log.w(TAG, "startForeground failed, continuing without notification", e);
         }
 
-        ((App) getApplication()).startDownload(variant, new ModelDownloadManager.ProgressCallback() {
+        App app = (App) getApplication();
+        if (currentCallback != null) {
+            ModelDownloadManager mgr = app.getDownloadManager();
+            if (mgr != null) {
+                mgr.removeCallback(currentCallback);
+            }
+        }
+        currentCallback = new ModelDownloadManager.ProgressCallback() {
             @Override
             public void onProgress(String fileName, int percent, long bytesDownloaded, long totalBytes) {
                 NotificationManager nm = getSystemService(NotificationManager.class);
@@ -83,7 +92,26 @@ public class ModelDownloadForegroundService extends Service {
             @Override
             public void onError(String error, boolean retryable) {
                 Log.e(TAG, "Download error: " + error + " retryable=" + retryable);
-                stopForeground(STOP_FOREGROUND_REMOVE);
+                Intent retryIntent = new Intent(ModelDownloadForegroundService.this, ModelDownloadForegroundService.class);
+                retryIntent.setAction(ACTION_RETRY);
+                retryIntent.putExtra(EXTRA_VARIANT, variant);
+                PendingIntent retryPendingIntent = PendingIntent.getService(
+                        ModelDownloadForegroundService.this,
+                        0,
+                        retryIntent,
+                        PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+                NotificationManager notificationManager = getSystemService(NotificationManager.class);
+                if (notificationManager != null) {
+                    Notification errorNotif = new NotificationCompat.Builder(ModelDownloadForegroundService.this, CHANNEL_ID)
+                            .setSmallIcon(android.R.drawable.stat_notify_error)
+                            .setContentTitle("Download failed")
+                            .setContentText("Failed to download " + getModelName(variant))
+                            .setAutoCancel(true)
+                            .addAction(android.R.drawable.ic_menu_rotate, "Retry", retryPendingIntent)
+                            .build();
+                    notificationManager.notify(NOTIFICATION_ID, errorNotif);
+                }
+                stopForeground(STOP_FOREGROUND_DETACH);
                 stopSelf();
             }
 
@@ -94,7 +122,8 @@ public class ModelDownloadForegroundService extends Service {
                     nm.notify(NOTIFICATION_ID, createRetryNotification(fileName, attempt, modelName));
                 }
             }
-        });
+        };
+        app.startDownload(variant, currentCallback);
 
         return START_REDELIVER_INTENT;
     }
@@ -110,6 +139,14 @@ public class ModelDownloadForegroundService extends Service {
 
     @Override
     public void onDestroy() {
+        if (currentCallback != null) {
+            App app = (App) getApplication();
+            ModelDownloadManager mgr = app.getDownloadManager();
+            if (mgr != null) {
+                mgr.removeCallback(currentCallback);
+            }
+            currentCallback = null;
+        }
         cancel();
         super.onDestroy();
     }
@@ -157,9 +194,9 @@ public class ModelDownloadForegroundService extends Service {
 
     private String getModelName(String variant) {
         if ("0.6b".equals(variant)) {
-            return "Fast (0.6B)";
-        } else if ("1.1b".equals(variant)) {
-            return "Precise (1.1B)";
+            return getString(R.string.model_fast);
+        } else if ("180m".equals(variant)) {
+            return getString(R.string.model_fastest);
         }
         return variant;
     }

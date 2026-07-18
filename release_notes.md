@@ -2,7 +2,7 @@
 
 🧠 **Smarter AI Post-Processing**
 - **Enhanced Post-Processing Prompt**: The default post-processing prompt has been completely redesigned with a comprehensive system for speech repair, disfluency removal, inverse text normalization, and context-aware formatting. The new prompt intelligently handles filler words, self-corrections, numbered lists, developer jargon, and programmatic syntax while suppressing invalid input.
-- **Improved Custom Words Description**: Updated the Custom Words section to better explain the fuzzy matching system — just add words and adjust the correction threshold, no need for manual replacements.
+- **Custom Words System**: New dictionary engine with phonetic matching (Soundex + Levenshtein) for real-time word correction. Add your custom terms, adjust the correction threshold, and the app will automatically fix transcriptions on the fly — no manual replacements needed. Import and export your dictionaries as JSON files to share them across devices or back them up.
 
 🛠 **Bug Fixes**
 - **Fixed Double Download on First Launch**: Resolved an issue where the model download would restart when the foreground notification service started, causing duplicate downloads and confusing progress updates.

@@ -66,10 +66,7 @@ pub struct ParakeetModel {
 
 impl Drop for ParakeetModel {
     fn drop(&mut self) {
-        log::debug!(
-            "Dropping ParakeetModel with {} vocab tokens",
-            self.vocab.len()
-        );
+        log::info!("Dropping ParakeetModel (0.6B), releasing ORT sessions");
     }
 }
 
@@ -431,9 +428,15 @@ impl ParakeetModel {
 
             let outputs = self.decoder_joint.run_binding(&binding)?;
 
-            let probs = outputs.get("outputs").unwrap().try_extract_array()?;
-            let out_state1 = outputs.get("output_states_1").unwrap().try_extract_array()?;
-            let out_state2 = outputs.get("output_states_2").unwrap().try_extract_array()?;
+            let probs = outputs.get("outputs")
+                .ok_or_else(|| ParakeetError::OutputNotFound("outputs".into()))?
+                .try_extract_array()?;
+            let out_state1 = outputs.get("output_states_1")
+                .ok_or_else(|| ParakeetError::OutputNotFound("output_states_1".into()))?
+                .try_extract_array()?;
+            let out_state2 = outputs.get("output_states_2")
+                .ok_or_else(|| ParakeetError::OutputNotFound("output_states_2".into()))?
+                .try_extract_array()?;
 
             // TDT logic
             let probs_squeezed = probs.remove_axis(ndarray::Axis(0));

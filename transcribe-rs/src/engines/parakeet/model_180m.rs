@@ -1,0 +1,337 @@
+use std::collections::HashMap;
+
+use ort::ep;
+use ort::inputs;
+use ort::session::builder::GraphOptimizationLevel;
+use ort::session::Session;
+use ort::value::Tensor;
+
+use super::mel_128;
+
+const MAX_SEQUENCE_LENGTH: usize = 1024;
+const MEL_DIM: usize = 128;
+
+#[derive(Debug, Clone)]
+pub struct TimestampedResult {
+    pub text: String,
+    pub timestamps: Vec<f32>,
+    pub tokens: Vec<String>,
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum Parakeet180mError {
+    #[error("ONNX Runtime error: {0}")]
+    Ort(#[from] ort::Error),
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("Vocabulary error: {0}")]
+    Vocab(String),
+    #[error("Missing special token: {0}")]
+    MissingToken(String),
+}
+
+pub struct Parakeet180mModel {
+    encoder: Session,
+    decoder: Session,
+    vocab: Vec<String>,
+    eos_token_id: i64,
+    transcribe_input: Vec<i64>,
+}
+
+impl Drop for Parakeet180mModel {
+    fn drop(&mut self) {
+        log::info!("Dropping Parakeet180mModel, releasing ORT sessions");
+    }
+}
+
+impl Parakeet180mModel {
+    pub fn from_memory(
+        encoder_bytes: &[u8],
+        decoder_bytes: &[u8],
+        vocab_content: &str,
+    ) -> Result<Self, Parakeet180mError> {
+        let encoder = init_session_from_memory(encoder_bytes)?;
+        let decoder = init_session_from_memory(decoder_bytes)?;
+
+        let (vocab, token_map) = parse_vocab(vocab_content)?;
+
+        let eos_token_id = *token_map.get("<|endoftext|>")
+            .ok_or_else(|| Parakeet180mError::MissingToken("<|endoftext|>".into()))?;
+
+        let transcribe_input = vec![
+            *token_map.get(" ")
+                .ok_or_else(|| Parakeet180mError::MissingToken("space ' '".into()))?,
+            *token_map.get("<|startofcontext|>")
+                .ok_or_else(|| Parakeet180mError::MissingToken("<|startofcontext|>".into()))?,
+            *token_map.get("<|startoftranscript|>")
+                .ok_or_else(|| Parakeet180mError::MissingToken("<|startoftranscript|>".into()))?,
+            *token_map.get("<|emo:undefined|>")
+                .ok_or_else(|| Parakeet180mError::MissingToken("<|emo:undefined|>".into()))?,
+            *token_map.get("<|en|>")
+                .ok_or_else(|| Parakeet180mError::MissingToken("<|en|>".into()))?,
+            *token_map.get("<|en|>")
+                .ok_or_else(|| Parakeet180mError::MissingToken("<|en|> (target)".into()))?,
+            *token_map.get("<|pnc|>")
+                .ok_or_else(|| Parakeet180mError::MissingToken("<|pnc|>".into()))?,
+            *token_map.get("<|noitn|>")
+                .ok_or_else(|| Parakeet180mError::MissingToken("<|noitn|>".into()))?,
+            *token_map.get("<|notimestamp|>")
+                .ok_or_else(|| Parakeet180mError::MissingToken("<|notimestamp|>".into()))?,
+            *token_map.get("<|nodiarize|>")
+                .ok_or_else(|| Parakeet180mError::MissingToken("<|nodiarize|>".into()))?,
+        ];
+
+        log::info!(
+            "Loaded 180M AED model: {} tokens, eos_id={}",
+            vocab.len(),
+            eos_token_id
+        );
+
+        Ok(Self {
+            encoder,
+            decoder,
+            vocab,
+            eos_token_id,
+            transcribe_input,
+        })
+    }
+
+    pub fn transcribe_samples(
+        &mut self,
+        samples: Vec<f32>,
+    ) -> Result<TimestampedResult, Parakeet180mError> {
+        if samples.is_empty() {
+            return Ok(TimestampedResult {
+                text: String::new(),
+                timestamps: Vec::new(),
+                tokens: Vec::new(),
+            });
+        }
+
+        let features = mel_128::extract_mel_features(&samples);
+        let num_frames = features.nrows();
+        if num_frames == 0 {
+            return Ok(TimestampedResult {
+                text: String::new(),
+                timestamps: Vec::new(),
+                tokens: Vec::new(),
+            });
+        }
+
+        let features_t = features.t();
+        let audio_signal_data: Vec<f32> = features_t.iter().copied().collect();
+        let audio_signal = Tensor::from_array((
+            vec![1i64, MEL_DIM as i64, num_frames as i64],
+            audio_signal_data.into_boxed_slice(),
+        ))
+        .map_err(Parakeet180mError::Ort)?;
+
+        let length = Tensor::from_array((
+            vec![1i64],
+            vec![num_frames as i64].into_boxed_slice(),
+        ))
+        .map_err(Parakeet180mError::Ort)?;
+
+        let outputs = self
+            .encoder
+            .run(inputs!["audio_signal" => audio_signal, "length" => length])
+            .map_err(Parakeet180mError::Ort)?;
+
+        let enc_emb_tensor = &outputs[0];
+        let (enc_emb_shape, enc_emb_data) = enc_emb_tensor
+            .try_extract_tensor::<f32>()
+            .map_err(Parakeet180mError::Ort)?;
+        let encoder_embeddings_data: Vec<f32> = enc_emb_data.to_vec();
+        let enc_t_dim = enc_emb_shape[1] as usize;
+
+        let enc_mask_tensor = &outputs[1];
+        let (enc_mask_shape, enc_mask_data) = enc_mask_tensor
+            .try_extract_tensor::<i64>()
+            .map_err(Parakeet180mError::Ort)?;
+        let encoder_mask_data: Vec<i64> = enc_mask_data.to_vec();
+        let mask_t_dim = enc_mask_shape[1] as usize;
+
+        let mut input_ids = self.transcribe_input.clone();
+        let prefix_len = input_ids.len();
+
+        let encoder_embeddings_tensor = Tensor::from_array((
+            vec![1i64, enc_t_dim as i64, enc_emb_shape[2]],
+            encoder_embeddings_data.into_boxed_slice(),
+        ))
+        .map_err(Parakeet180mError::Ort)?;
+
+        let encoder_mask_tensor = Tensor::from_array((
+            vec![1i64, mask_t_dim as i64],
+            encoder_mask_data.into_boxed_slice(),
+        ))
+        .map_err(Parakeet180mError::Ort)?;
+
+        let mut decoder_mems_data: Vec<f32> = Vec::new();
+        let mut decoder_mems_seq_len: i64 = 0;
+        let d0: i64 = 64;
+        let d3: i64 = 128;
+
+        loop {
+            let is_first = decoder_mems_seq_len == 0;
+            let input_for_decoder: Vec<i64> = if is_first {
+                input_ids.clone()
+            } else {
+                vec![input_ids.last().copied().unwrap_or(self.eos_token_id)]
+            };
+
+            let input_tensor = Tensor::from_array((
+                vec![1i64, input_for_decoder.len() as i64],
+                input_for_decoder.into_boxed_slice(),
+            ))
+            .map_err(Parakeet180mError::Ort)?;
+
+            let mems_tensor = if is_first {
+                Tensor::from_array((
+                    vec![d0, 1i64, 0i64, d3],
+                    vec![0.0f32; 0].into_boxed_slice(),
+                ))
+                .map_err(Parakeet180mError::Ort)?
+            } else {
+                Tensor::from_array((
+                    vec![d0, 1i64, decoder_mems_seq_len, d3],
+                    decoder_mems_data.clone().into_boxed_slice(),
+                ))
+                .map_err(Parakeet180mError::Ort)?
+            };
+
+            let dec_outputs = self
+                .decoder
+                .run(inputs! {
+                    "input_ids" => input_tensor,
+                    "encoder_embeddings" => encoder_embeddings_tensor.clone(),
+                    "encoder_mask" => encoder_mask_tensor.clone(),
+                    "decoder_mems" => mems_tensor,
+                })
+                .map_err(Parakeet180mError::Ort)?;
+
+            let logits_tensor = &dec_outputs[0];
+            let (logits_shape, logits_data) = logits_tensor
+                .try_extract_tensor::<f32>()
+                .map_err(Parakeet180mError::Ort)?;
+
+            let seq_len = logits_shape[1] as usize;
+            if seq_len == 0 {
+                break;
+            }
+            let vocab_size = logits_shape[2] as usize;
+            let last_step_start = (seq_len - 1) * vocab_size;
+            let last_step_logits = &logits_data[last_step_start..last_step_start + vocab_size];
+
+            if last_step_logits.iter().any(|&x| x.is_nan()) {
+                break;
+            }
+
+            let next_token = last_step_logits
+                .iter()
+                .enumerate()
+                .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+                .map(|(idx, _)| idx as i64)
+                .unwrap_or(0);
+
+            if next_token == self.eos_token_id {
+                break;
+            }
+
+            input_ids.push(next_token);
+
+            let mems_out = &dec_outputs[1];
+            let (mems_out_shape, mems_out_data) = mems_out
+                .try_extract_tensor::<f32>()
+                .map_err(Parakeet180mError::Ort)?;
+            decoder_mems_seq_len = mems_out_shape[2];
+            decoder_mems_data = mems_out_data.to_vec();
+
+            if input_ids.len() >= MAX_SEQUENCE_LENGTH {
+                break;
+            }
+        }
+
+        let token_strs: Vec<String> = input_ids[prefix_len..]
+            .iter()
+            .filter_map(|&id| {
+                let idx = id as usize;
+                if idx < self.vocab.len() {
+                    let token = &self.vocab[idx];
+                    if !token.starts_with("<|") && !token.is_empty() {
+                        Some(token.clone())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let raw_text = token_strs.join("");
+        let text = raw_text
+            .replace('\u{2581}', " ")
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+
+        Ok(TimestampedResult {
+            text,
+            timestamps: Vec::new(),
+            tokens: token_strs,
+        })
+    }
+}
+
+fn init_session_from_memory(model_bytes: &[u8]) -> Result<Session, Parakeet180mError> {
+    let mut providers = Vec::new();
+    #[cfg(target_os = "android")]
+    {
+        providers.push(ep::NNAPI::default().build());
+        providers.push(ep::XNNPACK::default().build());
+    }
+    providers.push(ep::CPU::default().build());
+
+    let session = Session::builder()
+        .map_err(|e| Parakeet180mError::Ort(e.into()))?
+        .with_optimization_level(GraphOptimizationLevel::Level3)
+        .map_err(|e| Parakeet180mError::Ort(e.into()))?
+        .with_execution_providers(providers)
+        .map_err(|e| Parakeet180mError::Ort(e.into()))?
+        .with_parallel_execution(true)
+        .map_err(|e| Parakeet180mError::Ort(e.into()))?
+        .commit_from_memory(model_bytes)
+        .map_err(|e| Parakeet180mError::Ort(e.into()))?;
+
+    Ok(session)
+}
+
+fn parse_vocab(
+    content: &str,
+) -> Result<(Vec<String>, HashMap<String, i64>), Parakeet180mError> {
+    let mut max_id = 0usize;
+    let mut tokens_with_ids: Vec<(String, usize)> = Vec::new();
+
+    for line in content.lines() {
+        let line = line.trim_end();
+        if line.is_empty() {
+            continue;
+        }
+        if let Some((token, id_str)) = line.rsplit_once(' ') {
+            if let Ok(id) = id_str.parse::<usize>() {
+                tokens_with_ids.push((token.to_string(), id));
+                max_id = max_id.max(id);
+            }
+        }
+    }
+
+    let mut vocab = vec![String::new(); max_id + 1];
+    let mut token_map = HashMap::new();
+    for (token, id) in &tokens_with_ids {
+        let clean_token = token.replace('\u{2581}', " ");
+        vocab[*id] = clean_token.clone();
+        token_map.insert(clean_token, *id as i64);
+    }
+
+    Ok((vocab, token_map))
+}

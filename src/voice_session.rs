@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use jni::objects::{GlobalRef, JObject};
 use jni::JNIEnv;
+use zeroize::Zeroize;
 use crate::engine;
 
 pub struct SendStream(#[allow(dead_code)] pub cpal::Stream);
@@ -20,34 +21,52 @@ pub struct VoiceSessionState {
 
 fn notify_status(env: &mut JNIEnv, obj: &JObject, msg: &str) {
     if let Ok(jmsg) = env.new_string(msg) {
-        let _ = env.call_method(
+        if let Err(err) = env.call_method(
             obj,
             "onStatusUpdate",
             "(Ljava/lang/String;)V",
             &[(&jmsg).into()],
-        );
+        ) {
+            log::error!("notify_status call_method error: {}", err);
+            let _ = env.exception_clear();
+        }
     }
 }
 
 fn notify_text(env: &mut JNIEnv, obj: &JObject, text: &str) {
     if let Ok(jtxt) = env.new_string(text) {
-        let _ = env.call_method(
+        if let Err(err) = env.call_method(
             obj,
             "onTextTranscribed",
             "(Ljava/lang/String;)V",
             &[(&jtxt).into()],
-        );
+        ) {
+            log::error!("notify_text call_method error: {}", err);
+            let _ = env.exception_clear();
+        }
     }
 }
 
-pub fn init_session(env: JNIEnv, target: JObject) -> VoiceSessionState {
+pub fn init_session(env: &mut JNIEnv, target: JObject) -> Option<VoiceSessionState> {
     android_logger::init_once(
         android_logger::Config::default().with_max_level(log::LevelFilter::Info),
     );
 
-    let vm = env.get_java_vm().expect("Failed to get JavaVM");
+    let vm = match env.get_java_vm() {
+        Ok(vm) => vm,
+        Err(e) => {
+            log::error!("Failed to get JavaVM: {}", e);
+            return None;
+        }
+    };
     let vm_arc = Arc::new(vm);
-    let target_ref = env.new_global_ref(&target).expect("Failed to ref target");
+    let target_ref = match env.new_global_ref(&target) {
+        Ok(r) => r,
+        Err(e) => {
+            log::error!("Failed to ref target: {}", e);
+            return None;
+        }
+    };
 
     let state = VoiceSessionState {
         stream: None,
@@ -66,16 +85,16 @@ pub fn init_session(env: JNIEnv, target: JObject) -> VoiceSessionState {
         let _ = engine::ensure_loaded_from_thread(&vm_clone, &target_ref_clone);
     });
 
-    state
+    Some(state)
 }
 
-pub fn start_recording(mut env: JNIEnv, state: &mut VoiceSessionState) {
+pub fn start_recording(env: &mut JNIEnv, state: &mut VoiceSessionState) {
     let host = cpal::default_host();
     let device = match host.default_input_device() {
         Some(d) => d,
         None => {
             notify_status(
-                &mut env,
+                env,
                 state.target_ref.as_obj(),
                 "Error: no microphone available. Check permissions.",
             );
@@ -89,7 +108,10 @@ pub fn start_recording(mut env: JNIEnv, state: &mut VoiceSessionState) {
         buffer_size: cpal::BufferSize::Default,
     };
 
-    state.audio_buffer.lock().unwrap().clear();
+    state.audio_buffer.lock().unwrap_or_else(|poisoned| {
+        log::error!("audio_buffer mutex poisoned, recovering");
+        poisoned.into_inner()
+    }).clear();
     let buffer_clone = state.audio_buffer.clone();
     let level_clone = state.current_level.clone();
 
@@ -98,7 +120,10 @@ pub fn start_recording(mut env: JNIEnv, state: &mut VoiceSessionState) {
     let stream_result = device.build_input_stream(
         &config,
         move |data: &[f32], _: &_| {
-            buffer_clone_f32.lock().unwrap().extend_from_slice(data);
+            buffer_clone_f32.lock().unwrap_or_else(|poisoned| {
+                log::error!("audio buffer (f32) mutex poisoned, recovering");
+                poisoned.into_inner()
+            }).extend_from_slice(data);
 
             // compute RMS
             let mut sum = 0.0f32;
@@ -123,7 +148,10 @@ pub fn start_recording(mut env: JNIEnv, state: &mut VoiceSessionState) {
                 &config,
                 move |data: &[i16], _: &_| {
                     let f32_data: Vec<f32> = data.iter().map(|&x| x as f32 / 32768.0).collect();
-                    buffer_clone_i16.lock().unwrap().extend_from_slice(&f32_data);
+                    buffer_clone_i16.lock().unwrap_or_else(|poisoned| {
+                        log::error!("audio buffer (i16) mutex poisoned, recovering");
+                        poisoned.into_inner()
+                    }).extend_from_slice(&f32_data);
 
                     let mut sum = 0.0f32;
                     for &x in &f32_data {
@@ -143,11 +171,11 @@ pub fn start_recording(mut env: JNIEnv, state: &mut VoiceSessionState) {
         Ok(s) => {
             s.play().ok();
             state.stream = Some(SendStream(s));
-            notify_status(&mut env, state.target_ref.as_obj(), "Listening...");
+            notify_status(env, state.target_ref.as_obj(), "Listening...");
         }
         Err(e) => {
             notify_status(
-                &mut env,
+                env,
                 state.target_ref.as_obj(),
                 &format!("Error: failed to open microphone: {}", e),
             );
@@ -155,16 +183,19 @@ pub fn start_recording(mut env: JNIEnv, state: &mut VoiceSessionState) {
     }
 }
 
-pub fn stop_recording(mut env: JNIEnv, state: &mut VoiceSessionState) {
+pub fn stop_recording(env: &mut JNIEnv, state: &mut VoiceSessionState) {
     // Drop the stream to stop recording
     state.stream = None;
 
-    let buffer = state.audio_buffer.lock().unwrap().clone();
+    let buffer = state.audio_buffer.lock().unwrap_or_else(|poisoned| {
+        log::error!("audio_buffer mutex poisoned, recovering");
+        poisoned.into_inner()
+    }).clone();
 
     // Guard against empty buffer (mic permission denied, instant stop, etc.)
     if buffer.is_empty() {
         notify_status(
-            &mut env,
+            env,
             state.target_ref.as_obj(),
             "Error: no audio recorded. Check microphone permissions.",
         );
@@ -174,7 +205,7 @@ pub fn stop_recording(mut env: JNIEnv, state: &mut VoiceSessionState) {
     let jvm = state.jvm.clone();
     let target_ref = state.target_ref.clone();
 
-    notify_status(&mut env, target_ref.as_obj(), "Transcribing...");
+    notify_status(env, target_ref.as_obj(), "Transcribing...");
 
     std::thread::spawn(move || {
         let mut env = match jvm.attach_current_thread() {
@@ -184,33 +215,42 @@ pub fn stop_recording(mut env: JNIEnv, state: &mut VoiceSessionState) {
         let obj = target_ref.as_obj();
 
         // Wait for engine if somehow still loading
-        if engine::get_engine().is_none() {
-            if let Err(_) = engine::ensure_loaded(&mut env, obj) {
+        let (_variant, eng_arc) = match engine::ensure_loaded(&mut env, obj) {
+            Ok(Some(engine)) => engine,
+            Ok(None) => {
+                notify_status(&mut env, obj, "Error: model not loaded");
                 return;
             }
-        }
+            Err(_) => return,
+        };
 
-        if let Some((_variant, eng_arc)) = engine::get_engine() {
-            let res = {
-                let mut eng = eng_arc.lock().unwrap();
-                eng.transcribe_samples(buffer)
-            };
-
-            match res {
-                Ok(r) => {
-                    notify_status(&mut env, obj, "Ready");
-                    notify_text(&mut env, obj, &r.text);
+        let res = {
+            let mut eng = match eng_arc.lock() {
+                Ok(g) => g,
+                Err(poisoned) => {
+                    log::error!("engine mutex poisoned, recovering");
+                    poisoned.into_inner()
                 }
-                Err(e) => notify_status(&mut env, obj, &format!("Error: {}", e)),
+            };
+            eng.transcribe_samples(buffer)
+        };
+
+        match res {
+            Ok(mut r) => {
+                notify_status(&mut env, obj, "Ready");
+                notify_text(&mut env, obj, &r.text);
+                Zeroize::zeroize(&mut r.text);
             }
-        } else {
-            notify_status(&mut env, obj, "Error: model not loaded");
+            Err(e) => notify_status(&mut env, obj, &format!("Error: {}", e)),
         }
     });
 }
 
-pub fn cancel_recording(mut env: JNIEnv, state: &mut VoiceSessionState) {
+pub fn cancel_recording(env: &mut JNIEnv, state: &mut VoiceSessionState) {
     state.stream = None;
-    state.audio_buffer.lock().unwrap().clear();
-    notify_status(&mut env, state.target_ref.as_obj(), "Canceled");
+    state.audio_buffer.lock().unwrap_or_else(|poisoned| {
+        log::error!("audio_buffer mutex poisoned, recovering");
+        poisoned.into_inner()
+    }).clear();
+    notify_status(env, state.target_ref.as_obj(), "Canceled");
 }

@@ -5,6 +5,21 @@ import java.util.List;
 import java.util.regex.Pattern;
 
 public class WordCorrector {
+    private static final Pattern ES_FILLER_PATTERN = Pattern.compile(
+            "\\b(?:ehm|mmm|este|o sea|eh|ah|pues|bueno)\\b",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern EN_FILLER_PATTERN = Pattern.compile(
+            "\\b(?:uh|um|ah|er|like|hmm|you know|i mean)\\b",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern REPEATED_WORD_PATTERN = Pattern.compile(
+            "\\b(\\w+)(?:\\s+\\1){2,}\\b",
+            Pattern.CASE_INSENSITIVE
+    );
+    private static final Pattern MULTI_SPACE_PATTERN = Pattern.compile("\\s{2,}");
+    private static final Pattern NON_ALNUM_PATTERN = Pattern.compile("[^a-z0-9&]");
+    private static final Pattern NON_ALNUM_NOAMP_PATTERN = Pattern.compile("[^a-z0-9]");
     private final List<NormalizedEntry> entries;
     private final double threshold;
 
@@ -15,12 +30,12 @@ public class WordCorrector {
             if (word == null || word.isEmpty()) continue;
             String normalized = normalize(word);
             if (!normalized.isEmpty()) {
-                entries.add(new NormalizedEntry(normalized, word));
+                entries.add(new NormalizedEntry(normalized, word, soundex(normalized)));
             }
             if (word.contains("&")) {
                 String expanded = normalizeExpanded(word);
                 if (!expanded.isEmpty() && !expanded.equals(normalized)) {
-                    entries.add(new NormalizedEntry(expanded, word));
+                    entries.add(new NormalizedEntry(expanded, word, soundex(expanded)));
                 }
             }
         }
@@ -66,6 +81,11 @@ public class WordCorrector {
         return word.toLowerCase().replace("&", "and").replaceAll("[^a-z0-9]", "");
     }
 
+    // Package-private for testing
+    static Pattern getNonAlnumPattern() {
+        return NON_ALNUM_PATTERN;
+    }
+
     private String joinWithoutPunct(String[] tokens, int start, int n) {
         StringBuilder sb = new StringBuilder();
         for (int i = start; i < start + n; i++) {
@@ -77,6 +97,7 @@ public class WordCorrector {
     private BestMatch findBestMatch(String joined) {
         BestMatch best = null;
         double bestScore = threshold;
+        String joinedSoundex = soundex(joined);
         for (NormalizedEntry entry : entries) {
             int maxLen = Math.max(joined.length(), entry.length);
             if (maxLen == 0) continue;
@@ -84,10 +105,8 @@ public class WordCorrector {
             if (lenDiff >= threshold) continue;
             double levDist = levenshtein(joined, entry.normalized);
             double levScore = levDist / maxLen;
-            String soundex1 = soundex(joined);
-            String soundex2 = soundex(entry.normalized);
             double combinedScore;
-            if (!soundex1.isEmpty() && soundex1.equals(soundex2)) {
+            if (!joinedSoundex.isEmpty() && joinedSoundex.equals(entry.soundexCode)) {
                 combinedScore = levScore * 0.3;
             } else {
                 combinedScore = levScore;
@@ -193,35 +212,28 @@ public class WordCorrector {
 
         String result = removeFillerWords(text, lang);
 
-        result = result.replaceAll("(?i)\\b(\\w+)(?:\\s+\\1){2,}\\b", "$1");
+        result = REPEATED_WORD_PATTERN.matcher(result).replaceAll("$1");
 
-        result = result.replaceAll("\\s{2,}", " ").trim();
+        result = MULTI_SPACE_PATTERN.matcher(result).replaceAll(" ").trim();
 
         return result;
     }
 
     private static String removeFillerWords(String text, String lang) {
-        String[] fillers;
-        if ("es".equals(lang)) {
-            fillers = new String[]{"ehm", "mmm", "este", "o sea", "eh", "ah", "pues", "bueno"};
-        } else {
-            fillers = new String[]{"uh", "um", "ah", "er", "like", "hmm", "you know", "i mean"};
-        }
-        String result = text;
-        for (String filler : fillers) {
-            result = result.replaceAll("(?i)\\b" + Pattern.quote(filler) + "\\b", "");
-        }
-        return result;
+        Pattern pattern = "es".equals(lang) ? ES_FILLER_PATTERN : EN_FILLER_PATTERN;
+        return pattern.matcher(text).replaceAll("");
     }
 
     private static class NormalizedEntry {
         String normalized;
         String original;
         int length;
-        NormalizedEntry(String normalized, String original) {
+        String soundexCode;
+        NormalizedEntry(String normalized, String original, String soundexCode) {
             this.normalized = normalized;
             this.original = original;
             this.length = normalized.length();
+            this.soundexCode = soundexCode;
         }
     }
 

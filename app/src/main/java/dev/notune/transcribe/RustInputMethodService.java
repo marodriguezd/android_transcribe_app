@@ -13,6 +13,7 @@ import android.os.Looper;
 import android.util.Log;
 import android.content.Context;
 import android.content.pm.PackageManager;
+import androidx.core.content.ContextCompat;
 import android.view.MotionEvent;
 import android.view.inputmethod.EditorInfo;
 import java.io.File;
@@ -54,6 +55,7 @@ public class RustInputMethodService extends InputMethodService {
     private boolean pauseAudioActive = false;
     private SettingsManager settingsManager;
     private PostProcessor postProcessor;
+    private volatile boolean destroyed = false;
     // Whether an editor is currently focused/started for input. Tracked via
     // onStartInput/onFinishInput because getCurrentInputConnection() returns a
     // non-null no-op connection when nothing is focused, so commitText would be
@@ -75,7 +77,7 @@ public class RustInputMethodService extends InputMethodService {
         postProcessor = new PostProcessor(settingsManager);
         new Thread(() -> {
             try {
-                initNative(this);
+                if (!destroyed) initNative(RustInputMethodService.this);
             } catch (Exception e) {
                 Log.e(TAG, "Error in initNative", e);
             }
@@ -102,7 +104,7 @@ public class RustInputMethodService extends InputMethodService {
             progressBar = view.findViewById(R.id.ime_progress);
             recordContainer = view.findViewById(R.id.ime_record_container);
             micIcon = view.findViewById(R.id.ime_mic_icon);
-            micIcon.setColorFilter(0xFF2196F3); // Blue
+            micIcon.setColorFilter(ContextCompat.getColor(this, R.color.mic_active));
             hintView = view.findViewById(R.id.ime_hint);
             backspaceButton = view.findViewById(R.id.ime_backspace);
             spaceButton = view.findViewById(R.id.ime_space);
@@ -220,8 +222,8 @@ public class RustInputMethodService extends InputMethodService {
                 // Check microphone permission
                 if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
                         != PackageManager.PERMISSION_GRANTED) {
-                    if (statusView != null) statusView.setText("No mic permission - grant in app");
-                    if (hintView != null) hintView.setText("Open the app to grant permission");
+                    if (statusView != null) statusView.setText(getString(R.string.ime_no_mic_permission));
+                    if (hintView != null) hintView.setText(getString(R.string.ime_open_app_for_permission));
                     return;
                 }
 
@@ -243,7 +245,7 @@ public class RustInputMethodService extends InputMethodService {
                 }
             });
 
-            updateUiState();
+            updateUiState(lastStatus.contains("Loading") || lastStatus.contains("Initializing"));
             return view;
         } catch (Exception e) {
             Log.e(TAG, "Error in onCreateInputView", e);
@@ -317,19 +319,24 @@ public class RustInputMethodService extends InputMethodService {
             inputView.setKeepScreenOn(recording);
         }
         if (recording) {
-            micIcon.setColorFilter(0xFFF44336); // Red
-            statusView.setText("Listening...");
-            hintView.setText("Tap to Stop");
+            micIcon.setColorFilter(ContextCompat.getColor(this, R.color.mic_error));
+            statusView.setText(getString(R.string.ime_listening));
+            hintView.setText(getString(R.string.ime_tap_to_stop));
         } else {
-            micIcon.setColorFilter(0xFF2196F3); // Blue
-            statusView.setText("Processing...");
-            hintView.setText("Tap to Record");
+            micIcon.setColorFilter(ContextCompat.getColor(this, R.color.mic_active));
+            statusView.setText(getString(R.string.ime_processing));
+            hintView.setText(getString(R.string.ime_tap_to_record));
         }
     }
 
     @Override
     public void onDestroy() {
+        destroyed = true;
         super.onDestroy();
+        if (mainHandler != null) {
+            mainHandler.removeCallbacks(backspaceRepeatRunnable);
+            mainHandler.removeCallbacks(spaceRepeatRunnable);
+        }
         cleanupNative();
         if (pauseAudioActive) {
             audioPauser.abandon(this);
@@ -355,23 +362,22 @@ public class RustInputMethodService extends InputMethodService {
         mainHandler.post(() -> {
             Log.d(TAG, "Status: " + status);
             lastStatus = status;
-            updateUiState();
-            if (pendingSwitchBack && status.startsWith("Error")) {
+            updateUiState(lastStatus.contains("Loading") || lastStatus.contains("Initializing"));
+            if (pendingSwitchBack && isErrorStatus(status)) {
                 pendingSwitchBack = false;
                 switchToPreviousInputMethod();
             }
-            if (pauseAudioActive && status != null && status.startsWith("Error")) {
+            if (pauseAudioActive && isErrorStatus(status)) {
                 audioPauser.abandon(this);
                 pauseAudioActive = false;
             }
         });
     }
 
-    private void updateUiState() {
-        boolean isLoading = lastStatus.contains("Loading") || lastStatus.contains("Initializing");
+    private void updateUiState(boolean isLoading) {
         boolean isWaiting = lastStatus.contains("Waiting");
         boolean isTranscribing = lastStatus.contains("Transcribing") || lastStatus.contains("Processing");
-        boolean isError = lastStatus.startsWith("Error");
+        boolean isError = isErrorStatus(lastStatus);
         boolean isReady = lastStatus.equals("Ready");
 
         // Don't show internal loading states to the user
@@ -379,15 +385,14 @@ public class RustInputMethodService extends InputMethodService {
             if (isError) {
                 statusView.setText(lastStatus);
             } else if (isTranscribing || isWaiting) {
-                statusView.setText("Processing...");
+                statusView.setText(getString(R.string.ime_processing));
             } else {
-                statusView.setText("Tap to Record");
+                statusView.setText(getString(R.string.ime_tap_to_record));
             }
         }
 
-        // Hide progress bar - don't expose model loading to user
         if (progressBar != null) {
-            progressBar.setVisibility(View.GONE);
+            progressBar.setVisibility(isLoading ? View.VISIBLE : View.GONE);
         }
 
         // Disable button only during transcription/processing/waiting or fatal errors
@@ -398,7 +403,7 @@ public class RustInputMethodService extends InputMethodService {
         }
 
         if (hintView != null && !isRecording) {
-            hintView.setText("Tap to Record");
+            hintView.setText(getString(R.string.ime_tap_to_record));
         }
     }
 
@@ -409,7 +414,7 @@ public class RustInputMethodService extends InputMethodService {
             String filtered = WordCorrector.filterTranscriptionOutput(text, lang);
             String processed = settingsManager.applyDictionary(filtered);
             if (settingsManager.isPostProcessEnabled()) {
-                if (statusView != null) statusView.setText("Refining text...");
+                if (statusView != null) statusView.setText(getString(R.string.status_refining));
                 postProcessor.process(processed, new PostProcessor.PostProcessCallback() {
                     @Override
                     public void onSuccess(String refinedText) {
@@ -446,7 +451,7 @@ public class RustInputMethodService extends InputMethodService {
             pauseAudioActive = false;
         }
         updateRecordButtonUI(false);
-        if (statusView != null) statusView.setText("Tap to Record");
+        if (statusView != null) statusView.setText(getString(R.string.ime_tap_to_record));
         if (pendingSwitchBack) {
             pendingSwitchBack = false;
             switchToPreviousInputMethod();
@@ -486,5 +491,11 @@ public class RustInputMethodService extends InputMethodService {
 
     private boolean isPauseAudioEnabled() {
         return settingsManager.isPauseAudio();
+    }
+
+    private static boolean isErrorStatus(String status) {
+        if (status == null) return false;
+        String lower = status.toLowerCase(java.util.Locale.ROOT);
+        return lower.startsWith("error") || lower.contains("fail");
     }
 }

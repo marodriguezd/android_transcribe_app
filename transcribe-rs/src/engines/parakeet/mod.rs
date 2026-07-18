@@ -73,9 +73,9 @@
 //! ```
 
 pub mod engine;
-pub mod mel;
+pub mod mel_128;
 pub mod model;
-pub mod model_1_1b;
+pub mod model_180m;
 pub mod timestamps;
 
 pub use engine::{
@@ -83,5 +83,5 @@ pub use engine::{
     TimestampGranularity,
 };
 pub use model::{ParakeetError, ParakeetModel, TimestampedResult};
-pub use model_1_1b::{Parakeet1_1bError, Parakeet1_1bModel};
+pub use model_180m::{Parakeet180mError, Parakeet180mModel};
 pub use timestamps::{convert_timestamps, WordBoundary};

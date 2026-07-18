@@ -2,6 +2,7 @@ package dev.notune.transcribe;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.util.Log;
 
 import org.json.JSONArray;
 import org.json.JSONException;
@@ -22,6 +23,7 @@ import java.util.List;
 import java.util.Set;
 
 public class DictionaryManager {
+    private static final String TAG = "DictionaryManager";
     private static final String FILE_NAME = "dictionaries.json";
     private static final String KEY_HOTWORDS = "custom_hotwords";
     private static final String PREFS_NAME = "transcribe_settings";
@@ -29,12 +31,20 @@ public class DictionaryManager {
     private final Context context;
     private final File dictionariesFile;
     private List<Dictionary> dictionaries;
+    private boolean loaded = false;
 
     public DictionaryManager(Context context) {
         this.context = context.getApplicationContext();
         this.dictionariesFile = new File(this.context.getFilesDir(), FILE_NAME);
-        this.dictionaries = load();
-        migrateFromPreferences();
+        this.dictionaries = new ArrayList<>();
+    }
+
+    private void ensureLoaded() {
+        if (!loaded) {
+            loaded = true;
+            this.dictionaries = load();
+            migrateFromPreferences();
+        }
     }
 
     private List<Dictionary> load() {
@@ -56,7 +66,7 @@ public class DictionaryManager {
                 }
             }
         } catch (JSONException | IOException e) {
-            e.printStackTrace();
+            Log.e(TAG, "Failed to load dictionaries", e);
         }
         return list;
     }
@@ -75,7 +85,7 @@ public class DictionaryManager {
                 writer.write(root.toString());
             }
         } catch (JSONException | IOException e) {
-            e.printStackTrace();
+            Log.e(TAG, "Failed to save dictionaries", e);
         }
     }
 
@@ -93,10 +103,12 @@ public class DictionaryManager {
     }
 
     public List<Dictionary> getAll() {
+        ensureLoaded();
         return new ArrayList<>(dictionaries);
     }
 
     public Set<String> getActiveWords() {
+        ensureLoaded();
         Set<String> allWords = new HashSet<>();
         for (Dictionary d : dictionaries) {
             if (d.isEnabled() && d.getWords() != null) {
@@ -107,6 +119,7 @@ public class DictionaryManager {
     }
 
     public List<String> getActiveWordsList() {
+        ensureLoaded();
         List<String> allWords = new ArrayList<>();
         for (Dictionary d : dictionaries) {
             if (d.isEnabled() && d.getWords() != null) {
@@ -131,11 +144,13 @@ public class DictionaryManager {
     }
 
     public void addDictionary(Dictionary dictionary) {
+        ensureLoaded();
         dictionaries.add(dictionary);
         save();
     }
 
     public void updateDictionary(Dictionary updated) {
+        ensureLoaded();
         for (int i = 0; i < dictionaries.size(); i++) {
             if (dictionaries.get(i).getId().equals(updated.getId())) {
                 dictionaries.set(i, updated);
@@ -146,11 +161,13 @@ public class DictionaryManager {
     }
 
     public void deleteDictionary(String id) {
+        ensureLoaded();
         dictionaries.removeIf(d -> d.getId().equals(id));
         save();
     }
 
     public void addWord(String dictId, String word) {
+        ensureLoaded();
         Dictionary d = getById(dictId);
         if (d != null && !d.getWords().contains(word)) {
             d.getWords().add(word);
@@ -159,6 +176,7 @@ public class DictionaryManager {
     }
 
     public void removeWord(String dictId, String word) {
+        ensureLoaded();
         Dictionary d = getById(dictId);
         if (d != null) {
             d.getWords().remove(word);
@@ -167,6 +185,7 @@ public class DictionaryManager {
     }
 
     public void updateWord(String dictId, String oldWord, String newWord) {
+        ensureLoaded();
         Dictionary d = getById(dictId);
         if (d != null) {
             int idx = d.getWords().indexOf(oldWord);
@@ -178,6 +197,7 @@ public class DictionaryManager {
     }
 
     public void exportDictionary(String id, OutputStream outputStream) throws JSONException, IOException {
+        ensureLoaded();
         Dictionary d = getById(id);
         if (d == null) return;
         JSONObject json = d.toJson();
@@ -189,6 +209,7 @@ public class DictionaryManager {
     }
 
     public String importDictionary(InputStream inputStream) throws JSONException, IOException {
+        ensureLoaded();
         BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
         StringBuilder sb = new StringBuilder();
         String line;

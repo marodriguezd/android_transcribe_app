@@ -32,7 +32,7 @@ public class LiveSubtitleActivity extends Activity {
     }
 
     private void openOverlaySettings() {
-        Toast.makeText(this, "Please grant 'Display over other apps' permission", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, R.string.subs_grant_overlay_permission, Toast.LENGTH_LONG).show();
         
         try {
             // Use the specific app overlay settings page
@@ -48,13 +48,27 @@ public class LiveSubtitleActivity extends Activity {
                         Uri.parse("package:" + getPackageName()));
                 appSettings.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 startActivity(appSettings);
-                Toast.makeText(this, "Enable 'Display over other apps' in app settings", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, R.string.subs_enable_overlay, Toast.LENGTH_LONG).show();
             } catch (Exception e2) {
                 Log.e(TAG, "Failed to open app settings", e2);
-                Toast.makeText(this, "Please enable overlay permission in Settings", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, R.string.subs_require_overlay, Toast.LENGTH_SHORT).show();
                 finish();
             }
         }
+    }
+
+    @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        outState.putBoolean("mWaitingForOverlayPermission", mWaitingForOverlayPermission);
+        outState.putBoolean("mProjectionStarted", mProjectionStarted);
+    }
+
+    @Override
+    protected void onRestoreInstanceState(Bundle savedInstanceState) {
+        super.onRestoreInstanceState(savedInstanceState);
+        mWaitingForOverlayPermission = savedInstanceState.getBoolean("mWaitingForOverlayPermission", false);
+        mProjectionStarted = savedInstanceState.getBoolean("mProjectionStarted", false);
     }
 
     @Override
@@ -66,7 +80,7 @@ public class LiveSubtitleActivity extends Activity {
             if (Settings.canDrawOverlays(this)) {
                 startProjection();
             } else {
-                Toast.makeText(this, "Overlay permission required for subtitles", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, R.string.subs_overlay_required, Toast.LENGTH_SHORT).show();
                 finish();
             }
         }
@@ -76,7 +90,7 @@ public class LiveSubtitleActivity extends Activity {
     public void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == PERMISSION_CODE) {
             if (resultCode != RESULT_OK) {
-                Toast.makeText(this, "Screen Capture denied", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, R.string.subs_screen_capture_denied, Toast.LENGTH_SHORT).show();
                 finish();
                 return;
             }

@@ -1,8 +1,3 @@
-//! Mel-spectrogram feature extraction for Parakeet 1.1B model.
-//!
-//! The 1.1B model expects 80-dim mel filterbank features computed from raw audio,
-//! unlike the 0.6B model which uses a separate ONNX preprocessor (nemo128.onnx).
-
 use ndarray::Array2;
 use rustfft::{num_complex::Complex, FftPlanner};
 use std::f32::consts::PI;
@@ -11,14 +6,11 @@ const SAMPLE_RATE: f32 = 16000.0;
 const N_FFT: usize = 512;
 const HOP_LENGTH: usize = 160;
 const WIN_LENGTH: usize = 400;
-const N_MEL: usize = 80;
+const N_MEL: usize = 128;
 const PREEMPH_COEF: f32 = 0.97;
 const MEL_LOW_FREQ: f32 = 0.0;
-const MEL_HIGH_FREQ: f32 = 7600.0;
+const MEL_HIGH_FREQ: f32 = 8000.0;
 
-/// Compute 80-dim mel filterbank features from raw 16kHz f32 audio samples.
-///
-/// Returns a 2D array of shape `(num_frames, 80)` ready for encoder input.
 pub fn extract_mel_features(samples: &[f32]) -> Array2<f32> {
     let preemphasized = apply_preemphasis(samples);
     let stft = compute_stft(&preemphasized);
@@ -32,6 +24,9 @@ pub fn extract_mel_features(samples: &[f32]) -> Array2<f32> {
 }
 
 fn apply_preemphasis(samples: &[f32]) -> Vec<f32> {
+    if samples.is_empty() {
+        return Vec::new();
+    }
     let mut out = Vec::with_capacity(samples.len());
     out.push(samples[0]);
     for i in 1..samples.len() {
@@ -78,7 +73,8 @@ fn hz_to_mel(hz: f32) -> f32 {
 }
 
 fn mel_to_hz(mel: f32) -> f32 {
-    700.0 * (10.0_f32.powf(mel / 2595.0) - 1.0)
+    let hz = 700.0 * (10.0_f32.powf(mel / 2595.0) - 1.0);
+    if hz.is_finite() { hz } else { MEL_HIGH_FREQ }
 }
 
 fn create_mel_filterbank() -> Array2<f32> {
@@ -119,7 +115,7 @@ fn per_feature_normalize(mut features: Array2<f32>) -> Array2<f32> {
         let mut col = features.column_mut(col_idx);
         let mean: f32 = col.iter().sum::<f32>() / num_frames as f32;
         let var: f32 = col.iter().map(|&x| (x - mean).powi(2)).sum::<f32>() / num_frames as f32;
-        let std = var.sqrt().max(1e-10);
+        let std = var.max(0.0).sqrt().max(1e-10);
         for val in col.iter_mut() {
             *val = (*val - mean) / std;
         }

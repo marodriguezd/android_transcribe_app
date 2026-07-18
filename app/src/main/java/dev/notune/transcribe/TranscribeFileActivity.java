@@ -30,6 +30,7 @@ public class TranscribeFileActivity extends AppCompatActivity {
 
     private static final String TAG = "OfflineVoiceInput";
     private static final int TARGET_SAMPLE_RATE = 16000;
+    private static final long MAX_AUDIO_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
 
     static {
         try {
@@ -68,18 +69,18 @@ public class TranscribeFileActivity extends AppCompatActivity {
                 ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                 ClipData clip = ClipData.newPlainText("Transcription", text);
                 clipboard.setPrimaryClip(clip);
-                Toast.makeText(this, "Copied to clipboard", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, R.string.copied_to_clipboard, Toast.LENGTH_SHORT).show();
             }
         });
 
         Uri audioUri = getAudioUri();
         if (audioUri == null) {
-            statusText.setText("Error: No audio file received");
+            statusText.setText(getString(R.string.transcribe_error_no_audio));
             progressBar.setVisibility(View.GONE);
             return;
         }
 
-        statusText.setText("Loading model...");
+        statusText.setText(getString(R.string.transcribe_loading_model));
         initNative(this);
     }
 
@@ -106,11 +107,11 @@ public class TranscribeFileActivity extends AppCompatActivity {
     public void onStatusUpdate(String status) {
         runOnUiThread(() -> {
             if ("Ready".equals(status)) {
-                statusText.setText("Decoding audio...");
+                statusText.setText(getString(R.string.transcribe_decoding_audio));
                 startDecodeAndTranscribe();
             } else {
                 statusText.setText(status);
-                if (status != null && status.startsWith("Error")) {
+                if (isErrorStatus(status)) {
                     progressBar.setVisibility(View.GONE);
                 }
             }
@@ -136,14 +137,14 @@ public class TranscribeFileActivity extends AppCompatActivity {
             ClipData clip = ClipData.newPlainText("Transcription", processed);
             clipboard.setPrimaryClip(clip);
 
-            Toast.makeText(this, "Transcription copied to clipboard", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, R.string.transcription_copied, Toast.LENGTH_LONG).show();
         });
     }
 
     private void startDecodeAndTranscribe() {
         Uri audioUri = getAudioUri();
         if (audioUri == null) {
-            statusText.setText("Error: No audio file");
+            statusText.setText(getString(R.string.transcribe_error_no_audio_file));
             return;
         }
 
@@ -155,7 +156,7 @@ public class TranscribeFileActivity extends AppCompatActivity {
                     return;
                 }
 
-                runOnUiThread(() -> statusText.setText("Transcribing..."));
+                runOnUiThread(() -> statusText.setText(getString(R.string.transcribing)));
                 transcribeAudio(samples, samples.length);
 
             } catch (Exception e) {
@@ -349,4 +350,10 @@ public class TranscribeFileActivity extends AppCompatActivity {
     private native void initNative(TranscribeFileActivity activity);
     private native void cleanupNative();
     private native void transcribeAudio(float[] samples, int length);
+
+    private static boolean isErrorStatus(String status) {
+        if (status == null) return false;
+        String lower = status.toLowerCase(java.util.Locale.ROOT);
+        return lower.startsWith("error") || lower.contains("fail");
+    }
 }

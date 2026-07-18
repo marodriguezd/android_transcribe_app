@@ -40,7 +40,8 @@
             android:id="@+id/switch_dict_enabled"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_marginEnd="8dp" />
+            android:layout_marginEnd="8dp"
+            android:contentDescription="@string/desc_enable_dictionary" />
 
         <ImageButton
             android:id="@+id/btn_dict_overflow"

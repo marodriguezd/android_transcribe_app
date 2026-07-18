@@ -13,9 +13,10 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
-use jni::objects::{GlobalRef, JClass, JObject};
+use jni::objects::{GlobalRef, JObject};
 use jni::JNIEnv;
 use once_cell::sync::Lazy;
+use zeroize::Zeroize;
 use crate::engine;
 use crate::voice_session::SendStream;
 
@@ -66,28 +67,47 @@ struct Session {
 
 static SESSION: Lazy<Mutex<Option<Session>>> = Lazy::new(|| Mutex::new(None));
 
+fn session_lock() -> std::sync::MutexGuard<'static, Option<Session>> {
+    SESSION.lock().unwrap_or_else(|poisoned| {
+        log::error!("SESSION mutex poisoned, recovering");
+        poisoned.into_inner()
+    })
+}
+
 // --- JNI callbacks into VoiceRecognitionService -------------------------------
 
 fn call_void(env: &mut JNIEnv, obj: &JObject, method: &str) {
-    let _ = env.call_method(obj, method, "()V", &[]);
+    if let Err(err) = env.call_method(obj, method, "()V", &[]) {
+        log::error!("call_void({}) error: {}", method, err);
+        let _ = env.exception_clear();
+    }
 }
 
 fn call_rms(env: &mut JNIEnv, obj: &JObject, rms_db: f32) {
-    let _ = env.call_method(obj, "onRmsChanged", "(F)V", &[rms_db.into()]);
+    if let Err(err) = env.call_method(obj, "onRmsChanged", "(F)V", &[rms_db.into()]) {
+        log::error!("call_rms error: {}", err);
+        let _ = env.exception_clear();
+    }
 }
 
 fn call_error(env: &mut JNIEnv, obj: &JObject, code: i32) {
-    let _ = env.call_method(obj, "onError", "(I)V", &[code.into()]);
+    if let Err(err) = env.call_method(obj, "onError", "(I)V", &[code.into()]) {
+        log::error!("call_error({}) error: {}", code, err);
+        let _ = env.exception_clear();
+    }
 }
 
 fn call_results(env: &mut JNIEnv, obj: &JObject, text: &str) {
     if let Ok(jtxt) = env.new_string(text) {
-        let _ = env.call_method(
+        if let Err(err) = env.call_method(
             obj,
             "onResults",
             "(Ljava/lang/String;)V",
             &[(&jtxt).into()],
-        );
+        ) {
+            log::error!("call_results error: {}", err);
+            let _ = env.exception_clear();
+        }
     }
 }
 
@@ -97,19 +117,19 @@ fn call_results(env: &mut JNIEnv, obj: &JObject, text: &str) {
 /// recognition after a cold bind is as fast as possible.
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService_initNative(
-    env: JNIEnv,
-    _class: JClass,
+    mut env: JNIEnv,
+    _class: JObject,
     service: JObject,
 ) {
     android_logger::init_once(
         android_logger::Config::default().with_max_level(log::LevelFilter::Info),
     );
 
-    let jvm = match env.get_java_vm() {
-        Ok(vm) => Arc::new(vm),
-        Err(_) => return,
-    };
-    let target_ref = match env.new_global_ref(&service) {
+    let (jvm, target_ref) = match env.with_local_frame(16, |env| {
+        let vm = env.get_java_vm()?;
+        let target_ref = env.new_global_ref(&service)?;
+        Ok::<_, jni::errors::Error>((Arc::new(vm), target_ref))
+    }) {
         Ok(r) => r,
         Err(_) => return,
     };
@@ -123,15 +143,15 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
 /// silence-based endpoint monitor.
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService_startListening(
-    env: JNIEnv,
-    _class: JClass,
+    mut env: JNIEnv,
+    _class: JObject,
     service: JObject,
 ) {
-    let jvm = match env.get_java_vm() {
-        Ok(vm) => Arc::new(vm),
-        Err(_) => return,
-    };
-    let target = match env.new_global_ref(&service) {
+    let (jvm, target) = match env.with_local_frame(16, |env| {
+        let vm = env.get_java_vm()?;
+        let target = env.new_global_ref(&service)?;
+        Ok::<_, jni::errors::Error>((Arc::new(vm), target))
+    }) {
         Ok(r) => r,
         Err(_) => return,
     };
@@ -140,11 +160,14 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
     // startListening twice without cancel) so its monitor/finaliser can never
     // deliver stale results to this new session.
     {
-        let mut guard = SESSION.lock().unwrap();
+        let mut guard = session_lock();
         if let Some(old) = guard.take() {
             old.shared.cancelled.store(true, Ordering::SeqCst);
             old.shared.finalized.store(true, Ordering::SeqCst);
-            *old.stream.lock().unwrap() = None;
+            *old.stream.lock().unwrap_or_else(|poisoned| {
+                log::error!("stream mutex poisoned, recovering");
+                poisoned.into_inner()
+            }) = None;
         }
     }
 
@@ -177,7 +200,10 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
     let device = match host.default_input_device() {
         Some(d) => d,
         None => {
-            let mut env2 = jvm.attach_current_thread().unwrap();
+            let mut env2 = match jvm.attach_current_thread() {
+                Ok(e) => e,
+                Err(_) => return,
+            };
             call_error(&mut env2, shared.target.as_obj(), ERROR_AUDIO);
             return;
         }
@@ -199,11 +225,17 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
     match stream {
         Ok(s) => {
             s.play().ok();
-            *stream_holder.lock().unwrap() = Some(SendStream(s));
+            *stream_holder.lock().unwrap_or_else(|poisoned| {
+                log::error!("stream_holder mutex poisoned, recovering");
+                poisoned.into_inner()
+            }) = Some(SendStream(s));
         }
         Err(e) => {
             log::error!("Failed to open microphone: {}", e);
-            let mut env2 = jvm.attach_current_thread().unwrap();
+            let mut env2 = match jvm.attach_current_thread() {
+                Ok(e) => e,
+                Err(_) => return,
+            };
             call_error(&mut env2, shared.target.as_obj(), ERROR_AUDIO);
             return;
         }
@@ -214,7 +246,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
     let mon_stream = stream_holder.clone();
     std::thread::spawn(move || endpoint_monitor(mon_shared, mon_stream));
 
-    *SESSION.lock().unwrap() = Some(Session {
+    *session_lock() = Some(Session {
         shared,
         stream: stream_holder,
     });
@@ -224,10 +256,11 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
 /// with whatever we've captured so far.
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService_stopListening(
-    _env: JNIEnv,
-    _class: JClass,
+    mut _env: JNIEnv,
+    _class: JObject,
 ) {
-    let session = SESSION.lock().unwrap().as_ref().map(|s| (s.shared.clone(), s.stream.clone()));
+    let _auto_frame = crate::AutoLocalFrame::new(&_env, 16);
+    let session = session_lock().as_ref().map(|s| (s.shared.clone(), s.stream.clone()));
     if let Some((shared, stream)) = session {
         std::thread::spawn(move || finalize(shared, stream));
     }
@@ -236,14 +269,18 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
 /// Called from `onCancel`: discard everything, return nothing.
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService_cancelNative(
-    _env: JNIEnv,
-    _class: JClass,
+    mut _env: JNIEnv,
+    _class: JObject,
 ) {
-    let mut guard = SESSION.lock().unwrap();
+    let _auto_frame = crate::AutoLocalFrame::new(&_env, 16);
+    let mut guard = session_lock();
     if let Some(session) = guard.as_ref() {
         session.shared.cancelled.store(true, Ordering::SeqCst);
         session.shared.finalized.store(true, Ordering::SeqCst);
-        *session.stream.lock().unwrap() = None;
+        *session.stream.lock().unwrap_or_else(|poisoned| {
+            log::error!("session stream mutex poisoned, recovering");
+            poisoned.into_inner()
+        }) = None;
     }
     *guard = None;
 }
@@ -252,7 +289,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService_destroyNative(
     env: JNIEnv,
-    class: JClass,
+    class: JObject,
 ) {
     Java_dev_notune_transcribe_VoiceRecognitionService_cancelNative(env, class);
 }
@@ -264,7 +301,10 @@ fn audio_callback(shared: &Arc<Endpoint>, data: &[f32]) {
         return;
     }
 
-    shared.audio_buffer.lock().unwrap().extend_from_slice(data);
+    shared.audio_buffer.lock().unwrap_or_else(|poisoned| {
+        log::error!("audio_buffer mutex poisoned, recovering");
+        poisoned.into_inner()
+    }).extend_from_slice(data);
 
     // RMS -> smoothed level in 0..1 (same scaling as voice_session).
     let mut sum = 0.0f32;
@@ -274,11 +314,17 @@ fn audio_callback(shared: &Arc<Endpoint>, data: &[f32]) {
     let rms = (sum / (data.len().max(1) as f32)).sqrt();
     let level = (rms * 6.0).clamp(0.0, 1.0);
 
-    let floor = *shared.noise_floor.lock().unwrap();
+    let floor = *shared.noise_floor.lock().unwrap_or_else(|poisoned| {
+        log::error!("noise_floor mutex poisoned, recovering");
+        poisoned.into_inner()
+    });
     let is_speech = level > MIN_SPEECH_LEVEL && level > floor + SPEECH_MARGIN;
 
     if is_speech {
-        *shared.last_voice.lock().unwrap() = Instant::now();
+        *shared.last_voice.lock().unwrap_or_else(|poisoned| {
+            log::error!("last_voice mutex poisoned, recovering");
+            poisoned.into_inner()
+        }) = Instant::now();
         // First detected speech -> notify beginningOfSpeech exactly once.
         if shared
             .speech_started
@@ -291,12 +337,18 @@ fn audio_callback(shared: &Arc<Endpoint>, data: &[f32]) {
         }
     } else {
         // Slowly adapt the noise floor while no speech is present.
-        let mut nf = shared.noise_floor.lock().unwrap();
+        let mut nf = shared.noise_floor.lock().unwrap_or_else(|poisoned| {
+            log::error!("noise_floor mutex poisoned, recovering");
+            poisoned.into_inner()
+        });
         *nf = *nf * 0.95 + level * 0.05;
     }
 
     // Throttled mic-level updates for the keyboard's waveform UI.
-    let mut last = shared.last_level_sent.lock().unwrap();
+    let mut last = shared.last_level_sent.lock().unwrap_or_else(|poisoned| {
+        log::error!("last_level_sent mutex poisoned, recovering");
+        poisoned.into_inner()
+    });
     if last.elapsed() >= Duration::from_millis(LEVEL_UPDATE_MS) {
         *last = Instant::now();
         drop(last);
@@ -316,7 +368,10 @@ fn endpoint_monitor(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>
 
         let elapsed = shared.started_at.elapsed();
         let speech = shared.speech_started.load(Ordering::SeqCst);
-        let silence = shared.last_voice.lock().unwrap().elapsed();
+        let silence = shared.last_voice.lock().unwrap_or_else(|poisoned| {
+            log::error!("last_voice mutex poisoned, recovering");
+            poisoned.into_inner()
+        }).elapsed();
 
         let done = (speech && silence >= Duration::from_millis(SILENCE_MS))
             || elapsed >= Duration::from_millis(MAX_SESSION_MS)
@@ -341,9 +396,15 @@ fn finalize(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>>) {
     }
 
     // Stop the microphone (also drops the audio callback's Arc<Endpoint>).
-    *stream.lock().unwrap() = None;
+    *stream.lock().unwrap_or_else(|poisoned| {
+        log::error!("stream mutex poisoned, recovering");
+        poisoned.into_inner()
+    }) = None;
 
-    let buffer = shared.audio_buffer.lock().unwrap().clone();
+    let buffer = shared.audio_buffer.lock().unwrap_or_else(|poisoned| {
+        log::error!("audio_buffer mutex poisoned, recovering");
+        poisoned.into_inner()
+    }).clone();
     let speech = shared.speech_started.load(Ordering::SeqCst);
 
     let mut env = match shared.jvm.attach_current_thread() {
@@ -363,30 +424,38 @@ fn finalize(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>>) {
         return;
     }
 
-    if engine::get_engine().is_none() {
-        if engine::ensure_loaded(&mut env, target).is_err() {
+    let (_variant, eng_arc) = match engine::ensure_loaded(&mut env, target) {
+        Ok(Some(engine)) => engine,
+        _ => {
             call_error(&mut env, target, ERROR_SERVER);
             clear_session(&shared);
             return;
         }
-    }
+    };
 
-    match engine::get_engine() {
-        Some((_variant, eng_arc)) => {
-            let res = {
-                let mut eng = eng_arc.lock().unwrap();
-                eng.transcribe_samples(buffer)
-            };
-            match res {
-                Ok(r) if !r.text.trim().is_empty() => call_results(&mut env, target, &r.text),
-                Ok(_) => call_error(&mut env, target, ERROR_NO_MATCH),
-                Err(e) => {
-                    log::error!("Transcription failed: {}", e);
-                    call_error(&mut env, target, ERROR_SERVER);
-                }
+    let res = {
+        let mut eng = match eng_arc.lock() {
+            Ok(g) => g,
+            Err(poisoned) => {
+                log::error!("engine mutex poisoned, recovering");
+                poisoned.into_inner()
             }
+        };
+        eng.transcribe_samples(buffer)
+    };
+    match res {
+        Ok(mut r) => {
+            if !r.text.trim().is_empty() {
+                call_results(&mut env, target, &r.text);
+            } else {
+                call_error(&mut env, target, ERROR_NO_MATCH);
+            }
+            Zeroize::zeroize(&mut r.text);
         }
-        None => call_error(&mut env, target, ERROR_SERVER),
+        Err(e) => {
+            log::error!("Transcription failed: {}", e);
+            call_error(&mut env, target, ERROR_SERVER);
+        }
     }
 
     clear_session(&shared);
@@ -395,7 +464,7 @@ fn finalize(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>>) {
 /// Clear the global session, but only if it is still *this* session — a newer
 /// `startListening` may already have installed a fresh one.
 fn clear_session(shared: &Arc<Endpoint>) {
-    let mut guard = SESSION.lock().unwrap();
+    let mut guard = session_lock();
     if let Some(s) = guard.as_ref() {
         if Arc::ptr_eq(&s.shared, shared) {
             *guard = None;

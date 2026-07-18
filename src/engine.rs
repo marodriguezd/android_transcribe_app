@@ -1,6 +1,6 @@
 use once_cell::sync::Lazy;
 use std::sync::{Arc, Condvar, Mutex};
-use transcribe_rs::engines::parakeet::{Parakeet1_1bModel, ParakeetEngine};
+use transcribe_rs::engines::parakeet::{Parakeet180mModel, ParakeetEngine};
 use transcribe_rs::TranscriptionEngine;
 
 use jni::objects::{GlobalRef, JObject, JString};
@@ -11,13 +11,13 @@ use jni::JNIEnv;
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ModelVariant {
     V0_6b,
-    V1_1b,
+    V180m,
 }
 
-/// Wraps either a 0.6B or 1.1B engine behind a common interface.
+/// Wraps either a 0.6B or 180M engine behind a common interface.
 pub enum EngineWrapper {
     V0_6b(ParakeetEngine),
-    V1_1b(Parakeet1_1bModel),
+    V180m(Parakeet180mModel),
 }
 
 impl EngineWrapper {
@@ -27,7 +27,7 @@ impl EngineWrapper {
     ) -> Result<transcribe_rs::TranscriptionResult, Box<dyn std::error::Error>> {
         match self {
             EngineWrapper::V0_6b(eng) => eng.transcribe_samples(samples, None),
-            EngineWrapper::V1_1b(m) => {
+            EngineWrapper::V180m(m) => {
                 let result = m.transcribe_samples(samples)?;
                 Ok(transcribe_rs::TranscriptionResult {
                     text: result.text,
@@ -40,7 +40,7 @@ impl EngineWrapper {
     pub fn set_hotwords(&mut self, words: Vec<String>) {
         match self {
             EngineWrapper::V0_6b(eng) => eng.set_hotwords(words),
-            EngineWrapper::V1_1b(_) => { /* hotwords not supported for 1.1B yet */ }
+            EngineWrapper::V180m(_) => { /* hotwords not supported for 180M yet */ }
         }
     }
 }
@@ -63,21 +63,23 @@ enum LoadState {
 }
 
 pub fn get_engine() -> Option<(ModelVariant, Arc<Mutex<EngineWrapper>>)> {
-    GLOBAL_ENGINE.lock().unwrap().clone()
-}
-
-pub fn is_engine_loaded() -> bool {
-    GLOBAL_ENGINE.lock().unwrap().is_some()
+    GLOBAL_ENGINE.lock().unwrap_or_else(|poisoned| {
+        log::error!("GLOBAL_ENGINE mutex poisoned, recovering");
+        poisoned.into_inner()
+    }).clone()
 }
 
 fn notify_status(env: &mut JNIEnv, obj: &JObject, msg: &str) {
     if let Ok(jmsg) = env.new_string(msg) {
-        let _ = env.call_method(
+        if let Err(err) = env.call_method(
             obj,
             "onStatusUpdate",
             "(Ljava/lang/String;)V",
             &[(&jmsg).into()],
-        );
+        ) {
+            log::error!("engine notify_status error: {}", err);
+            let _ = env.exception_clear();
+        }
     }
 }
 
@@ -124,7 +126,7 @@ fn read_model_variant(env: &mut JNIEnv, context: &JObject) -> ModelVariant {
                 .map(|s| s.into())
                 .unwrap_or_else(|_| "0.6b".to_string());
             match variant_str.as_str() {
-                "1.1b" => ModelVariant::V1_1b,
+                "180m" => ModelVariant::V180m,
                 _ => ModelVariant::V0_6b,
             }
         }
@@ -133,125 +135,183 @@ fn read_model_variant(env: &mut JNIEnv, context: &JObject) -> ModelVariant {
 }
 
 /// Ensures the engine is loaded. Safe to call from multiple threads concurrently.
-pub fn ensure_loaded(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
-    if is_engine_loaded() {
+/// Returns the loaded engine directly, eliminating the TOCTOU race between
+/// a separate `ensure_loaded` + `get_engine` call pair.
+pub fn ensure_loaded(
+    env: &mut JNIEnv,
+    context: &JObject,
+) -> Result<Option<(ModelVariant, Arc<Mutex<EngineWrapper>>)>, String> {
+    if let Some(engine) = get_engine() {
         notify_status(env, context, "Ready");
-        return Ok(());
+        return Ok(Some(engine));
     }
 
     let (lock, cvar) = &*LOAD_STATE;
-    let mut state = lock.lock().unwrap();
+    let mut state = lock.lock().unwrap_or_else(|poisoned| {
+        log::error!("LOAD_STATE mutex poisoned, recovering");
+        poisoned.into_inner()
+    });
 
-    if is_engine_loaded() {
+    if let Some(engine) = get_engine() {
         notify_status(env, context, "Ready");
-        return Ok(());
+        return Ok(Some(engine));
     }
 
     match &*state {
         LoadState::Loading => {
             notify_status(env, context, "Waiting for model...");
             while *state == LoadState::Loading {
-                state = cvar.wait(state).unwrap();
+                state = cvar.wait(state).unwrap_or_else(|poisoned| {
+                    log::error!("LOAD_STATE condvar poisoned, recovering");
+                    poisoned.into_inner()
+                });
             }
             drop(state);
-            if is_engine_loaded() {
-                notify_status(env, context, "Ready");
-                Ok(())
-            } else {
-                let msg = "Model failed to load".to_string();
-                notify_status(env, context, &format!("Error: {}", msg));
-                Err(msg)
+            match get_engine() {
+                Some(engine) => {
+                    notify_status(env, context, "Ready");
+                    Ok(Some(engine))
+                }
+                None => {
+                    let msg = "Model failed to load".to_string();
+                    notify_status(env, context, &format!("Error: {}", msg));
+                    Err(msg)
+                }
             }
         }
         LoadState::Done => {
             notify_status(env, context, "Ready");
-            Ok(())
+            match get_engine() {
+                Some(engine) => Ok(Some(engine)),
+                None => Err("Model failed to load".to_string()),
+            }
         }
         LoadState::Idle | LoadState::Failed(_) => {
             *state = LoadState::Loading;
             drop(state);
 
-            let result = do_load(env, context);
+            let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| do_load(env, context))) {
+                Ok(r) => r,
+                Err(panic) => {
+                    let msg = panic.downcast_ref::<&str>()
+                        .map(|s| format!("Model loading panicked: {}", s))
+                        .or_else(|| panic.downcast_ref::<String>().map(|s| format!("Model loading panicked: {}", s)))
+                        .unwrap_or_else(|| "Model loading panicked".to_string());
+                    log::error!("{}", msg);
+                    Err(msg)
+                }
+            };
 
-            let mut state = lock.lock().unwrap();
+            let mut state = lock.lock().unwrap_or_else(|poisoned| {
+                log::error!("LOAD_STATE mutex poisoned, recovering");
+                poisoned.into_inner()
+            });
             match &result {
                 Ok(()) => *state = LoadState::Done,
                 Err(msg) => *state = LoadState::Failed(msg.clone()),
             }
             cvar.notify_all();
-            result
+            drop(state);
+            match result {
+                Ok(()) => match get_engine() {
+                    Some(engine) => Ok(Some(engine)),
+                    None => Err("Model failed to load".to_string()),
+                },
+                Err(e) => Err(e),
+            }
         }
     }
 }
 
 /// Like `ensure_loaded` but for use from a background thread.
+/// Returns the loaded engine directly, eliminating the TOCTOU race between
+/// a separate `ensure_loaded_from_thread` + `get_engine` call pair.
 pub fn ensure_loaded_from_thread(
     jvm: &Arc<jni::JavaVM>,
     target_ref: &GlobalRef,
-) -> Result<(), String> {
-    if is_engine_loaded() {
-        if let Ok(mut env) = jvm.attach_current_thread() {
-            notify_status(&mut env, target_ref.as_obj(), "Ready");
-        }
-        return Ok(());
+) -> Result<Option<(ModelVariant, Arc<Mutex<EngineWrapper>>)>, String> {
+    let mut env = jvm.attach_current_thread()
+        .map_err(|e| format!("Failed to attach JNI thread: {}", e))?;
+    let obj = target_ref.as_obj();
+
+    if let Some(engine) = get_engine() {
+        notify_status(&mut env, obj, "Ready");
+        return Ok(Some(engine));
     }
 
     let (lock, cvar) = &*LOAD_STATE;
-    let mut state = lock.lock().unwrap();
+    let mut state = lock.lock().unwrap_or_else(|poisoned| {
+        log::error!("LOAD_STATE mutex poisoned, recovering");
+        poisoned.into_inner()
+    });
 
-    if is_engine_loaded() {
-        if let Ok(mut env) = jvm.attach_current_thread() {
-            notify_status(&mut env, target_ref.as_obj(), "Ready");
-        }
-        return Ok(());
+    if let Some(engine) = get_engine() {
+        notify_status(&mut env, obj, "Ready");
+        return Ok(Some(engine));
     }
 
     match &*state {
         LoadState::Loading => {
-            if let Ok(mut env) = jvm.attach_current_thread() {
-                notify_status(&mut env, target_ref.as_obj(), "Waiting for model...");
-            }
+            notify_status(&mut env, obj, "Waiting for model...");
             while *state == LoadState::Loading {
-                state = cvar.wait(state).unwrap();
+                state = cvar.wait(state).unwrap_or_else(|poisoned| {
+                    log::error!("LOAD_STATE condvar poisoned, recovering");
+                    poisoned.into_inner()
+                });
             }
             drop(state);
-            if is_engine_loaded() {
-                if let Ok(mut env) = jvm.attach_current_thread() {
-                    notify_status(&mut env, target_ref.as_obj(), "Ready");
+            match get_engine() {
+                Some(engine) => {
+                    notify_status(&mut env, obj, "Ready");
+                    Ok(Some(engine))
                 }
-                Ok(())
-            } else {
-                let msg = "Model failed to load".to_string();
-                if let Ok(mut env) = jvm.attach_current_thread() {
-                    notify_status(&mut env, target_ref.as_obj(), &format!("Error: {}", msg));
+                None => {
+                    let msg = "Model failed to load".to_string();
+                    notify_status(&mut env, obj, &format!("Error: {}", msg));
+                    Err(msg)
                 }
-                Err(msg)
             }
         }
         LoadState::Done => {
-            if let Ok(mut env) = jvm.attach_current_thread() {
-                notify_status(&mut env, target_ref.as_obj(), "Ready");
+            notify_status(&mut env, obj, "Ready");
+            match get_engine() {
+                Some(engine) => Ok(Some(engine)),
+                None => Err("Model failed to load".to_string()),
             }
-            Ok(())
         }
         LoadState::Idle | LoadState::Failed(_) => {
             *state = LoadState::Loading;
             drop(state);
 
-            let result = if let Ok(mut env) = jvm.attach_current_thread() {
-                let obj = target_ref.as_obj();
-                do_load(&mut env, obj)
-            } else {
-                Err("Failed to attach JNI thread".to_string())
+            let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| do_load(&mut env, obj))) {
+                Ok(r) => r,
+                Err(panic) => {
+                    let msg = panic.downcast_ref::<&str>()
+                        .map(|s| format!("Model loading panicked: {}", s))
+                        .or_else(|| panic.downcast_ref::<String>().map(|s| format!("Model loading panicked: {}", s)))
+                        .unwrap_or_else(|| "Model loading panicked".to_string());
+                    log::error!("{}", msg);
+                    Err(msg)
+                }
             };
 
-            let mut state = lock.lock().unwrap();
+            let mut state = lock.lock().unwrap_or_else(|poisoned| {
+                log::error!("LOAD_STATE mutex poisoned, recovering");
+                poisoned.into_inner()
+            });
             match &result {
                 Ok(()) => *state = LoadState::Done,
                 Err(msg) => *state = LoadState::Failed(msg.clone()),
             }
             cvar.notify_all();
-            result
+            drop(state);
+            match result {
+                Ok(()) => match get_engine() {
+                    Some(engine) => Ok(Some(engine)),
+                    None => Err("Model failed to load".to_string()),
+                },
+                Err(e) => Err(e),
+            }
         }
     }
 }
@@ -259,23 +319,38 @@ pub fn ensure_loaded_from_thread(
 /// Unload the current engine and reload with the specified variant.
 pub fn switch_model(env: &mut JNIEnv, context: &JObject, variant: ModelVariant) -> Result<(), String> {
     let (lock, cvar) = &*LOAD_STATE;
-    let mut state = lock.lock().unwrap();
+    let mut state = lock.lock().unwrap_or_else(|poisoned| {
+        log::error!("LOAD_STATE mutex poisoned, recovering");
+        poisoned.into_inner()
+    });
 
     // Wait if another load is in progress
     while *state == LoadState::Loading {
-        state = cvar.wait(state).unwrap();
+        state = cvar.wait(state).unwrap_or_else(|poisoned| {
+            log::error!("LOAD_STATE condvar poisoned, recovering");
+            poisoned.into_inner()
+        });
     }
-
-    // Clear the engine while holding the load lock so no other thread
-    // can observe the engine as loaded while we are about to reload.
-    *GLOBAL_ENGINE.lock().unwrap() = None;
 
     *state = LoadState::Loading;
     drop(state);
 
-    let result = do_load_with_variant(env, context, variant);
+    let result = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| do_load_with_variant(env, context, variant))) {
+        Ok(r) => r,
+        Err(panic) => {
+            let msg = panic.downcast_ref::<&str>()
+                .map(|s| format!("Model loading panicked: {}", s))
+                .or_else(|| panic.downcast_ref::<String>().map(|s| format!("Model loading panicked: {}", s)))
+                .unwrap_or_else(|| "Model loading panicked".to_string());
+            log::error!("{}", msg);
+            Err(msg)
+        }
+    };
 
-    let mut state = lock.lock().unwrap();
+    let mut state = lock.lock().unwrap_or_else(|poisoned| {
+        log::error!("LOAD_STATE mutex poisoned, recovering");
+        poisoned.into_inner()
+    });
     match &result {
         Ok(()) => *state = LoadState::Done,
         Err(msg) => *state = LoadState::Failed(msg.clone()),
@@ -293,7 +368,7 @@ fn do_load(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
 fn do_load_with_variant(env: &mut JNIEnv, context: &JObject, variant: ModelVariant) -> Result<(), String> {
     match variant {
         ModelVariant::V0_6b => do_load_0_6b(env, context),
-        ModelVariant::V1_1b => do_load_1_1b(env, context),
+        ModelVariant::V180m => do_load_180m(env, context),
     }
 }
 
@@ -320,23 +395,23 @@ fn do_load_0_6b(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
 
     notify_status(env, context, "Reading vocabulary...");
     let vocab_path = format!("{}/vocab.txt", model_dir);
-    let vocab_content = std::fs::read_to_string(&vocab_path)
-        .map_err(|_e| format!("Model 0.6B not downloaded. Please download it from Settings."))?;
+    let     vocab_content = std::fs::read_to_string(&vocab_path)
+        .map_err(|e| format!("Model 0.6B not downloaded: {}", e))?;
 
     notify_status(env, context, "Loading encoder...");
     let encoder_path = format!("{}/encoder-model.int8.onnx", model_dir);
     let encoder_bytes = std::fs::read(&encoder_path)
-        .map_err(|_e| format!("Model 0.6B not downloaded. Please download it from Settings."))?;
+        .map_err(|e| format!("Model 0.6B not downloaded: {}", e))?;
 
     notify_status(env, context, "Loading decoder...");
     let decoder_path = format!("{}/decoder_joint-model.int8.onnx", model_dir);
     let decoder_bytes = std::fs::read(&decoder_path)
-        .map_err(|_e| format!("Model 0.6B not downloaded. Please download it from Settings."))?;
+        .map_err(|e| format!("Model 0.6B not downloaded: {}", e))?;
 
     notify_status(env, context, "Loading preprocessor...");
     let preprocessor_path = format!("{}/nemo128.onnx", model_dir);
     let preprocessor_bytes = std::fs::read(&preprocessor_path)
-        .map_err(|_e| format!("Model 0.6B not downloaded. Please download it from Settings."))?;
+        .map_err(|e| format!("Model 0.6B not downloaded: {}", e))?;
 
     notify_status(env, context, "Initializing engine...");
 
@@ -348,7 +423,10 @@ fn do_load_0_6b(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
         &vocab_content,
     ) {
         Ok(_) => {
-            *GLOBAL_ENGINE.lock().unwrap() = Some((ModelVariant::V0_6b, Arc::new(Mutex::new(EngineWrapper::V0_6b(eng)))));
+            *GLOBAL_ENGINE.lock().unwrap_or_else(|poisoned| {
+                log::error!("GLOBAL_ENGINE mutex poisoned, recovering");
+                poisoned.into_inner()
+            }) = Some((ModelVariant::V0_6b, Arc::new(Mutex::new(EngineWrapper::V0_6b(eng)))));
             notify_status(env, context, "Ready");
             Ok(())
         }
@@ -360,11 +438,9 @@ fn do_load_0_6b(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
     }
 }
 
-fn do_load_1_1b(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
-    notify_status(env, context, "Loading precise model (1.1B)...");
+fn do_load_180m(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
+    notify_status(env, context, "Loading fastest model (180M)...");
 
-    // 1.1B model files are stored in internal storage (downloaded on demand).
-    // Path: getFilesDir()/models/parakeet-tdt-1.1b-v3-int8/
     let files_dir = env
         .call_method(context, "getFilesDir", "()Ljava/io/File;", &[])
         .and_then(|v| v.l())
@@ -381,43 +457,40 @@ fn do_load_1_1b(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
             .map_err(|e| format!("Failed to get files path: {}", e))?
     };
 
-    let model_dir = format!("{}/models/parakeet-tdt-1.1b-v3-int8", files_path);
+    let model_dir = format!("{}/models/canary-180m-flash-int8", files_path);
 
     notify_status(env, context, "Reading vocabulary...");
-    let vocab_path = format!("{}/tokens.txt", model_dir);
+    let vocab_path = format!("{}/vocab.txt", model_dir);
     let vocab_content = std::fs::read_to_string(&vocab_path)
-        .map_err(|e| format!("Failed to read {}: {}", vocab_path, e))?;
+        .map_err(|e| format!("Model 180M not downloaded: {}", e))?;
 
     notify_status(env, context, "Loading encoder...");
-    let encoder_path = format!("{}/encoder.int8.onnx", model_dir);
+    let encoder_path = format!("{}/encoder-model.int8.onnx", model_dir);
     let encoder_bytes = std::fs::read(&encoder_path)
-        .map_err(|e| format!("Failed to read {}: {}", encoder_path, e))?;
+        .map_err(|e| format!("Model 180M not downloaded: {}", e))?;
 
     notify_status(env, context, "Loading decoder...");
-    let decoder_path = format!("{}/decoder.int8.onnx", model_dir);
+    let decoder_path = format!("{}/decoder-model.int8.onnx", model_dir);
     let decoder_bytes = std::fs::read(&decoder_path)
-        .map_err(|e| format!("Failed to read {}: {}", decoder_path, e))?;
+        .map_err(|e| format!("Model 180M not downloaded: {}", e))?;
 
-    notify_status(env, context, "Loading joiner...");
-    let joiner_path = format!("{}/joiner.int8.onnx", model_dir);
-    let joiner_bytes = std::fs::read(&joiner_path)
-        .map_err(|e| format!("Failed to read {}: {}", joiner_path, e))?;
+    notify_status(env, context, "Initializing fastest engine...");
 
-    notify_status(env, context, "Initializing precise engine...");
-
-    match Parakeet1_1bModel::from_memory(
+    match Parakeet180mModel::from_memory(
         &encoder_bytes,
         &decoder_bytes,
-        &joiner_bytes,
         &vocab_content,
     ) {
         Ok(model) => {
-            *GLOBAL_ENGINE.lock().unwrap() = Some((ModelVariant::V1_1b, Arc::new(Mutex::new(EngineWrapper::V1_1b(model)))));
+            *GLOBAL_ENGINE.lock().unwrap_or_else(|poisoned| {
+                log::error!("GLOBAL_ENGINE mutex poisoned, recovering");
+                poisoned.into_inner()
+            }) = Some((ModelVariant::V180m, Arc::new(Mutex::new(EngineWrapper::V180m(model)))));
             notify_status(env, context, "Ready");
             Ok(())
         }
         Err(e) => {
-            let msg = format!("1.1B model error: {}", e);
+            let msg = format!("180M model error: {}", e);
             notify_status(env, context, &format!("Error: {}", msg));
             Err(msg)
         }

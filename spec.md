@@ -6,10 +6,10 @@ Android app `OfflineVoiceInput` (package `dev.notune.transcribe`). Java + Rust (
 targetSdk 35, minSdk 26, compileSdk 35.
 
 **Problem**: On first launch, the app shows battery-optimization and notification
-permission dialogs. After granting both, tapping "Precise (1.1B)" in the welcome
+permission dialogs. After granting both, tapping "Fastest (180M)" in the welcome
 model-download dialog crashes the app with force-close.
 
-**Likely also affects** "Fast (0.6B)" — user only tested with Precise.
+**Likely also affects** "Fast (0.6B)" — user only tested with Fastest.
 
 ---
 
@@ -44,7 +44,7 @@ notification permission race) kills the service and the app process.
 
 `src/engine.rs`, function `switch_model()` (lines 260-271):
 - Sets `LOAD_STATE` to `Idle`, then calls `do_load_with_variant`.
-- `do_load_with_variant` → `do_load_0_6b` / `do_load_1_1b` sets `GLOBAL_ENGINE`
+- `do_load_with_variant` → `do_load_0_6b` / `do_load_180m` sets `GLOBAL_ENGINE`
   but **never updates `LOAD_STATE` to `Done` or `Failed`**.
 - If `initNative` thread (spawned at `MainActivity.java:183`) is still executing
   `ensure_loaded_from_thread` concurrently, it sees `Idle` and enters the
@@ -63,10 +63,10 @@ through multiple activity lifecycle transitions (pause→resume, stop→restart)
 The dialog's button handlers capture `this` (MainActivity) and `sm`
 (SettingsManager), which may become stale if the activity is recreated.
 
-### E) Unused `encoder.int8.weights` in 1.1B download list
+### E) Unused `encoder.int8.weights` in 180M download list
 
 `ModelDownloadManager.java` line 54 includes `"encoder.int8.weights"` in the
-1.1B file list, but `do_load_1_1b` in `engine.rs` never reads it.
+180m file list, but `do_load_180m` in `engine.rs` never reads it.
 This file is ~1.1 GB — wasted bandwidth and storage.
 
 ### F) `switchModel` native call not wrapped in Java try-catch
@@ -200,7 +200,7 @@ protected void onResume() {
     updateModelSelectionUI();
     if (!firstLaunchDialogShown && modelGroup != null && settingsManager != null) {
         boolean anyDownloaded = settingsManager.isModelDownloaded("0.6b")
-                || settingsManager.isModelDownloaded("1.1b");
+                || settingsManager.isModelDownloaded("180m");
         if (!anyDownloaded) {
             firstLaunchDialogShown = true;
             showFirstLaunchDownloadDialog(settingsManager);
@@ -217,24 +217,23 @@ protected void onResume() {
 Wrap all view accesses in null checks. This is purely defensive but prevents
 crashes if the activity was recreated while the dialog was alive.
 
-### Step 6 — Remove unused `encoder.int8.weights` from 1.1B file list
+### Step 6 — Remove unused `encoder.int8.weights` from 180m file list
 
 **File**: `app/src/main/java/dev/notune/transcribe/ModelDownloadManager.java`  
 **Lines 53-59**
 
 Remove `"encoder.int8.weights"` from the array:
 ```java
-MODEL_FILES.put("1.1b", new String[]{
-    "encoder.int8.onnx",
-    "decoder.int8.onnx",
-    "joiner.int8.onnx",
-    "tokens.txt"
+MODEL_FILES.put("180m", new String[]{
+    "encoder-model.int8.onnx",
+    "decoder-model.int8.onnx",
+    "vocab.txt"
 });
 ```
 
 Also update `SettingsManager.isModelDownloaded()` (line 219) which checks
-`files.length >= 4`. For 1.1B, it should now be `>= 4` (was `>= 4` with 5 files,
-now will be 4). This is fine — no change needed.
+`files.length >= 3`. For 180m, it should now be `>= 3` (was `>= 4` with 5 files,
+now will be 3). This is fine — no change needed.
 
 ### Step 7 — Wrap native `switchModel` call with try-catch
 
@@ -275,7 +274,7 @@ After implementing:
 1. Fresh install the app
 2. Grant battery optimization when prompted
 3. Grant notification permission when prompted
-4. Tap "Precise (1.1B)" in the welcome dialog
+4. Tap "Fastest (180M)" in the welcome dialog
 5. Verify: app does not crash, download starts, progress shows
 6. Verify: download completes, model loads, status shows "Ready"
 7. Repeat with "Fast (0.6B)"

@@ -28,6 +28,10 @@ pub enum Parakeet180mError {
     Vocab(String),
     #[error("Missing special token: {0}")]
     MissingToken(String),
+    #[error("Model input not found: {0}")]
+    InputNotFound(String),
+    #[error("Failed to get tensor shape for input: {0}")]
+    TensorShape(String),
 }
 
 pub struct Parakeet180mModel {
@@ -36,6 +40,8 @@ pub struct Parakeet180mModel {
     vocab: Vec<String>,
     eos_token_id: i64,
     transcribe_input: Vec<i64>,
+    decoder_num_layers: i64,
+    decoder_hidden_size: i64,
 }
 
 impl Drop for Parakeet180mModel {
@@ -81,6 +87,30 @@ impl Parakeet180mModel {
                 .ok_or_else(|| Parakeet180mError::MissingToken("<|nodiarize|>".into()))?,
         ];
 
+        let decoder_inputs = decoder.inputs();
+        let decoder_mems_shape = decoder_inputs
+            .iter()
+            .find(|input| input.name() == "decoder_mems")
+            .ok_or_else(|| {
+                Parakeet180mError::InputNotFound("decoder_mems".to_string())
+            })?
+            .dtype()
+            .tensor_shape()
+            .ok_or_else(|| {
+                Parakeet180mError::TensorShape("decoder_mems".to_string())
+            })?;
+
+        let decoder_num_layers = decoder_mems_shape[0];
+        let decoder_hidden_size = decoder_mems_shape[3];
+
+        log::info!(
+            "180M decoder_mems: [{}, ?, ?, {}] (layers={}, hidden={})",
+            decoder_num_layers,
+            decoder_hidden_size,
+            decoder_num_layers,
+            decoder_hidden_size
+        );
+
         log::info!(
             "Loaded 180M AED model: {} tokens, eos_id={}",
             vocab.len(),
@@ -93,6 +123,8 @@ impl Parakeet180mModel {
             vocab,
             eos_token_id,
             transcribe_input,
+            decoder_num_layers,
+            decoder_hidden_size,
         })
     }
 
@@ -168,8 +200,8 @@ impl Parakeet180mModel {
 
         let mut decoder_mems_data: Vec<f32> = Vec::new();
         let mut decoder_mems_seq_len: i64 = 0;
-        let d0: i64 = 64;
-        let d3: i64 = 128;
+        let d0: i64 = self.decoder_num_layers;
+        let d3: i64 = self.decoder_hidden_size;
 
         loop {
             let is_first = decoder_mems_seq_len == 0;

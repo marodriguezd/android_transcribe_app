@@ -37,6 +37,48 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/` for 0.6B 
 | `src/engine.rs` | Global engine singleton, model loading/switching |
 | `src/main_activity.rs` | JNI bridge for initNative/switchModel |
 
+## Current version
+
+- **v0.8.0** (versionCode 23) — "Security, Safety & Stability Hardening"
+- Released: 2026-07-18
+- APK: 48 MB, SHA256 `3d4b78cba...`
+- URL: https://github.com/marodriguezd/android_transcribe_app/releases/tag/v0.8.0
+
+## Branches
+
+- `main` (1986c8e) and `develop` (df8d2cd) are aligned at v0.8.0
+- Tag `v0.8.0` points to same commit on both branches
+
+## Build & release
+
+```sh
+# Build Rust + APK (requires NDK + cargo-ndk)
+./gradlew assembleRelease
+
+# Create release (after bumping version + versionCode)
+gh release create vX.Y.Z --repo marodriguezd/android_transcribe_app \
+  --title "Title (vX.Y.Z)" --notes "..." app/build/outputs/apk/release/app-release.apk#APK
+```
+
+## Session history (v0.8.0 cycle)
+
+### What was done
+1. **Model architecture**: Created 180M AED model (`model_180m.rs`) + 128-dim mel (`mel_128.rs`). Removed 1.1B Precise. Deleted `mel.rs`.
+2. **JNI engine**: `V180m` variant, `do_load_180m()`, `catch_unwind` deadlock protection, mutex poisoning recovery.
+3. **Android UI**: 2 model radios (Fastest/Fast), delete buttons, welcome dialog, accessibility `contentDescription`.
+4. **Security**: EncryptedSharedPreferences (AES256_GCM) for API key, OkHttp timeouts + hostnameVerifier, logcat redacted.
+5. **Lifecycle**: WeakReference threads, onSaveInstanceState, download callback cleanup, ForegroundService shutdown, volatile IME flag.
+6. **Code quality**: Strings/colors to resources, pre-compiled regex, lazy DictionaryManager, Soundex caching, Cargo.toml cleanup.
+7. **Release v0.7.0** (Jul 15) → **v0.8.0** (Jul 18): version bump, APK build, GitHub release, merge to main.
+
+### Verification
+- Rust: **0 warnings** in both `android_transcribe_app` + `transcribe-rs`
+- 37-point verification checklist passed
+- 3 code review rounds across 49 modified files
+
+### Next steps (planned)
+- Product website (VoxLocal.app) landing page: Hero → Features → How it Works → Model Comparison → Privacy → Open Source
+
 ## Safety & hardening (v0.8.0+)
 
 ### Rust

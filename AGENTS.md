@@ -52,37 +52,18 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/` for 0.6B 
 - **To launch**: `adb -s 192.168.1.36:38075 shell am start -n dev.notune.transcribe/.MainActivity`
 - **To capture logs**: `adb -s 192.168.1.36:38075 logcat -d | grep "180M"`
 
-## Active issue: 180M model broadcasting error
+## 180M broadcast error (fixed)
 
-After fixing `decoder_mems` dimensions (v0.8.3), the model loads but transcription crashes with:
+**Root cause**: The 180M decoder's ONNX graph concatenates one frame from `decoder_mems` to the token embedding via `Concat_1 (axis=2)` to form K/V sequences. With 10 prefix tokens + 1 mem frame → K/V has 11 positions. But the causal attention mask (`Trilu`) is built from `input_ids` length (10) → shape `[1,1,10,10]`. The attention scores `Q*K^T = [1,8,10,11]` can't broadcast with the mask `[1,1,10,10]` → axis 3: `10 ≠ 11, 10 ≠ 1`.
 
-```
-ONNX Runtime error: Non-zero status code returned while running Add node.
-Name:'/_decoder/layers.0/first_sub_layer/Add'
-Status Message: onnxruntime::BroadcastIterator::Init(ptrdiff_t, ptrdiff_t)
-axis == 1 || axis == largest was false.
-Attempting to broadcast an axis by a dimension other than 1. 10 by 11
-```
+**Fix**: Feed all tokens 1 at a time (including prefix), instead of the original approach of feeding all 10 prefix tokens in one shot then switching to 1-token autoregressive steps. With 1 input token, the mask is `[1,1,1,1]` which broadcasts to any K/V length. Architecturally correct because causal self-attention makes parallel and sequential processing equivalent — the hidden states accumulate through `decoder_mems`.
 
-**Interpretation**: The decoder's Add node at `layers.0/first_sub_layer/Add` is trying to broadcast two tensors with incompatible shapes — dimension 10 vs dimension 11. This means at least one of the inputs to the decoder has the wrong shape. Possible causes:
-1. `input_ids` length (the prefix has 10 tokens) may not match what the decoder expects
-2. `encoder_embeddings` time dimension may be misaligned with the decoder's expected cross-attention shape
-3. `decoder_mems` shape `[6, 1, 1, 1024]` may still be wrong in some way (e.g., wrong dim order)
-4. The decoder expects a different input format than what we're providing
+**Files changed**:
+- `transcribe-rs/src/engines/parakeet/model_180m.rs`: Replaced the original `is_first` branching logic with a prefix `for` loop (feeds 10 prefix tokens 1-by-1) followed by an autoregressive `loop`. Mems are always `[6, 1, N, 1024]` where N grows cumulatively.
+- `app/src/main/java/dev/notune/transcribe/TranscribeFileActivity.java`: Added `volatile boolean transcribing` flag to fix infinite `onStatusUpdate("Ready")` → `startDecodeAndTranscribe()` loop.
+- `src/transcribe_file.rs`: Added `log::error!` for decoder.run() failures to capture errors in logcat.
 
-**What's been done (uncommitted)**:
-- Added diagnostic logging to `model_180m.rs` that dumps all tensor shapes at load time and before decoder.run():
-  - All decoder inputs: name, dtype, shape (at load time)
-  - Encoder output shapes: embeddings and mask
-  - input_ids values and length
-  - All tensor shapes in the first decoder step
-- Debug APK built and installed on device
-
-**Next step**: User triggers a transcription on the device, then check logcat output:
-```sh
-adb -s 192.168.1.36:38075 logcat -d | grep "180M"
-```
-This will show the actual shapes being passed and help identify which tensor is wrong.
+**Verification**: Transcribed `dots.wav` (565K samples at 16kHz) successfully — produced 586 characters of accurate text (Steve Jobs "connecting the dots" speech). 0 Rust warnings.
 
 ## Branches
 

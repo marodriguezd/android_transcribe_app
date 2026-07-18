@@ -175,6 +175,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_TranscribeFileActivity_
                 Zeroize::zeroize(&mut r.text);
             }
             Err(e) => {
+                log::error!("transcribe_file error: {}", e);
                 notify_status(&mut env, obj, &format!("Error: {}", e));
             }
         }

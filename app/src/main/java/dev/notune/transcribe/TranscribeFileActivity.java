@@ -42,6 +42,8 @@ public class TranscribeFileActivity extends AppCompatActivity {
         }
     }
 
+    private volatile boolean transcribing = false;
+
     private TextView statusText;
     private ProgressBar progressBar;
     private View progressArea;
@@ -107,11 +109,13 @@ public class TranscribeFileActivity extends AppCompatActivity {
     public void onStatusUpdate(String status) {
         runOnUiThread(() -> {
             if ("Ready".equals(status)) {
+                if (transcribing) return;
                 statusText.setText(getString(R.string.transcribe_decoding_audio));
                 startDecodeAndTranscribe();
             } else {
                 statusText.setText(status);
                 if (isErrorStatus(status)) {
+                    transcribing = false;
                     progressBar.setVisibility(View.GONE);
                 }
             }
@@ -120,6 +124,8 @@ public class TranscribeFileActivity extends AppCompatActivity {
 
     // Called from Rust with transcription result
     public void onTextTranscribed(String text) {
+        transcribing = false;
+        Log.i(TAG, "onTextTranscribed: len=" + text.length() + " text=" + (text.length() > 100 ? text.substring(0, 100) + "..." : text));
         runOnUiThread(() -> {
             String lang = getResources().getConfiguration().locale.getLanguage();
             String filtered = WordCorrector.filterTranscriptionOutput(text, lang);
@@ -142,6 +148,7 @@ public class TranscribeFileActivity extends AppCompatActivity {
     }
 
     private void startDecodeAndTranscribe() {
+        transcribing = true;
         Uri audioUri = getAudioUri();
         if (audioUri == null) {
             statusText.setText(getString(R.string.transcribe_error_no_audio_file));
@@ -167,6 +174,7 @@ public class TranscribeFileActivity extends AppCompatActivity {
     }
 
     private void showError(String message) {
+        transcribing = false;
         runOnUiThread(() -> {
             statusText.setText(message);
             progressBar.setVisibility(View.GONE);

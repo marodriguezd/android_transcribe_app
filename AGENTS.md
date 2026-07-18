@@ -39,16 +39,17 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/` for 0.6B 
 
 ## Current version
 
-- **v0.8.3** (versionCode 26) — "Fix: 180M decoder_mems dimensions read from ONNX metadata"
+- **v0.8.5** (versionCode 28) — "Fix: propagate `initNative` engine-load errors to UI (supplements v0.8.4)"
 - Released: 2026-07-18
-- APK: TBD
-- URL: https://github.com/marodriguezd/android_transcribe_app/releases/tag/v0.8.0
+- APK: https://github.com/marodriguezd/android_transcribe_app/releases/tag/v0.8.5
+- Supersedes **v0.8.4** (released same day): a real bug in `transcribe_file.rs::initNative` silently dropped the `Err` from the engine load via `let _ = …`, leaving the UI hung on the last status text. The bug also applied to debug builds; the v0.8.4 release on the A059 was reproduced and confirmed. v0.8.5 release onward now reaches `notify_status("Error: …")` in Java so the user sees the failure reason instead of an indefinite hang.
+- URL: https://github.com/marodriguezd/android_transcribe_app/releases/tag/v0.8.5
 
 ## Device / ADB
 
 - **Device connected (Wi-Fi)**: `192.168.1.36:42841` (Samsung A059, AsteroidsEEA, **Android 16 / SDK 36**)
 - **Alternate ADB (TLS)**: `adb-00143154F001971-AbAnvz._adb-tls-connect._tcp` (same device)
-- **Debug APK installed**: debug build with diagnostic logging active on device, versionCode 26 (v0.8.3 + manual-WAV-reader pipeline)
+- **Debug APK installed**: debug build with diagnostic logging active on device, versionCode 28 (v0.8.5 + manual-WAV-reader pipeline + initNative error propagation)
 - **To launch**: `adb -s 192.168.1.36:42841 shell am start -n dev.notune.transcribe/.MainActivity`
 - **To capture logs**: `adb -s 192.168.1.36:42841 logcat -d | grep "180M"`
 - **Note**: port can rotate (was `38075`, now `42841`). Always check `adb devices` first.
@@ -170,3 +171,25 @@ gh release create vX.Y.Z --repo marodriguezd/android_transcribe_app \
 - Post-processing field shows `DEFAULT_PROMPT` from `SettingsManager` as the text, and `label_prompt` from `strings.xml` as the hint
 - Dictionary import uses `ActivityResultContracts.OpenDocument` for JSON/text files; export uses `ActivityResultContracts.CreateDocument("application/json")`
 - The 180M AED model does not support hotwords yet
+
+## Session history (v0.8.5)
+
+### What was done
+14. **InitNative silent-error bug surface** (Jul 18): while smoke-testing the v0.8.4 release APK on Samsung A059 / Android 16 / SDK 36, `TranscribeFileActivity` launched into TFA but the UI hung for 110+ seconds on the last engine-status text (`"Reading vocabulary…"`). Investigation in `src/transcribe_file.rs` showed the background thread spawned in `initNative` did `let _ = engine::ensure_loaded_from_thread(...)`, silently dropping the `Err` from a failed engine load (e.g. `Model 0.6B not downloaded` on a fresh install where the model-variant default is `0.6b` but only `180m` was on disk). Fix: propagate the `Err` to the UI via `notify_status("Error: …")` inside the spawned thread. Verified in Test A (debug build, fresh install, default variant `0.6b`, no models): UI now shows `Error: Model 0.6B not downloaded: No such file or directory (os error 2)` instead of hanging. Same fix applies to release builds (Rust code-path is shared between debug and release); the v0.8.4 release APK on the same device was reproduced and confirmed before the fix.
+15. **Release v0.8.5** (Jul 18): version bump 27 → 28 + `0.8.4` → `0.8.5`. Rebuild release APK with the fix, on-device verification on the A059 reproduces the fix path. New GitHub release **v0.8.5** at https://github.com/marodriguezd/android_transcribe_app/releases/tag/v0.8.5 with notes describing the initNative fix and explicit "supersedes v0.8.4" line.
+
+### Known Issue (v0.8.4)
+v0.8.4 release APK contains the silent-error bug above. Users who downloaded v0.8.4 may experience an indefinite UI hang on first launch. Upgrading to v0.8.5 immediately surfaces the failure with a clear error message — either the user sees an error and switches variants via MainActivity, or they see the prompt to download the missing model. Until v0.8.4's APK is replaced on the GitHub release (manual step), users should be redirected to v0.8.5.
+
+### Verification
+- Rust: **0 warnings** in both `android_transcribe_app` + `transcribe-rs`
+- Only the 3 pre-existing Java compiler warnings (source/target version deprecation)
+- v0.8.5 release APK signs cleanly with `release.keystore`
+- Test A (fix verification) on debug build + A059 + default variant + missing model: UI shows `Error: Model 0.6B not downloaded…` (was hang)
+- Pre-fix Test (warm path) was already covered by the v0.8.4 session history (`dots.wav` → 586 chars Steve Jobs + `jfk.wav` → 108 chars JFK) — the Rust engine code path is unchanged, so v0.8.5 inherits the same warm-path behaviour.
+
+### Next steps (planned) for v0.8.6 cycle
+- **(b) Build asserts** in `app/build.gradle.kts`: defensive `require(isMinifyEnabled == false && signingConfig != null)` on the `assembleRelease` task. Cheap, prevents accidental minify or unsigned builds.
+- **(c) CI connectedAndroidTest** step before tag/release: instrumentation test starts TFA on an emulator, verifies engine load + audio decode path returns the expected text (or expected `notify_status(\"Error:...\")` when wrong variant). Catches future regressions similar to the v0.8.4 silent-error bug before the binary ships.
+- Refactor: `DEFAULT_PROMPT` in `SettingsManager.java` → single source of truth from `R.string.label_prompt`.
+- Product website (VoxLocal.app) landing page: Hero / Features / How / Model Comparison / Privacy / Open Source.

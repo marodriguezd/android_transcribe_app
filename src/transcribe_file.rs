@@ -78,12 +78,20 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_TranscribeFileActivity_
     };
     *state_lock() = Some(state);
 
-    // Load engine in background
+    // Load engine in background. Propagate errors to the UI so TFA doesn't
+    // hang on the last updated status if the model load fails (e.g. default
+    // variant=0.6b on a fresh install when only the 180M model is downloaded).
     let vm_clone = vm_arc.clone();
     let target_ref_clone = target_ref.clone();
 
     std::thread::spawn(move || {
-        let _ = engine::ensure_loaded_from_thread(&vm_clone, &target_ref_clone);
+        if let Err(e) = engine::ensure_loaded_from_thread(&vm_clone, &target_ref_clone) {
+            log::error!("initNative engine load failed: {}", e);
+            if let Ok(mut env) = vm_clone.attach_current_thread() {
+                let obj = target_ref_clone.as_obj();
+                notify_status(&mut env, obj, &format!("Error: {}", e));
+            }
+        }
     });
 }
 

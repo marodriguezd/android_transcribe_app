@@ -1,0 +1,3 @@
+- [HOTFIX] UI no longer hangs indefinitely on engine-load failure (Android 16+)
+- TranscribeFileActivity surfaces "Error: …" status when the requested model is missing
+- closes v0.8.4 silent-error regression in `transcribe_file.rs::initNative`

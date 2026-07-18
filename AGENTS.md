@@ -78,6 +78,7 @@ gh release create vX.Y.Z --repo marodriguezd/android_transcribe_app \
 
 ### Next steps (planned)
 - Product website (VoxLocal.app) landing page: Hero → Features → How it Works → Model Comparison → Privacy → Open Source
+- **Refactor**: `DEFAULT_PROMPT` in `SettingsManager.java` should read from `R.string.label_prompt` instead of duplicating the string, keeping a single source of truth (both currently identical; risk of drift)
 
 ## Safety & hardening (v0.8.0+)
 

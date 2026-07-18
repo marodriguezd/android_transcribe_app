@@ -93,3 +93,8 @@ settings_has_prompt.txt
 strings_prompt.txt
 temp_retrieved.txt
 transcribe-rs/branches.txt
+
+# On-device verification screenshots (ad-hoc, not shipped)
+jfk_test_screenshot.png
+release_now.png
+release_test_screenshot.png

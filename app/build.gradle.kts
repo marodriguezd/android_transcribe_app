@@ -40,6 +40,53 @@ android {
         }
     }
 
+    // Defensive asserts for the release build. Fail fast on configurations
+    // that would silently break the app:
+    //   - isMinifyEnabled=true renames JNI callback methods called from
+    //     Rust by reflection (onStatusUpdate, onTextTranscribed, etc.) ->
+    //     NoSuchMethodError at runtime.
+    //   - signingConfig=null OR a missing keystore file would ship an
+    //     unsigned APK (Play Store rejects it; sideloaded installs warn
+    //     and don't auto-update).
+    // AGP creates assembleRelease lazily while the android { } block
+    // evaluates, so wait for the full configuration phase via
+    // afterEvaluate { } before referring to it. The keystore existence
+    // check is gated on a missing CI env var, because CI typically
+    // provisions signing material via secrets (not a checked-in keystore).
+    afterEvaluate {
+        tasks.named("assembleRelease") {
+            val releaseType = buildTypes.getByName("release")
+            doFirst {
+                require(!releaseType.isMinifyEnabled) {
+                    "release.isMinifyEnabled must be false " +
+                            "(JNI reflective call sites must not be obfuscated); " +
+                            "current value: ${releaseType.isMinifyEnabled}"
+                }
+                val cfg = releaseType.signingConfig
+                require(cfg != null) {
+                    "release.signingConfig must not be null " +
+                            "(Play Store rejects unsigned APKs); " +
+                            "current value: null"
+                }
+                if (System.getenv("CI") != null) {
+                    logger.warn(
+                        "Skipping keystore existence check in CI; " +
+                                "ensure signing material is provisioned via env " +
+                                "or secrets store (STORE_PASS / KEY_ALIAS / KEY_PASS)."
+                    )
+                } else {
+                    require(cfg.storeFile?.exists() == true) {
+                        "release keystore file is missing or unset: " +
+                                "expected at " +
+                                "${cfg.storeFile?.absolutePath ?: "<null>"} " +
+                                "(check release.keystore exists at the project root " +
+                                "and signingConfigs.release.storeFile is assigned)"
+                    }
+                }
+            }
+        }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8

@@ -88,6 +88,14 @@ impl Parakeet180mModel {
         ];
 
         let decoder_inputs = decoder.inputs();
+        for input in decoder_inputs {
+            log::info!(
+                "180M decoder input: name={}, dtype={:?}, shape={:?}",
+                input.name(),
+                input.dtype(),
+                input.dtype().tensor_shape()
+            );
+        }
         let decoder_mems_shape = decoder_inputs
             .iter()
             .find(|input| input.name() == "decoder_mems")
@@ -183,8 +191,21 @@ impl Parakeet180mModel {
         let encoder_mask_data: Vec<i64> = enc_mask_data.to_vec();
         let mask_t_dim = enc_mask_shape[1] as usize;
 
+        log::info!(
+            "180M encoder output: embeddings=[{}, {}, {}], mask=[{}, {}], frames={}",
+            enc_emb_shape[0], enc_emb_shape[1], enc_emb_shape[2],
+            enc_mask_shape[0], enc_mask_shape[1],
+            num_frames
+        );
+
         let mut input_ids = self.transcribe_input.clone();
         let prefix_len = input_ids.len();
+
+        log::info!(
+            "180M input_ids: len={}, values={:?}",
+            input_ids.len(),
+            input_ids.iter().map(|x| *x as i64).collect::<Vec<_>>()
+        );
 
         let encoder_embeddings_tensor = Tensor::from_array((
             vec![1i64, enc_t_dim as i64, enc_emb_shape[2]],
@@ -230,6 +251,14 @@ impl Parakeet180mModel {
                 ))
                 .map_err(Parakeet180mError::Ort)?
             };
+
+            if is_first {
+                log::info!(
+                    "180M decoder step: FIRST, input_ids=[1,{}], mems=[{},1,1,{}], enc_emb=[1,{},{}], enc_mask=[1,{}]",
+                    input_tensor.shape()[1],
+                    d0, d3, enc_t_dim, enc_emb_shape[2], mask_t_dim
+                );
+            }
 
             let dec_outputs = self
                 .decoder

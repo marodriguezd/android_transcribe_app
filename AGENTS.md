@@ -44,6 +44,46 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/` for 0.6B 
 - APK: TBD
 - URL: https://github.com/marodriguezd/android_transcribe_app/releases/tag/v0.8.0
 
+## Device / ADB
+
+- **Device connected**: `192.168.1.36:38075` (Samsung A059, AsteroidsEEA)
+- **Alternate ADB**: `adb-00143154F001971-AbAnvz (2)._adb-tls-connect._tcp` (same device, TLS)
+- **Debug APK installed**: debug build with diagnostic logging active on device
+- **To launch**: `adb -s 192.168.1.36:38075 shell am start -n dev.notune.transcribe/.MainActivity`
+- **To capture logs**: `adb -s 192.168.1.36:38075 logcat -d | grep "180M"`
+
+## Active issue: 180M model broadcasting error
+
+After fixing `decoder_mems` dimensions (v0.8.3), the model loads but transcription crashes with:
+
+```
+ONNX Runtime error: Non-zero status code returned while running Add node.
+Name:'/_decoder/layers.0/first_sub_layer/Add'
+Status Message: onnxruntime::BroadcastIterator::Init(ptrdiff_t, ptrdiff_t)
+axis == 1 || axis == largest was false.
+Attempting to broadcast an axis by a dimension other than 1. 10 by 11
+```
+
+**Interpretation**: The decoder's Add node at `layers.0/first_sub_layer/Add` is trying to broadcast two tensors with incompatible shapes — dimension 10 vs dimension 11. This means at least one of the inputs to the decoder has the wrong shape. Possible causes:
+1. `input_ids` length (the prefix has 10 tokens) may not match what the decoder expects
+2. `encoder_embeddings` time dimension may be misaligned with the decoder's expected cross-attention shape
+3. `decoder_mems` shape `[6, 1, 1, 1024]` may still be wrong in some way (e.g., wrong dim order)
+4. The decoder expects a different input format than what we're providing
+
+**What's been done (uncommitted)**:
+- Added diagnostic logging to `model_180m.rs` that dumps all tensor shapes at load time and before decoder.run():
+  - All decoder inputs: name, dtype, shape (at load time)
+  - Encoder output shapes: embeddings and mask
+  - input_ids values and length
+  - All tensor shapes in the first decoder step
+- Debug APK built and installed on device
+
+**Next step**: User triggers a transcription on the device, then check logcat output:
+```sh
+adb -s 192.168.1.36:38075 logcat -d | grep "180M"
+```
+This will show the actual shapes being passed and help identify which tensor is wrong.
+
 ## Branches
 
 - `main` (1986c8e) and `develop` (df8d2cd) are aligned at v0.8.0
@@ -80,6 +120,7 @@ gh release create vX.Y.Z --repo marodriguezd/android_transcribe_app \
 - Only 3 pre-existing Java compiler warnings (source/target version deprecation)
 
 ### Next steps (planned)
+- **Debug 180M broadcasting error**: Diagnostic logging installed on device, need to capture logcat after transcription attempt to see actual tensor shapes
 - Product website (VoxLocal.app) landing page: Hero → Features → How it Works → Model Comparison → Privacy → Open Source
 - **Refactor**: `DEFAULT_PROMPT` in `SettingsManager.java` should read from `R.string.label_prompt` instead of duplicating the string, keeping a single source of truth (both currently identical; risk of drift)
 

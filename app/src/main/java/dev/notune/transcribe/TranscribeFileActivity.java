@@ -19,10 +19,17 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import java.io.BufferedInputStream;
+import java.io.DataInputStream;
+import java.io.EOFException;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.ShortBuffer;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -156,21 +163,172 @@ public class TranscribeFileActivity extends AppCompatActivity {
         }
 
         new Thread(() -> {
+            float[] samples = null;
+            String usedDecoder = null;
+            Exception mediaError = null;
+
+            // Manual WAV reader is faster and more reliable than MediaExtractor on
+            // Android 16+ where MediaExtractor.setDataSource(file://Uri) frequently fails.
             try {
-                float[] samples = decodeAudioToSamples(audioUri);
-                if (samples == null || samples.length == 0) {
-                    showError("Error: Could not decode audio file");
-                    return;
-                }
-
-                runOnUiThread(() -> statusText.setText(getString(R.string.transcribing)));
-                transcribeAudio(samples, samples.length);
-
+                samples = decodeManualWav(audioUri);
+                usedDecoder = "manual-wav";
             } catch (Exception e) {
-                Log.e(TAG, "Error decoding audio", e);
-                showError("Error: " + e.getMessage());
+                Log.w(TAG, "Manual WAV reader failed, falling back to MediaExtractor: " + e.getMessage());
             }
+
+            // Fall back to MediaExtractor for compressed / non-WAV containers (MP3, M4A, OGG, …).
+            if (samples == null) {
+                try {
+                    samples = decodeAudioToSamples(audioUri);
+                    usedDecoder = "MediaExtractor";
+                } catch (Exception e) {
+                    Log.e(TAG, "MediaExtractor decode failed", e);
+                    mediaError = e;
+                }
+            }
+
+            if (samples == null || samples.length == 0) {
+                String msg = mediaError != null
+                        ? "Error: Could not decode audio: " + mediaError.getMessage()
+                        : "Error: Could not decode audio file";
+                showError(msg);
+                return;
+            }
+
+            Log.i(TAG, "Transcribing " + samples.length + " samples (decoder=" + usedDecoder + ")");
+            runOnUiThread(() -> statusText.setText(getString(R.string.transcribing)));
+            transcribeAudio(samples, samples.length);
         }).start();
+    }
+
+    /**
+     * Manual RIFF/WAVE reader for simple PCM (16-bit LE). Tries this BEFORE
+     * MediaExtractor because on Android 16+ MediaExtractor refuses file:// URIs
+     * even for the app's own external files dir. Supports mono and stereo
+     * (mixed to mono), resamples to TARGET_SAMPLE_RATE if needed.
+     * Throws IOException for non-PCM / non-16-bit / unrecognized containers so
+     * the caller can fall back to MediaExtractor.
+     */
+    private float[] decodeManualWav(Uri uri) throws IOException {
+        try (InputStream raw = openAudioStream(uri);
+             DataInputStream dis = new DataInputStream(new BufferedInputStream(raw))) {
+
+            // --- RIFF header (12 bytes) ---
+            byte[] riff = new byte[4];
+            dis.readFully(riff);
+            if (!"RIFF".equals(new String(riff, StandardCharsets.US_ASCII))) {
+                throw new IOException("Not a RIFF file (got '" + new String(riff, StandardCharsets.US_ASCII) + "')");
+            }
+            int riffSize = dis.readInt();
+            if (riffSize < 4) throw new IOException("RIFF size too small: " + riffSize);
+            byte[] wave = new byte[4];
+            dis.readFully(wave);
+            if (!"WAVE".equals(new String(wave, StandardCharsets.US_ASCII))) {
+                throw new IOException("Not a WAVE file");
+            }
+
+            int sampleRate = -1;
+            int channels = -1;
+            int bitsPerSample = -1;
+            int audioFormat = -1;
+            byte[] pcmData = null;
+
+            // --- Walk chunks ---
+            while (true) {
+                byte[] chunkIdBytes = new byte[4];
+                try {
+                    dis.readFully(chunkIdBytes);
+                } catch (EOFException eof) {
+                    throw new IOException("Unexpected EOF in chunk header");
+                }
+                int chunkSize = dis.readInt();
+                String id = new String(chunkIdBytes, StandardCharsets.US_ASCII);
+
+                if ("fmt ".equals(id)) {
+                    if (chunkSize < 16) throw new IOException("fmt chunk too small: " + chunkSize);
+                    audioFormat = dis.readShort() & 0xFFFF;
+                    channels = dis.readShort() & 0xFFFF;
+                    sampleRate = dis.readInt();
+                    dis.readInt(); // byte rate
+                    dis.readShort(); // block align
+                    bitsPerSample = dis.readShort() & 0xFFFF;
+                    int extraFmt = chunkSize - 16;
+                    if (extraFmt > 0) dis.skipBytes(extraFmt);
+                } else if ("data".equals(id)) {
+                    if (audioFormat < 0) throw new IOException("data chunk before fmt chunk");
+                    if (audioFormat != 1) {
+                        // WAVE_FORMAT_EXTENSIBLE (0xFFFE) would require parsing the
+                        // SubFormat GUID + cbSize extension to know the real
+                        // container bitsPerSample; let MediaCodec handle it.
+                        throw new IOException("Manual reader only supports PCM (format=1); got format=" + audioFormat);
+                    }
+                    if (bitsPerSample != 16) {
+                        throw new IOException("Manual reader only supports 16-bit PCM; got " + bitsPerSample + "-bit");
+                    }
+                    if (channels != 1 && channels != 2) {
+                        throw new IOException("Manual reader supports 1 or 2 channels; got " + channels);
+                    }
+                    byte[] buf = new byte[chunkSize];
+                    dis.readFully(buf);
+                    pcmData = buf;
+                    break; // we are done
+                } else {
+                    // LIST, JUNK, PAD, fact, … — skip; pad byte if chunk size was odd
+                    if (chunkSize > 0) dis.skipBytes(chunkSize);
+                    if ((chunkSize & 1) == 1) dis.skipBytes(1);
+                }
+            }
+
+            if (pcmData == null) throw new IOException("No data chunk found");
+
+            // --- PCM samples → float[] mono (single ByteBuffer view instead of byte-by-byte) ---
+            short[] rawShorts = new short[pcmData.length / 2];
+            ByteBuffer.wrap(pcmData).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(rawShorts);
+            int frameCount = rawShorts.length / channels;
+            float[] mono = new float[frameCount];
+            if (channels == 1) {
+                for (int i = 0; i < frameCount; i++) mono[i] = rawShorts[i] / 32768.0f;
+            } else { // channels == 2: average L+R
+                for (int i = 0; i < frameCount; i++) {
+                    mono[i] = ((int) rawShorts[2 * i] + (int) rawShorts[2 * i + 1]) / 65536.0f;
+                }
+            }
+
+            if (sampleRate != TARGET_SAMPLE_RATE) {
+                Log.i(TAG, "Resampling " + frameCount + " samples from " + sampleRate
+                        + " to " + TARGET_SAMPLE_RATE + " (manual reader)");
+                mono = resample(mono, sampleRate, TARGET_SAMPLE_RATE);
+            }
+
+            Log.i(TAG, "Manual WAV decoded: " + mono.length + " samples @ " + sampleRate
+                    + "Hz, " + channels + "ch, " + bitsPerSample + "-bit");
+            return mono;
+        }
+    }
+
+    /**
+     * Open an InputStream for the given audio URI. For file:// URIs, prefer a
+     * direct FileInputStream (file-system path) which bypasses the storage access
+     * framework: ContentResolver.openInputStream() returns EACCES on Android 16
+     * even for files in the app's own external files dir. For non-file schemes
+     * or unreadable paths, the caller falls back to MediaCodec via
+     * decodeAudioToSamples (which itself prefers the raw path for setDataSource).
+     */
+    private InputStream openAudioStream(Uri uri) throws IOException {
+        if ("file".equals(uri.getScheme()) && uri.getPath() != null) {
+            File f = new File(uri.getPath());
+            if (f.canRead()) {
+                Log.i(TAG, "Opening " + uri + " via direct FileInputStream");
+                return new FileInputStream(f);
+            }
+            // Don't fall through to ContentResolver for file:// — it would EACCES
+            // on Android 16+; let the outer startDecodeAndTranscribe catch and
+            // route to MediaCodec (raw path) instead.
+            throw new IOException("Cannot read file: " + uri);
+        }
+        InputStream is = getContentResolver().openInputStream(uri);
+        if (is == null) throw new IOException("null stream for " + uri);
+        return is;
     }
 
     private void showError(String message) {
@@ -186,7 +344,13 @@ public class TranscribeFileActivity extends AppCompatActivity {
      */
     private float[] decodeAudioToSamples(Uri uri) throws IOException {
         MediaExtractor extractor = new MediaExtractor();
-        extractor.setDataSource(this, uri, null);
+        // On Android 16+ the storage access framework refuses file:// URIs;
+        // pass the raw path to MediaExtractor to bypass the EACCES check.
+        if ("file".equals(uri.getScheme()) && uri.getPath() != null) {
+            extractor.setDataSource(uri.getPath());
+        } else {
+            extractor.setDataSource(this, uri, null);
+        }
 
         // Find audio track
         int audioTrackIndex = -1;

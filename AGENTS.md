@@ -46,11 +46,12 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/` for 0.6B 
 
 ## Device / ADB
 
-- **Device connected**: `192.168.1.36:38075` (Samsung A059, AsteroidsEEA)
-- **Alternate ADB**: `adb-00143154F001971-AbAnvz (2)._adb-tls-connect._tcp` (same device, TLS)
-- **Debug APK installed**: debug build with diagnostic logging active on device
-- **To launch**: `adb -s 192.168.1.36:38075 shell am start -n dev.notune.transcribe/.MainActivity`
-- **To capture logs**: `adb -s 192.168.1.36:38075 logcat -d | grep "180M"`
+- **Device connected (Wi-Fi)**: `192.168.1.36:42841` (Samsung A059, AsteroidsEEA, **Android 16 / SDK 36**)
+- **Alternate ADB (TLS)**: `adb-00143154F001971-AbAnvz._adb-tls-connect._tcp` (same device)
+- **Debug APK installed**: debug build with diagnostic logging active on device, versionCode 26 (v0.8.3 + manual-WAV-reader pipeline)
+- **To launch**: `adb -s 192.168.1.36:42841 shell am start -n dev.notune.transcribe/.MainActivity`
+- **To capture logs**: `adb -s 192.168.1.36:42841 logcat -d | grep "180M"`
+- **Note**: port can rotate (was `38075`, now `42841`). Always check `adb devices` first.
 
 ## 180M broadcast error (fixed)
 
@@ -64,6 +65,12 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/` for 0.6B 
 - `src/transcribe_file.rs`: Added `log::error!` for decoder.run() failures to capture errors in logcat.
 
 **Verification**: Transcribed `dots.wav` (565K samples at 16kHz) successfully — produced 586 characters of accurate text (Steve Jobs "connecting the dots" speech). 0 Rust warnings.
+
+**On-device re-verification (post-v0.8.3, Samsung A059 / Android 16)**:
+- Engine 180M loads with `decoder_mems: [6, 1, 1, 1024]` derived from ONNX metadata.
+- Full pipeline (manual WAV reader → encoder → decoder loop) reaches `EOS (3)` after **234 generation steps**, no `Invalid dimension` / `Broadcast` errors.
+- Output text: `Of course, it was impossible to connect the dots looking forward when I was in college, but it was v...` — 586 chars, byte-for-byte match with the desktop test fixture.
+- See "v0.8.4 manual WAV reader" entry below for the Android 16 audio-decode context.
 
 ## Branches
 
@@ -95,15 +102,20 @@ gh release create vX.Y.Z --repo marodriguezd/android_transcribe_app \
 9. **180M decoder_mems dimensions**: `d0=64` (layers) and `d3=128` (hidden size) were wrong — model expects `[6, ?, ?, 1024]`. Added `decoder_num_layers` and `decoder_hidden_size` fields to `Parakeet180mModel`, read from ONNX metadata via `decoder.inputs()` in `from_memory()`. Added `InputNotFound` and `TensorShape` error variants. Added log line showing extracted shapes. Same pattern as 0.6B model's `create_decoder_state()`.
 10. **"Use without model" feature**: New `ModelVariant::None` variant in Rust engine + Java UI. Third radio button that unloads the engine without downloading a model. Handled in `SettingsManager.isModelDownloaded`, `deleteModel`, `ModelDownloadManager` constructor.
 11. **Release v0.8.3** (Jul 18): version bump (25→26), APK build, upload to release v0.8.0 on GitHub.
+12. **On-device v0.8.3 verification on Samsung A059 (Android 16)**: confirmed decoder loop runs to EOS at step 234 with no broadcast error, 586 chars transcribed.
+13. **Manual WAV reader fallback in `TranscribeFileActivity`** (unreleased, debug build only): bypasses `MediaExtractor` / `ContentResolver` for `file://` URIs which both refuse on Android 16+ scoped storage (`EACCES` / "Failed to instantiate extractor"). `openAudioStream(Uri)` returns `FileInputStream(new File(uri.getPath()))` for readable `file://` URIs; `decodeAudioToSamples` falls back with `MediaExtractor.setDataSource(uri.getPath())` (raw path); supports PCM (format=1) only, 16-bit LE, mono or stereo. RIFF chunk padding applied to unknown chunks. Throws `IOException` for unsupported containers → routes to MediaCodec for MP3 / M4A / OGG / WAVE_FORMAT_EXTENSIBLE. See "Next steps (planned)" for stable-API decision.
 
 ### Verification
 - Rust: **0 warnings** in both `android_transcribe_app` + `transcribe-rs`
 - Only 3 pre-existing Java compiler warnings (source/target version deprecation)
+- Manual WAV decoder: bytes-by-byte equivalent output to MediaCodec path on plain PCM WAV; smoke-tested end-to-end on device with `dots.wav`
 
 ### Next steps (planned)
-- **Debug 180M broadcasting error**: Diagnostic logging installed on device, need to capture logcat after transcription attempt to see actual tensor shapes
+- Commit + tag the manual WAV reader (unreleased yet); decide whether to ship as a fix (v0.8.4) or wait for a bigger feature
+- Build release APK with the new pipeline: `bash build.sh` (no `debug`) and verify on the A059 release build
 - Product website (VoxLocal.app) landing page: Hero → Features → How it Works → Model Comparison → Privacy → Open Source
 - **Refactor**: `DEFAULT_PROMPT` in `SettingsManager.java` should read from `R.string.label_prompt` instead of duplicating the string, keeping a single source of truth (both currently identical; risk of drift)
+- Test 0.6B model on the same device to confirm no regression from manual-reader work
 
 ## Safety & hardening (v0.8.0+)
 

@@ -116,6 +116,7 @@ ${output}</string>
     <string name="model_fast">Fast (0.6B)</string>
     <string name="model_fastest">Fastest (180M Flash)</string>
     <string name="model_status_downloaded">Downloaded</string>
+    <string name="model_status_no_model">No model loaded</string>
     <string name="model_status_not_downloaded">Not downloaded</string>
     <string name="model_status_downloading">Downloading… %1$d%%</string>
     <string name="model_status_waiting">Waiting for network…</string>

@@ -12,6 +12,7 @@ use jni::JNIEnv;
 pub enum ModelVariant {
     V0_6b,
     V180m,
+    None,
 }
 
 /// Wraps either a 0.6B or 180M engine behind a common interface.
@@ -127,6 +128,7 @@ fn read_model_variant(env: &mut JNIEnv, context: &JObject) -> ModelVariant {
                 .unwrap_or_else(|_| "0.6b".to_string());
             match variant_str.as_str() {
                 "180m" => ModelVariant::V180m,
+                "none" => ModelVariant::None,
                 _ => ModelVariant::V0_6b,
             }
         }
@@ -369,6 +371,14 @@ fn do_load_with_variant(env: &mut JNIEnv, context: &JObject, variant: ModelVaria
     match variant {
         ModelVariant::V0_6b => do_load_0_6b(env, context),
         ModelVariant::V180m => do_load_180m(env, context),
+        ModelVariant::None => {
+            *GLOBAL_ENGINE.lock().unwrap_or_else(|poisoned| {
+                log::error!("GLOBAL_ENGINE mutex poisoned, recovering");
+                poisoned.into_inner()
+            }) = None;
+            notify_status(env, context, "No model loaded");
+            Ok(())
+        }
     }
 }
 

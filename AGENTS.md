@@ -39,15 +39,15 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/` for 0.6B 
 
 ## Current version
 
-- **v0.8.0** (versionCode 23) — "Security, Safety & Stability Hardening"
+- **v0.8.2** (versionCode 25) — "Hotfix: Download, UI, 180M crash fixes"
 - Released: 2026-07-18
-- APK: 48 MB, SHA256 `3d4b78cba...`
+- APK: 47 MB, SHA256 `86c671f28f33c34821ee758f00e9d21a1587c99cac1fa1e3f51ed426d259de2d`
 - URL: https://github.com/marodriguezd/android_transcribe_app/releases/tag/v0.8.0
 
 ## Branches
 
 - `main` (1986c8e) and `develop` (df8d2cd) are aligned at v0.8.0
-- Tag `v0.8.0` points to same commit on both branches
+- Tags `v0.8.0` and `v0.8.0` APK uploads updated to v0.8.2
 
 ## Build & release
 
@@ -60,21 +60,23 @@ gh release create vX.Y.Z --repo marodriguezd/android_transcribe_app \
   --title "Title (vX.Y.Z)" --notes "..." app/build/outputs/apk/release/app-release.apk#APK
 ```
 
-## Session history (v0.8.0 cycle)
+## Session history (v0.8.2 hotfix cycle)
 
 ### What was done
-1. **Model architecture**: Created 180M AED model (`model_180m.rs`) + 128-dim mel (`mel_128.rs`). Removed 1.1B Precise. Deleted `mel.rs`.
-2. **JNI engine**: `V180m` variant, `do_load_180m()`, `catch_unwind` deadlock protection, mutex poisoning recovery.
-3. **Android UI**: 2 model radios (Fastest/Fast), delete buttons, welcome dialog, accessibility `contentDescription`.
-4. **Security**: EncryptedSharedPreferences (AES256_GCM) for API key, OkHttp timeouts + hostnameVerifier, logcat redacted.
-5. **Lifecycle**: WeakReference threads, onSaveInstanceState, download callback cleanup, ForegroundService shutdown, volatile IME flag.
-6. **Code quality**: Strings/colors to resources, pre-compiled regex, lazy DictionaryManager, Soundex caching, Cargo.toml cleanup.
-7. **Release v0.7.0** (Jul 15) → **v0.8.0** (Jul 18): version bump, APK build, GitHub release, merge to main.
+1. **Download cache bug**: `downloadCache` not invalidated after `onComplete()` — caused infinite download loop on radio button click. Fixed by adding `settingsManager.invalidateModelCache(variant)` in `onComplete()` callback.
+2. **UI refresh bug**: `onComplete()` didn't update status text, delete buttons, or model cache. Added `updateModelStatus()`, `updateDeleteButtons()`, and explicit "Downloaded" text.
+3. **Premature listener fire**: `setupModelSelection()` initial `setChecked` triggered the RadioGroup listener during `onCreate()` without `modelSelectionChanging` guard. Fixed by wrapping with the flag.
+4. **Dead code in reconnectDownloadCallbacks**: `isDownloadActive()` branch never executed because flags reset before callbacks. Replaced with working invalidation + refresh logic.
+5. **RadioGroup visual glitch**: After deleting a model, multiple radio buttons appeared checked. Fixed by replacing `RadioButton.setChecked(true)` with `RadioGroup.check(id)` everywhere — the proper Android API for programmatic selection.
+6. **Welcome dialog order**: Buttons reordered to match main UI: Fastest (180M) → Fast (0.6B) → Use without model. Positive=Fastest, Neutral=Fast, Negative=Skip.
+7. **Download speed**: Read buffer increased from 8 KB to 64 KB in `ModelDownloadManager`, reducing read syscalls by 8×.
+8. **180M crash**: ONNX Runtime "Invalid dimension #3" error — first-iteration decoder mems tensor had shape `[64, 1, 0, 128]` (dimension #2 was 0). Changed to `[64, 1, 1, 128]` filled with zeros in `model_180m.rs`. All 180M transcriptions had been failing since v0.8.0.
+9. **"Use without model" feature**: New `ModelVariant::None` variant in Rust engine + Java UI. Third radio button that unloads the engine without downloading a model. Handled in `SettingsManager.isModelDownloaded`, `deleteModel`, `ModelDownloadManager` constructor.
+10. **Release v0.8.2** (Jul 18): version bump (24→25), APK build, upload to release v0.8.0 on GitHub.
 
 ### Verification
 - Rust: **0 warnings** in both `android_transcribe_app` + `transcribe-rs`
-- 37-point verification checklist passed
-- 3 code review rounds across 49 modified files
+- Only 3 pre-existing Java compiler warnings (source/target version deprecation)
 
 ### Next steps (planned)
 - Product website (VoxLocal.app) landing page: Hero → Features → How it Works → Model Comparison → Privacy → Open Source
@@ -115,17 +117,17 @@ gh release create vX.Y.Z --repo marodriguezd/android_transcribe_app \
 
 ## Important patterns
 
-- Engine singleton: `GLOBAL_ENGINE` (`Lazy<Mutex<Option<(ModelVariant, Arc<Mutex<EngineWrapper>>)>>>`) — variants: V0_6b, V180m
+- Engine singleton: `GLOBAL_ENGINE` (`Lazy<Mutex<Option<(ModelVariant, Arc<Mutex<EngineWrapper>>)>>>`) — variants: V0_6b, V180m, None
 - Loading coordination: `LOAD_STATE` mutex + Condvar to serialize loads
 - Model switching: `switch_model()` first acquires LOAD_STATE lock, then sets engine to None (old engine stays valid during reload — TOCTOU fixed by `ensure_loaded` returning engine reference directly)
 - ORT providers on Android: NNAPI, XNNPACK, CPU (in priority order)
 - `ensure_loaded` / `ensure_loaded_from_thread` return `Result<Option<engine_state>>` — callers use the returned reference instead of a second `get_engine()` call
 - Download callbacks stored in `CopyOnWriteArrayList` — removed after terminal events and lifecycle transitions
 - Post-processing prompt: defined in `SettingsManager.DEFAULT_PROMPT` and `strings.xml@label_prompt`
-
+- `ensure_loaded` / `ensure_loaded_from_thread` return `Result<Option<...>>` — `None` result means no engine loaded (valid for "Use without model")
 ## Common pitfalls
 
-- `rbModelFast` and `rbModelFastest` may be null if `setupModelSelection` hasn't run
+- `rbModelFast`, `rbModelFastest`, and `rbModelNone` may be null if `setupModelSelection` hasn't run
 - `App.startDownload()` is idempotent for the same variant — it won't cancel an active download, only adds the callback
 - Download callbacks should use `WeakReference<MainActivity>` with lifecycle checks
 - `ModelDownloadForegroundService.onStartCommand()` must NOT call `App.startDownload()` with a new callback if a download is already in progress for the same variant (it will just add the callback, not restart)

@@ -50,6 +50,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_MainActivity_switchMode
 
     let model_variant = match variant.as_str() {
         "180m" => engine::ModelVariant::V180m,
+        "none" => engine::ModelVariant::None,
         _ => engine::ModelVariant::V0_6b,
     };
 

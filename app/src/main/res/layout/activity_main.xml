@@ -307,6 +307,24 @@
                                 android:visibility="gone"/>
                         </LinearLayout>
 
+                        <!-- Use without model row -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical"
+                            android:paddingVertical="6dp">
+
+                            <com.google.android.material.radiobutton.MaterialRadioButton
+                                android:id="@+id/rb_model_none"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:text="@string/welcome_btn_skip"
+                                android:textAppearance="?attr/textAppearanceBodyLarge"/>
+
+                        </LinearLayout>
+
                     </RadioGroup>
 
                     <TextView

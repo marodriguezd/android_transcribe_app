@@ -187,6 +187,7 @@ public class SettingsManager {
     }
 
     public boolean isModelDownloaded(String variant) {
+        if ("none".equals(variant)) return true;
         if (downloadCache.containsKey(variant)) {
             return downloadCache.get(variant);
         }
@@ -227,6 +228,7 @@ public class SettingsManager {
     }
 
     public boolean deleteModel(String variant) {
+        if ("none".equals(variant)) return true;
         java.io.File dir;
         if ("180m".equals(variant)) {
             dir = new java.io.File(prefs_context.getFilesDir(), "models/canary-180m-flash-int8");

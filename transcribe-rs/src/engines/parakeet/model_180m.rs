@@ -187,8 +187,8 @@ impl Parakeet180mModel {
 
             let mems_tensor = if is_first {
                 Tensor::from_array((
-                    vec![d0, 1i64, 0i64, d3],
-                    vec![0.0f32; 0].into_boxed_slice(),
+                    vec![d0, 1i64, 1i64, d3],
+                    vec![0.0f32; (d0 * d3) as usize].into_boxed_slice(),
                 ))
                 .map_err(Parakeet180mError::Ort)?
             } else {

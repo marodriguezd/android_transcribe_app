@@ -81,6 +81,11 @@ public class ModelDownloadManager {
     public ModelDownloadManager(Context context, String variant) {
         this.context = context.getApplicationContext();
         this.variant = variant;
+        if ("none".equals(variant)) {
+            this.baseUrl = null;
+            this.modelFiles = new String[0];
+            return;
+        }
         this.baseUrl = BASE_URLS.get(variant);
         this.modelFiles = MODEL_FILES.get(variant);
 
@@ -351,10 +356,10 @@ public class ModelDownloadManager {
 
             InputStream inStream = conn.getInputStream();
 
-            try (BufferedInputStream in = new BufferedInputStream(inStream, 8192);
+            try (BufferedInputStream in = new BufferedInputStream(inStream, 65536);
                  FileOutputStream out = new FileOutputStream(tmpFile, existingBytes > 0)) {
 
-                byte[] buf = new byte[8192];
+                byte[] buf = new byte[65536];
                 long downloaded = existingBytes;
                 int read;
 

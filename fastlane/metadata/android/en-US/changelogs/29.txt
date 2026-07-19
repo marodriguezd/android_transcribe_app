@@ -1,0 +1,2 @@
+- Defensive release-build asserts (`require` minify-off / signingConfig / keystore) prevent shipping unsigned or accidentally minified APKs from `assembleRelease`
+- Post-processing prompt now has a single source of truth — `R.string.label_prompt` in `strings.xml` (wrapped in `"…"` so aapt2 preserves whitespace); the duplicated Java literal `SettingsManager.DEFAULT_PROMPT` is removed

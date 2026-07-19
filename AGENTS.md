@@ -39,11 +39,11 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/` for 0.6B 
 
 ## Current version
 
-- **v0.8.5** (versionCode 28) — "Fix: propagate `initNative` engine-load errors to UI (supplements v0.8.4)"
+- **v0.8.6** (versionCode 29) — "Release hardening: defensive `assembleRelease` asserts + post-processing prompt single source of truth"
 - Released: 2026-07-18
-- APK: https://github.com/marodriguezd/android_transcribe_app/releases/tag/v0.8.5
-- Supersedes **v0.8.4** (released same day): a real bug in `transcribe_file.rs::initNative` silently dropped the `Err` from the engine load via `let _ = …`, leaving the UI hung on the last status text. The bug also applied to debug builds; the v0.8.4 release on the A059 was reproduced and confirmed. v0.8.5 release onward now reaches `notify_status("Error: …")` in Java so the user sees the failure reason instead of an indefinite hang.
-- URL: https://github.com/marodriguezd/android_transcribe_app/releases/tag/v0.8.5
+- APK: https://github.com/marodriguezd/android_transcribe_app/releases/tag/v0.8.6
+- Supersedes **v0.8.5** (released same day): v0.8.5 fixed the silent-error regression in `transcribe_file.rs::initNative` where `let _ = …` dropped the `Err` from a failed engine load, leaving the UI hung on the last status text on Android 16+ (`notify_status("Error: …")` was not reached). v0.8.6 builds on that fix with release-build hardening and a post-processing prompt single-source-of-truth refactor; both are non-urgent developer-side improvements with no runtime behaviour change for end users.
+- URL: https://github.com/marodriguezd/android_transcribe_app/releases/tag/v0.8.6
 
 ## Device / ADB
 
@@ -118,6 +118,24 @@ gh release create vX.Y.Z --repo marodriguezd/android_transcribe_app \
 - **Refactor**: `DEFAULT_PROMPT` in `SettingsManager.java` should read from `R.string.label_prompt` instead of duplicating the string, keeping a single source of truth (both currently identical; risk of drift)
 - Test 0.6B model on the same device to confirm no regression from manual-reader work
 
+## Session history (v0.8.6)
+
+### What was done
+16. **Defensive `assembleRelease` build asserts** (Jul 18, commit `6912ab8`): added an `afterEvaluate {}` block in `app/build.gradle.kts` that `require(...)`s `isMinifyEnabled == false`, `signingConfig != null`, and (locally) `cfg.storeFile.exists()` on the release task. CI env-var path (`STORE_PASS` / `KEY_ALIAS` / `KEY_PASS`) skips the keystore-existence check because CI provisions signing material via secrets rather than a checked-in file. Why: an unsigned APK is rejected by Play Store and silently breaks sideload auto-update; an accidentally minified APK renames JNI reflective callback methods (`onStatusUpdate`, `onTextTranscribed`, …) → `NoSuchMethodError` at runtime. Waited for `afterEvaluate {}` since AGP builds the `release {}` block lazily during configuration.
+17. **DEFAULT_PROMPT single-source-of-truth refactor** (Jul 18, working tree — to be committed in the v0.8.6 release cycle): removed the inlined `DEFAULT_PROMPT` Java string literal from `SettingsManager.java`; `getSystemPrompt()` now resolves `R.string.label_prompt` via the Application context (the previously duplicated 29-line prompt had identical bytes to the resource). Wrapped `<string name="label_prompt">…</string>` body in literal `"…"` in `app/src/main/res/values/strings.xml` so aapt2 quoted-mode preserves the 29 real U+000A bytes — without quoting, aapt2's unquoted-string whitespace rule would collapse them to single spaces, silently flattening the entire prompt. Updated the AGENTS.md "Important patterns" line accordingly.
+18. **Release v0.8.6** (Jul 18): version bump 28 → 29 + `0.8.5` → `0.8.6`. `fastlane/metadata/android/en-US/changelogs/29.txt` added. AGENTS.md updated with this Session history block.
+
+### Verification
+- Rust: **0 warnings** in both `android_transcribe_app` + `transcribe-rs`
+- Only the 3 pre-existing Java compiler warnings (source/target version deprecation)
+- `./gradlew :app:compileDebugJavaWithJavac :app:processDebugResources --rerun-tasks`: BUILD SUCCESSFUL after both the Java refactor and the strings.xml quoting fix
+- Code review (minimax-m3): APPROVED for both the Java refactor and the strings.xml quoting — byte-equivalence with the prior `DEFAULT_PROMPT` confirmed (no callsite drift between Java literal and aapt2 quoted-mode decoded value)
+- Build asserts: not exercised by unit tests, but the trigger conditions are well-defined (`isMinifyEnabled = true` or `signingConfig = null`) — they will fire on a misconfigured build
+
+### Next steps (planned) for v0.8.7 cycle
+- **(c) CI `connectedAndroidTest`** step before tag/release: instrumentation test starts `TranscribeFileActivity` on an emulator, verifies engine load + audio decode path returns the expected text (or expected `notify_status("Error:…")` when wrong variant). Catches future regressions similar to the v0.8.4 silent-error bug before the binary ships. Tradeoff vs running `./gradlew test` + `cargo test` instead (cheaper, captures unit-test regressions, no device farm required) — TBD.
+- Product website (VoxLocal.app) landing page: Hero / Features / How / Model Comparison / Privacy / Open Source.
+
 ## Safety & hardening (v0.8.0+)
 
 ### Rust
@@ -159,7 +177,7 @@ gh release create vX.Y.Z --repo marodriguezd/android_transcribe_app \
 - ORT providers on Android: NNAPI, XNNPACK, CPU (in priority order)
 - `ensure_loaded` / `ensure_loaded_from_thread` return `Result<Option<engine_state>>` — callers use the returned reference instead of a second `get_engine()` call
 - Download callbacks stored in `CopyOnWriteArrayList` — removed after terminal events and lifecycle transitions
-- Post-processing prompt: defined in `SettingsManager.DEFAULT_PROMPT` and `strings.xml@label_prompt`
+- Post-processing prompt: solved at runtime via the Application context; single source of truth in `strings.xml@label_prompt`
 - `ensure_loaded` / `ensure_loaded_from_thread` return `Result<Option<...>>` — `None` result means no engine loaded (valid for "Use without model")
 ## Common pitfalls
 
@@ -168,7 +186,7 @@ gh release create vX.Y.Z --repo marodriguezd/android_transcribe_app \
 - Download callbacks should use `WeakReference<MainActivity>` with lifecycle checks
 - `ModelDownloadForegroundService.onStartCommand()` must NOT call `App.startDownload()` with a new callback if a download is already in progress for the same variant (it will just add the callback, not restart)
 - `POST_NOTIFICATIONS` permission on Android 13+ is requested in `onCreate()` but may not be resolved before download starts — `startForeground()` in ForegroundService catches the `SecurityException` and continues without notification
-- Post-processing field shows `DEFAULT_PROMPT` from `SettingsManager` as the text, and `label_prompt` from `strings.xml` as the hint
+- Post-processing field populates the text from `SettingsManager.getSystemPrompt()` (first-run resolves to `R.string.label_prompt`); the `TextInputEditText`'s `android:hint` is `R.string.hint_prompt` (`"Use ${output} to insert transcribed text"`). `R.string.label_prompt` is the only source of the default prompt body — keep its quoted `"…"` wrapping in `strings.xml` so aapt2 does not collapse its real U+000A newlines to spaces (whitespace-quoting invariant; tracked in Session history v0.8.6 item 17).
 - Dictionary import uses `ActivityResultContracts.OpenDocument` for JSON/text files; export uses `ActivityResultContracts.CreateDocument("application/json")`
 - The 180M AED model does not support hotwords yet
 
@@ -188,8 +206,3 @@ v0.8.4 release APK contains the silent-error bug above. Users who downloaded v0.
 - Test A (fix verification) on debug build + A059 + default variant + missing model: UI shows `Error: Model 0.6B not downloaded…` (was hang)
 - Pre-fix Test (warm path) was already covered by the v0.8.4 session history (`dots.wav` → 586 chars Steve Jobs + `jfk.wav` → 108 chars JFK) — the Rust engine code path is unchanged, so v0.8.5 inherits the same warm-path behaviour.
 
-### Next steps (planned) for v0.8.6 cycle
-- **(b) Build asserts** in `app/build.gradle.kts`: defensive `require(isMinifyEnabled == false && signingConfig != null)` on the `assembleRelease` task. Cheap, prevents accidental minify or unsigned builds.
-- **(c) CI connectedAndroidTest** step before tag/release: instrumentation test starts TFA on an emulator, verifies engine load + audio decode path returns the expected text (or expected `notify_status(\"Error:...\")` when wrong variant). Catches future regressions similar to the v0.8.4 silent-error bug before the binary ships.
-- Refactor: `DEFAULT_PROMPT` in `SettingsManager.java` → single source of truth from `R.string.label_prompt`.
-- Product website (VoxLocal.app) landing page: Hero / Features / How / Model Comparison / Privacy / Open Source.

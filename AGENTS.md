@@ -133,11 +133,6 @@ gh release create vX.Y.Z --repo marodriguezd/android_transcribe_app \
 - Code review (minimax-m3): APPROVED for both the Java refactor and the strings.xml quoting — byte-equivalence with the prior `DEFAULT_PROMPT` confirmed (no callsite drift between Java literal and aapt2 quoted-mode decoded value)
 - Build asserts: not exercised by unit tests, but the trigger conditions are well-defined (`isMinifyEnabled = true` or `signingConfig = null`) — they will fire on a misconfigured build
 
-### Next steps (planned) for v0.8.7 cycle
-- **(c) CI `connectedAndroidTest`** step before tag/release: instrumentation test starts `TranscribeFileActivity` on an emulator, verifies engine load + audio decode path returns the expected text (or expected `notify_status("Error:…")` when wrong variant). Catches future regressions similar to the v0.8.4 silent-error bug before the binary ships. Tradeoff vs running `./gradlew test` + `cargo test` instead (cheaper, captures unit-test regressions, no device farm required) — TBD.
-- Product website (VoxLocal.app) landing page: Hero / Features / How / Model Comparison / Privacy / Open Source.
-
-## Safety & hardening (v0.8.0+)
 
 ### Rust
 - `LOAD_STATE` wrapped in `catch_unwind(AssertUnwindSafe(...))` — panics during `do_load` transition to `Failed` state + `cvar.notify_all()`, preventing permanent deadlock

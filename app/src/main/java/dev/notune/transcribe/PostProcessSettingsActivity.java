@@ -1,10 +1,12 @@
 package dev.notune.transcribe;
 
+import android.content.Intent;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.ArrayAdapter;
 import android.widget.ImageButton;
 import android.widget.ProgressBar;
+import android.widget.TextView;
 import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -21,11 +23,13 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
 
     private SettingsManager settingsManager;
     private PostProcessor postProcessor;
+    private PromptsRepository promptsRepository;
     private MaterialSwitch switchEnable;
     private TextInputEditText editApiUrl;
     private TextInputEditText editApiKey;
     private MaterialAutoCompleteTextView editModelName;
-    private TextInputEditText editPrompt;
+    private TextView textActivePromptName;
+    private TextView textActivePromptBody;
     private ProgressBar progressModels;
     private ImageButton btnRefreshModels;
 
@@ -36,6 +40,7 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
 
         settingsManager = new SettingsManager(this);
         postProcessor = new PostProcessor(settingsManager);
+        promptsRepository = settingsManager.getPromptsRepository();
 
         MaterialToolbar toolbar = findViewById(R.id.toolbar);
         toolbar.setNavigationOnClickListener(v -> finish());
@@ -44,17 +49,20 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
         editApiUrl = findViewById(R.id.edit_api_url);
         editApiKey = findViewById(R.id.edit_api_key);
         editModelName = findViewById(R.id.edit_model_name);
-        editPrompt = findViewById(R.id.edit_prompt);
+        textActivePromptName = findViewById(R.id.text_active_prompt_name);
+        textActivePromptBody = findViewById(R.id.text_active_prompt_body);
+        MaterialButton btnManagePrompts = findViewById(R.id.btn_manage_prompts);
         progressModels = findViewById(R.id.progress_models);
         btnRefreshModels = findViewById(R.id.btn_refresh_models);
         MaterialButton btnSave = findViewById(R.id.btn_save);
 
-        // Load current values
         switchEnable.setChecked(settingsManager.isPostProcessEnabled());
         editApiUrl.setText(settingsManager.getApiUrl());
         editApiKey.setText(settingsManager.getApiKey());
         editModelName.setText(settingsManager.getModelName());
-        editPrompt.setText(settingsManager.getSystemPrompt());
+
+        btnManagePrompts.setOnClickListener(v ->
+                startActivity(new Intent(this, PostProcessPromptsListActivity.class)));
 
         btnSave.setOnClickListener(v -> saveSettings());
         btnRefreshModels.setOnClickListener(v -> refreshModels());
@@ -72,6 +80,20 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
         });
     }
 
+    @Override
+    protected void onResume() {
+        super.onResume();
+        refreshActivePromptSubtitle();
+    }
+
+    private void refreshActivePromptSubtitle() {
+        if (textActivePromptName == null || textActivePromptBody == null) return;
+        String name = promptsRepository.getActivePromptName();
+        String body = promptsRepository.getActivePromptBody();
+        textActivePromptName.setText(getString(R.string.subtitle_active_named, name));
+        textActivePromptBody.setText(body);
+    }
+
     private void refreshModels() {
         // Temporary save API URL and Key to use them for fetching
         settingsManager.setApiUrl(editApiUrl.getText().toString().trim());
@@ -86,7 +108,7 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     progressModels.setVisibility(View.GONE);
                     btnRefreshModels.setVisibility(View.VISIBLE);
-                    
+
                     ArrayAdapter<String> adapter = new ArrayAdapter<>(
                             PostProcessSettingsActivity.this,
                             android.R.layout.simple_dropdown_item_1line,
@@ -94,8 +116,8 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
                     );
                     editModelName.setAdapter(adapter);
                     editModelName.showDropDown();
-                    
-                    Toast.makeText(PostProcessSettingsActivity.this, 
+
+                    Toast.makeText(PostProcessSettingsActivity.this,
                             R.string.msg_models_ready, Toast.LENGTH_SHORT).show();
                 });
             }
@@ -105,7 +127,7 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
                 runOnUiThread(() -> {
                     progressModels.setVisibility(View.GONE);
                     btnRefreshModels.setVisibility(View.VISIBLE);
-                    Toast.makeText(PostProcessSettingsActivity.this, 
+                    Toast.makeText(PostProcessSettingsActivity.this,
                             "Error: " + error, Toast.LENGTH_LONG).show();
                 });
             }
@@ -113,11 +135,14 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
     }
 
     private void saveSettings() {
+        // Note: the active prompt is no longer saved here — it is managed via
+        // PostProcessPromptsListActivity. The legacy `system_prompt` prefs
+        // key would be a no-op write now (and the next migration run would
+        // resurrect it as a saved prompt), so we deliberately omit it.
         settingsManager.setPostProcessEnabled(switchEnable.isChecked());
         settingsManager.setApiUrl(editApiUrl.getText().toString().trim());
         settingsManager.setApiKey(editApiKey.getText().toString().trim());
         settingsManager.setModelName(editModelName.getText().toString().trim());
-        settingsManager.setSystemPrompt(editPrompt.getText().toString().trim());
 
         Toast.makeText(this, R.string.post_process_settings_saved, Toast.LENGTH_SHORT).show();
         finish();

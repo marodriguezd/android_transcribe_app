@@ -49,6 +49,18 @@
             android:exported="false" />
 
         <activity
+            android:name=".PostProcessPromptsListActivity"
+            android:label="Post-Processing Prompts"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:exported="false" />
+
+        <activity
+            android:name=".PostProcessPromptEditActivity"
+            android:label="Edit Post-Processing Prompt"
+            android:configChanges="orientation|keyboardHidden|screenSize"
+            android:exported="false" />
+
+        <activity
             android:name=".DictionaryListActivity"
             android:label="Dictionaries"
             android:configChanges="orientation|keyboardHidden|screenSize"

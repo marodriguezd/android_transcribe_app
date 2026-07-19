@@ -27,6 +27,7 @@ public class SettingsManager {
     private final SharedPreferences prefs;
     private final Context prefs_context;
     private final java.util.Map<String, Boolean> downloadCache = new java.util.HashMap<>();
+    private volatile PromptsRepository promptsRepository;
 
     public SettingsManager(Context context) {
         this.prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
@@ -65,10 +66,20 @@ public class SettingsManager {
                     EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
                     EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
             );
-            return encryptedPrefs.getString(KEY_API_KEY, "");
+            String encrypted = encryptedPrefs.getString(KEY_API_KEY, "");
+            // Defensive fallback: when encrypted prefs were wiped (e.g. data clear,
+            // pm uninstall) but a plain api_key is present, prefer the plain value
+            // over the empty encrypted read — otherwise PostProcessor hits Groq with
+            // an empty Bearer token and gets 401.
+            if (encrypted == null || encrypted.isEmpty()) {
+                String plain = prefs.getString(KEY_API_KEY, "");
+                if (plain != null && !plain.isEmpty()) return plain;
+                return "";
+            }
+            return encrypted;
         } catch (Exception e) {
             Log.e("SettingsManager", "Failed to read encrypted API key", e);
-            return prefs.getString(KEY_API_KEY, ""); // fallback
+            return prefs.getString(KEY_API_KEY, "");
         }
     }
 
@@ -113,6 +124,45 @@ public class SettingsManager {
 
     public void setSystemPrompt(String prompt) {
         prefs.edit().putString(KEY_SYSTEM_PROMPT, prompt).apply();
+    }
+
+    /**
+     * Lazily instantiated {@link PromptsRepository}. The repo reads
+     * {@code files/prompts.json} once (on first call) and caches the
+     * parsed entries in memory, so subsequent calls have zero disk I/O.
+     * The {@code volatile} field guarantees cross-thread publication.
+     * Safe to call from any thread (uses double-checked locking).
+     */
+    public PromptsRepository getPromptsRepository() {
+        PromptsRepository existing = promptsRepository;
+        if (existing == null) {
+            synchronized (this) {
+                if (promptsRepository == null) {
+                    promptsRepository = new PromptsRepository(getContext());
+                }
+                existing = promptsRepository;
+            }
+        }
+        return existing;
+    }
+
+    /**
+     * Convenience for the post-process hot path: returns the body of the
+     * currently active prompt (falls back to the built-in
+     * {@code R.string.label_prompt} if no user prompt is active or the
+     * active prompt was previously deleted). Backed entirely by the
+     * in-memory cache of {@link PromptsRepository}.
+     */
+    public String getActivePromptBody() {
+        return getPromptsRepository().getActivePromptBody();
+    }
+
+    /**
+     * Display name of the active prompt (or the built-in label if the
+     * active id is the magic builtin sentinel).
+     */
+    public String getActivePromptName() {
+        return getPromptsRepository().getActivePromptName();
     }
 
     public boolean isAutoRecord() {

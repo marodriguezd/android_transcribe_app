@@ -20,7 +20,6 @@ import android.widget.Toast;
 import androidx.appcompat.app.AppCompatActivity;
 
 import java.io.BufferedInputStream;
-import java.io.DataInputStream;
 import java.io.EOFException;
 import java.io.File;
 import java.io.FileInputStream;
@@ -37,7 +36,11 @@ public class TranscribeFileActivity extends AppCompatActivity {
 
     private static final String TAG = "OfflineVoiceInput";
     private static final int TARGET_SAMPLE_RATE = 16000;
-    private static final long MAX_AUDIO_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
+    // Peak heap in decodeManualWav is byte[chunkSize] + short[chunkSize/2] +
+    // float[chunkSize/2] ≈ 5× chunkSize. 16 MB ≈ 8 min of mono 16 kHz
+    // 16-bit speech (16 000 × 2 × 500 ≈ 16 MB) and keeps peak heap well
+    // under Android per-process limits on devices with low RAM.
+    private static final long MAX_AUDIO_FILE_SIZE = 16 * 1024 * 1024; // 16 MB
 
     static {
         try {
@@ -136,7 +139,7 @@ public class TranscribeFileActivity extends AppCompatActivity {
         runOnUiThread(() -> {
             String lang = getResources().getConfiguration().locale.getLanguage();
             String filtered = WordCorrector.filterTranscriptionOutput(text, lang);
-            String processed = new SettingsManager(TranscribeFileActivity.this).applyDictionary(filtered);
+            String processed = new SettingsManager(getApplicationContext()).applyDictionary(filtered);
             
             // Hide progress, show result
             progressArea.setVisibility(View.GONE);
@@ -151,6 +154,41 @@ public class TranscribeFileActivity extends AppCompatActivity {
             clipboard.setPrimaryClip(clip);
 
             Toast.makeText(this, R.string.transcription_copied, Toast.LENGTH_LONG).show();
+
+            // If post-processing (LLM cleanup via Groq) is enabled, refine the
+            // displayed text asynchronously. Mirrors the wiring in
+            // RecognizeActivity.onTextTranscribed line 152 and
+            // RustInputMethodService.onTextTranscribed line 418 — brings TFA into
+            // feature parity for share-intent transcripts. On PostProcessor error
+            // we keep the applyDictionary-cleaned text and surface the failure in
+            // the status line so the user is never left with no output.
+            // ApplicationContext (not Activity) per AGENTS.md v0.8.7 leak pattern.
+            SettingsManager sm = new SettingsManager(getApplicationContext());
+            if (sm.isPostProcessEnabled()) {
+                statusText.setText("Post-processing…");
+                new PostProcessor(sm).process(processed, new PostProcessor.PostProcessCallback() {
+                    @Override
+                    public void onSuccess(String refined) {
+                        Log.i(TAG, "PostProcessor refined len=" + refined.length());
+                        runOnUiThread(() -> {
+                            // Skip UI mutation if the activity has been torn down
+                            // while the OkHttp callback was in flight.
+                            if (isFinishing() || isDestroyed()) return;
+                            resultText.setText(refined);
+                            ClipboardManager cb = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+                            cb.setPrimaryClip(ClipData.newPlainText("Transcription", refined));
+                        });
+                    }
+                    @Override
+                    public void onError(String error) {
+                        Log.w(TAG, "PostProcessor failed (keeping applyDictionary text): " + error);
+                        runOnUiThread(() -> {
+                            if (isFinishing() || isDestroyed()) return;
+                            statusText.setText("Post-process error: " + error);
+                        });
+                    }
+                });
+            }
         });
     }
 
@@ -169,11 +207,15 @@ public class TranscribeFileActivity extends AppCompatActivity {
 
             // Manual WAV reader is faster and more reliable than MediaExtractor on
             // Android 16+ where MediaExtractor.setDataSource(file://Uri) frequently fails.
+            // Catch OutOfMemoryError | Exception so a large data-chunk OOM also falls
+            // through to MediaExtractor rather than crashing the thread — but keep our
+            // own NPE / AssertionError / StackOverflowError loud (they extend Error and
+            // would be silently swallowed by a Throwable catch).
             try {
                 samples = decodeManualWav(audioUri);
                 usedDecoder = "manual-wav";
-            } catch (Exception e) {
-                Log.w(TAG, "Manual WAV reader failed, falling back to MediaExtractor: " + e.getMessage());
+            } catch (OutOfMemoryError | Exception t) {
+                Log.w(TAG, "Manual WAV reader failed, falling back to MediaExtractor", t);
             }
 
             // Fall back to MediaExtractor for compressed / non-WAV containers (MP3, M4A, OGG, …).
@@ -211,7 +253,7 @@ public class TranscribeFileActivity extends AppCompatActivity {
      */
     private float[] decodeManualWav(Uri uri) throws IOException {
         try (InputStream raw = openAudioStream(uri);
-             DataInputStream dis = new DataInputStream(new BufferedInputStream(raw))) {
+             LEDataInputStream dis = new LEDataInputStream(new BufferedInputStream(raw))) {
 
             // --- RIFF header (12 bytes) ---
             byte[] riff = new byte[4];
@@ -219,7 +261,7 @@ public class TranscribeFileActivity extends AppCompatActivity {
             if (!"RIFF".equals(new String(riff, StandardCharsets.US_ASCII))) {
                 throw new IOException("Not a RIFF file (got '" + new String(riff, StandardCharsets.US_ASCII) + "')");
             }
-            int riffSize = dis.readInt();
+            int riffSize = dis.readIntLE();
             if (riffSize < 4) throw new IOException("RIFF size too small: " + riffSize);
             byte[] wave = new byte[4];
             dis.readFully(wave);
@@ -241,17 +283,17 @@ public class TranscribeFileActivity extends AppCompatActivity {
                 } catch (EOFException eof) {
                     throw new IOException("Unexpected EOF in chunk header");
                 }
-                int chunkSize = dis.readInt();
+                int chunkSize = dis.readIntLE();
                 String id = new String(chunkIdBytes, StandardCharsets.US_ASCII);
 
                 if ("fmt ".equals(id)) {
                     if (chunkSize < 16) throw new IOException("fmt chunk too small: " + chunkSize);
-                    audioFormat = dis.readShort() & 0xFFFF;
-                    channels = dis.readShort() & 0xFFFF;
-                    sampleRate = dis.readInt();
-                    dis.readInt(); // byte rate
-                    dis.readShort(); // block align
-                    bitsPerSample = dis.readShort() & 0xFFFF;
+                    audioFormat = dis.readShortLE() & 0xFFFF;
+                    channels = dis.readShortLE() & 0xFFFF;
+                    sampleRate = dis.readIntLE();
+                    dis.readIntLE(); // byte rate
+                    dis.readShortLE(); // block align
+                    bitsPerSample = dis.readShortLE() & 0xFFFF;
                     int extraFmt = chunkSize - 16;
                     if (extraFmt > 0) dis.skipBytes(extraFmt);
                 } else if ("data".equals(id)) {
@@ -267,6 +309,13 @@ public class TranscribeFileActivity extends AppCompatActivity {
                     }
                     if (channels != 1 && channels != 2) {
                         throw new IOException("Manual reader supports 1 or 2 channels; got " + channels);
+                    }
+                    // Guard against a maliciously-large or corrupt chunkSize that
+                    // would otherwise OOM here. With the LE read fix, `chunkSize`
+                    // round-trips honestly through the decoder for the first time.
+                    if (chunkSize < 0 || chunkSize > MAX_AUDIO_FILE_SIZE) {
+                        throw new IOException("data chunk size " + chunkSize
+                                + " bytes outside allowed range (0, " + MAX_AUDIO_FILE_SIZE + "]");
                     }
                     byte[] buf = new byte[chunkSize];
                     dis.readFully(buf);
@@ -527,5 +576,62 @@ public class TranscribeFileActivity extends AppCompatActivity {
         if (status == null) return false;
         String lower = status.toLowerCase(java.util.Locale.ROOT);
         return lower.startsWith("error") || lower.contains("fail");
+    }
+
+    /**
+     * Little-endian DataInputStream. RIFF/WAVE integers are LE, unlike the
+     * default {@link java.io.DataInputStream} which reads BE. Provides only the
+     * primitive methods we need (readFully, readIntLE, readShortLE, skipBytes).
+     */
+    private static final class LEDataInputStream implements AutoCloseable {
+        private final InputStream in;
+        private final byte[] tmp4 = new byte[4];
+        private final byte[] tmp2 = new byte[2];
+
+        LEDataInputStream(InputStream in) {
+            this.in = in;
+        }
+
+        void readFully(byte[] b) throws IOException {
+            int off = 0;
+            while (off < b.length) {
+                int n = in.read(b, off, b.length - off);
+                if (n < 0) throw new EOFException();
+                off += n;
+            }
+        }
+
+        int readIntLE() throws IOException {
+            readFully(tmp4);
+            return (tmp4[0] & 0xFF)
+                    | ((tmp4[1] & 0xFF) << 8)
+                    | ((tmp4[2] & 0xFF) << 16)
+                    | ((tmp4[3] & 0xFF) << 24);
+        }
+
+        int readShortLE() throws IOException {
+            readFully(tmp2);
+            return (tmp2[0] & 0xFF) | ((tmp2[1] & 0xFF) << 8);
+        }
+
+        @SuppressWarnings("UnusedReturnValue")
+        int skipBytes(int n) throws IOException {
+            long remaining = n;
+            while (remaining > 0) {
+                long skipped = in.skip(remaining);
+                if (skipped <= 0) {
+                    int b = in.read();
+                    if (b < 0) break;
+                    skipped = 1;
+                }
+                remaining -= skipped;
+            }
+            return n - (int) remaining;
+        }
+
+        @Override
+        public void close() throws IOException {
+            in.close();
+        }
     }
 }

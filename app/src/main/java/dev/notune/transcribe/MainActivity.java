@@ -201,6 +201,16 @@ public class MainActivity extends AppCompatActivity {
 
         setupModelSelection(settingsManager);
 
+        // Materialise any bundled model assets (debug-only) into
+        // getFilesDir()/models/<variant>/ so the user (and tests) can
+        // pick either variant immediately after install, no Wi-Fi wait.
+        // The debug APK inlines the ONNX weights at app/src/debug/assets/;
+        // ModelDownloadManager.extractBundledAssets() is idempotent on
+        // already-present files. We run from onCreate (not onResume)
+        // because TFA can be launched directly without ever warming
+        // MainActivity.
+        extractAllBundledModelsIfNeeded();
+
         requestNotificationPermissionIfNeeded();
         requestBatteryOptimizationExemption();
         updateVoiceInputStatus();
@@ -747,5 +757,71 @@ public class MainActivity extends AppCompatActivity {
         } else {
             tv.setText(R.string.model_status_not_downloaded);
         }
+    }
+
+    /**
+     * Materialise any models that ship with the debug APK into
+     * {@code getFilesDir()/models/<variant>/}. The debug build inlines the
+     * Parakeet ONNX weights at {@code app/src/debug/assets/<variant>/};
+     * normally the user would tap a radio (or the welcome-dialog button)
+     * to trigger {@code ModelDownloadManager.download()} → {@code
+     * tryCopyAsset()}. This method short-circuits that flow on first
+     * launch so tests can pick either variant immediately.
+     *
+     * <p>Runs on a single background thread (not the main thread) to
+     * avoid ANRs during the multi-hundred-MB copy; updates
+     * {@link #statusText} via {@code runOnUiThread} when done. The
+     * class is intentionally a no-op when both variants are already
+     * on disk; subsequent rebuilds / pm clears are unaffected.
+     *
+     * <p>Bound to {@code onCreate} rather than {@code onResume} so
+     * TranscribeFileActivity, which can launch directly without ever
+     * warming MainActivity, also benefits from the extaction.
+     */
+    private void extractAllBundledModelsIfNeeded() {
+        if (settingsManager == null) return;
+        if (settingsManager.isModelDownloaded("0.6b")
+                && settingsManager.isModelDownloaded("180m")) {
+            return;
+        }
+
+        if (statusText != null) {
+            statusText.setText("Extracting bundled models…");
+        }
+
+        new Thread(() -> {
+            boolean ok06b = false;
+            boolean ok180m = false;
+            try {
+                ModelDownloadManager fast = new ModelDownloadManager(
+                        getApplicationContext(), "0.6b");
+                int c = fast.extractBundledAssets();
+                ok06b = c >= 0 && fast.isModelDownloaded();
+            } catch (Throwable t) {
+                Log.w(TAG, "Auto-extract failed for 0.6b", t);
+            }
+            try {
+                ModelDownloadManager fastest = new ModelDownloadManager(
+                        getApplicationContext(), "180m");
+                int c = fastest.extractBundledAssets();
+                ok180m = c >= 0 && fastest.isModelDownloaded();
+            } catch (Throwable t) {
+                Log.w(TAG, "Auto-extract failed for 180m", t);
+            }
+            final boolean both = ok06b && ok180m;
+            runOnUiThread(() -> {
+                settingsManager.invalidateModelCache("0.6b");
+                settingsManager.invalidateModelCache("180m");
+                updateModelStatus(modelStatus,
+                        settingsManager.getModelVariant(), settingsManager);
+                updateDeleteButtons(btnDeleteFast, btnDeleteModelFastest,
+                        settingsManager);
+                if (statusText != null) {
+                    statusText.setText(both
+                            ? "Models ready (bundled)"
+                            : "Model extraction partial — see model status");
+                }
+            });
+        }, "model-extract-bundled").start();
     }
 }

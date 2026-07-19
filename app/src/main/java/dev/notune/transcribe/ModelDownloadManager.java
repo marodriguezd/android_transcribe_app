@@ -256,6 +256,30 @@ public class ModelDownloadManager {
                 continue;
             }
 
+            // Try the bundled asset-pack first. The install-time asset pack is
+            // extracted to our APK assets/ during install-time delivery, so
+            // AssetManager.open() works on first launch without waiting on WiFi.
+            // If the variant isn't bundled (release build or older install),
+            // fall through to the network download.
+            if (tryCopyAsset(fileName, destFile)) {
+                Log.i(TAG, "Extracted " + fileName + " from bundled asset pack");
+                if (downloading.get()) {
+                    mainHandler.post(() -> {
+                        for (ProgressCallback cb : callbacks) cb.onProgress(
+                                fileName, 100, destFile.length(), destFile.length());
+                    });
+                }
+                // Re-check cancel after the copy completes: the loop's earlier
+                // cancel check runs only at the top of each iteration. Without
+                // this re-check, a cancel signal arriving mid-copy would still
+                // proceed to the next file's network fallback.
+                if (!downloading.get()) {
+                    Log.d(TAG, "Download canceled by user (after " + fileName + " copy)");
+                    return;
+                }
+                continue;
+            }
+
             boolean success = downloadFileWithRetry(fileName, destFile);
             if (!success) {
                 return;
@@ -266,6 +290,87 @@ public class ModelDownloadManager {
             for (ProgressCallback cb : callbacks) cb.onComplete();
             callbacks.clear();
         });
+    }
+
+    /**
+     * Asset-only extraction: for every file in {@code modelFiles}, if the
+     * on-disk copy at {@code getFilesDir()/models/<variant>/<file>} is
+     * missing or empty, copy it from the bundled APK assets/. Used by
+     * {@code MainActivity.extractAllBundledModelsIfNeeded()} on first
+     * launch to materialise the bundled models without waiting on Wi-Fi
+     * or navigating through the welcome-dialog flow. Idempotent.
+     *
+     * @return number of files that were actually copied; 0 if all present;
+     *         -1 if a bundled asset is missing for this variant (caller
+     *         should fall back to {@link #download(ProgressCallback)}).
+     */
+    public int extractBundledAssets() {
+        if (modelFiles == null || modelFiles.length == 0) return 0;
+        File dir = getModelDir();
+        if (!dir.exists() && !dir.mkdirs()) {
+            Log.e(TAG, "extractBundledAssets: cannot create model dir " + dir);
+            return -1;
+        }
+        int copied = 0;
+        for (String fileName : modelFiles) {
+            File destFile = new File(dir, fileName);
+            if (destFile.exists() && destFile.length() > 0) {
+                continue;
+            }
+            if (tryCopyAsset(fileName, destFile)) {
+                copied++;
+                Log.i(TAG, "Auto-extracted " + fileName + " from bundled asset");
+            } else {
+                Log.w(TAG, "Auto-extract skipped: " + fileName
+                        + " not in bundled assets; would fall through to network download");
+                return -1;
+            }
+        }
+        return copied;
+    }
+
+    /**
+     * Try to copy a model file from the bundled install-time asset pack. Returns
+     * true on success, false if the asset isn't present (caller should fall
+     * through to network). Uses the file layout:
+     *   assets/<subdir>/  where subdir matches the model directory name
+     *   e.g. "parakeet-tdt-0.6b-v3-int8" / "canary-180m-flash-int8".
+     *
+     * Error-handling contract:
+     *  - AssetManager.open() IOException \u2192 expected "not bundled", swallow, false
+     *    (caller falls through to network).
+     *  - FileOutputStream / write IOException \u2192 real failure (disk full, perms,
+     *    etc.). Log loudly and surface as false; falling through to network
+     *    would only repeat the same disk-side failure with a confusing 404.
+     */
+    private boolean tryCopyAsset(String fileName, File destFile) {
+        String assetSubdir = getModelDir().getName(); // "parakeet-tdt-0.6b-v3-int8" / "canary-180m-flash-int8"
+        String assetPath = assetSubdir + "/" + fileName;
+        InputStream assetStream;
+        try {
+            assetStream = context.getAssets().open(assetPath);
+        } catch (IOException e) {
+            Log.d(TAG, "No bundled asset for " + assetPath + " (" + e.getMessage()
+                    + "); will fetch via network");
+            return false;
+        }
+        try (InputStream in = assetStream;
+             FileOutputStream out = new FileOutputStream(destFile)) {
+            byte[] buf = new byte[65536];
+            long total = 0;
+            int n;
+            while ((n = in.read(buf)) != -1) {
+                out.write(buf, 0, n);
+                total += n;
+            }
+            Log.i(TAG, "Asset-copied " + assetPath + " -> " + total + " bytes");
+            return true;
+        } catch (IOException e) {
+            // Real write failure - log loudly. Caller currently falls through
+            // to network, which would also fail in this state.
+            Log.e(TAG, "Asset copy WRITE failed for " + assetPath, e);
+            return false;
+        }
     }
 
     private boolean downloadFileWithRetry(String fileName, File destFile) {

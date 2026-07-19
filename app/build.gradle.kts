@@ -233,9 +233,25 @@ val modelPackFiles = listOf(
         "a9fde1486ebfcc08f328d75ad4610c67835fea58c73ba57e3209a6f6cf019e9f"),
 )
 
-val huggingFaceRepo = "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main"
+// Canary-180m-flash-int8 sibling for 0.6B. SHAs are pinned from the first
+// downloadModels run; integrity is verified on subsequent fetches.
+// The decoder-model.int8.onnx variant differs from parakeet's
+// decoder_joint (Canary uses a non-joint decoder graph).
+val modelPackFiles180m = listOf(
+    ModelFile("encoder-model.int8.onnx",
+        "996d1c89e6cbc891a7c88bf410884c178ffa474f7b13084522ac74a5e144cc81"),
+    ModelFile("decoder-model.int8.onnx",
+        "9dd9c447872088c912e916d73751f9621a54085d5bc46788454fe904db51a914"),
+)
+val appAssetFiles180m = listOf(
+    ModelFile("vocab.txt",
+        "2dae6fc7815f9640645e0c765522b278ee0cef49b482d91f6913e334628d3e77"),
+)
 
-fun downloadToDir(assetsDir: File, files: List<ModelFile>) {
+val huggingFaceRepo = "https://huggingface.co/istupakov/parakeet-tdt-0.6b-v3-onnx/resolve/main"
+val huggingFaceRepo180m = "https://huggingface.co/istupakov/canary-180m-flash-onnx/resolve/main"
+
+fun downloadToDir(assetsDir: File, files: List<ModelFile>, repo: String = huggingFaceRepo) {
     assetsDir.mkdirs()
     files.forEach { model ->
         val destFile = File(assetsDir, model.name)
@@ -260,7 +276,7 @@ fun downloadToDir(assetsDir: File, files: List<ModelFile>) {
 
         if (!destFile.exists()) {
             println("  ↓ Downloading ${model.name}...")
-            val downloadUrl = "$huggingFaceRepo/${model.name}?download=true"
+            val downloadUrl = "$repo/${model.name}?download=true"
             val proc = ProcessBuilder("curl", "-L", "-f", "-o", destFile.absolutePath, downloadUrl)
                 .inheritIO()
                 .start()
@@ -293,20 +309,50 @@ fun downloadToDir(assetsDir: File, files: List<ModelFile>) {
 }
 
 val downloadModels by tasks.registering {
-    description = "Download HuggingFace Parakeet model assets"
+    description = "Download HuggingFace Parakeet model assets (0.6b + canary-180m-flash-int8)"
     group = "build"
 
-    // Small metadata -> app assets (base module)
+    // Small metadata (config.json + vocab.txt) → base module assets. Both
+    // debug and release APKs include these (tiny total: <100 KB).
     val appAssetsDir = project.file("src/main/assets/parakeet-tdt-0.6b-v3-int8")
-    // Large ONNX models -> asset pack (separate install-time delivery)
+    val appAssetsDir180m = project.file("src/main/assets/canary-180m-flash-int8")
+
+    // Large ONNX weights → debug-only assets. Android Gradle source-set
+    // merging rules: `src/debug/assets/` OVERLAYS `src/main/assets/` for
+    // the debug variant only. Listing the heavy .onnx files here means:
+    //   • the debug APK ships with both models inside (sideload-ready —
+    //     no Wi-Fi download, ModelDownloadManager.tryCopyAsset() extracts
+    //     them on first launch into `getFilesDir()/models/<variant>/`);
+    //   • the release APK stays Play-Store-ready, since Play Asset
+    //     Delivery caps the base module at 150 MB compressed and the
+    //     asset packs carry the heavy weights via `model_assets/`.
+    val debugAssetsDir = project.file("src/debug/assets/parakeet-tdt-0.6b-v3-int8")
+    val debugAssetsDir180m = project.file("src/debug/assets/canary-180m-flash-int8")
+
+    // Asset-pack files (release path). Goes through Play's install-time
+    // delivery on .aab, max 2 GB per pack; identical files to debug-only
+    // path (same SHA-256), so downloadToDir skips them on the second
+    // call (file-exists + SHA verified).
     val packAssetsDir = rootProject.file("model_assets/src/main/assets/parakeet-tdt-0.6b-v3-int8")
+    val packAssetsDir180m = rootProject.file("model_assets/src/main/assets/canary-180m-flash-int8")
 
     outputs.dir(appAssetsDir)
+    outputs.dir(appAssetsDir180m)
+    outputs.dir(debugAssetsDir)
+    outputs.dir(debugAssetsDir180m)
     outputs.dir(packAssetsDir)
+    outputs.dir(packAssetsDir180m)
 
     doLast {
-        downloadToDir(appAssetsDir, appAssetFiles)
-        downloadToDir(packAssetsDir, modelPackFiles)
+        // Small metadata — base (both variants)
+        downloadToDir(appAssetsDir, appAssetFiles, huggingFaceRepo)
+        downloadToDir(appAssetsDir180m, appAssetFiles180m, huggingFaceRepo180m)
+        // Large ONNX — debug-only (sideload-install pipeline) + asset-pack
+        // (release / Play Store .aab pipeline).
+        downloadToDir(debugAssetsDir, modelPackFiles, huggingFaceRepo)
+        downloadToDir(packAssetsDir, modelPackFiles, huggingFaceRepo)
+        downloadToDir(debugAssetsDir180m, modelPackFiles180m, huggingFaceRepo180m)
+        downloadToDir(packAssetsDir180m, modelPackFiles180m, huggingFaceRepo180m)
     }
 }
 

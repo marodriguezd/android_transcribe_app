@@ -142,7 +142,7 @@
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
-            <!-- Prompt Card -->
+            <!-- Active Prompt Card (read-only preview + Manage prompts button) -->
             <com.google.android.material.card.MaterialCardView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -154,20 +154,38 @@
                     android:layout_height="wrap_content"
                     android:orientation="vertical">
 
-                    <com.google.android.material.textfield.TextInputLayout
+                    <TextView
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:hint="@string/label_prompt"
-                        app:helperText="@string/hint_prompt">
+                        android:text="@string/label_active_prompt"
+                        android:textAppearance="?attr/textAppearanceTitleMedium" />
 
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/edit_prompt"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:inputType="textMultiLine"
-                            android:minLines="6"
-                            android:gravity="top" />
-                    </com.google.android.material.textfield.TextInputLayout>
+                    <TextView
+                        android:id="@+id/text_active_prompt_name"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="4dp"
+                        android:textAppearance="?attr/textAppearanceLabelMedium"
+                        android:textColor="?attr/colorPrimary" />
+
+                    <TextView
+                        android:id="@+id/text_active_prompt_body"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="8dp"
+                        android:maxLines="8"
+                        android:ellipsize="end"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:fontFamily="monospace" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btn_manage_prompts"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="12dp"
+                        android:text="@string/btn_manage_prompts"
+                        app:icon="@android:drawable/ic_menu_edit" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

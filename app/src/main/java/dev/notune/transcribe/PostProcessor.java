@@ -56,7 +56,19 @@ public class PostProcessor {
 
         String apiKey = settings.getApiKey();
         String model = settings.getModelName();
-        String promptTemplate = settings.getSystemPrompt();
+        // Resolve the active prompt via the multi-prompt repository. Older
+        // releases stored a single `system_prompt` string in prefs; that key
+        // is migrated into a "Default (migrated)" user prompt on first load
+        // (see PromptsRepository.migrateFromPreferences) and never read again.
+        String promptTemplate = settings.getActivePromptBody();
+
+        // Defensive safety net: if a user-written prompt forgot to include
+        // the ${output} placeholder, the LLM would never see the
+        // transcribed text and could only hallucinate. Append the placeholder
+        // to the end so the transcript is always carried through.
+        if (!promptTemplate.contains("${output}")) {
+            promptTemplate = promptTemplate + "\n\nTranscript:\n${output}";
+        }
 
         String processedText = rawText; // text is already passed through applyDictionary
         StringBuilder hints = new StringBuilder();

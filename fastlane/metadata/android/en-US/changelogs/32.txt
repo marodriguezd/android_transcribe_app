@@ -1,0 +1,13 @@
+v0.9.0 — cleanup release. All prior v0.x releases were deleted; this one rebuilds the project narrative around three things this fork does differently from upstream.
+
+• Transcription engine: we kept the Rust ONNX pipeline (transcribe-rs + NVIDIA Parakeet TDT 0.6B + Canary 180M Flash, INT8 quantized) instead of upstream's move to transcribe.cpp + Whisper. Two model sizes to fit any device.
+
+• AI post-processing is a first-class feature. Switch the active prompt per dictation — different tones, target languages, cleanup rules. Edit, duplicate, import and export prompts as JSON. The default app prompt and the default "My words" dictionary are now editable and exportable, with a Reset option.
+
+• Model selection is a real first-run choice. Welcome dialog leads with three options and shows their footprint inline ("Fast / 0.6B", "Fastest / 180M", "Use without / No model"). Switch models anytime. Skip the model entirely if you only want the speech-to-text provider registered.
+
+Improvements consolidated from prior cycles (v0.8.x): Material 3 UI; encrypted API-key storage; multi-prompt post-processor; default prompt / dictionary editable; safe Activity-context lifecycle; offline asset extraction for debug builds. 25 languages.
+
+Versions: versionCode 32, versionName 0.9.0. APK still ~670 MB first-install for 0.6B; ~395 MB for the Fastest variant.
+
+Note vs upstream: same package name (dev.notune.transcribe), so this build cannot coexist with the notune/android_transcribe_app build on the same device. Pick one.

@@ -1,1 +1,1 @@
-Private, offline speech-to-text keyboard powered by AI
+Private on-device speech-to-text with multi-prompt AI refinement.

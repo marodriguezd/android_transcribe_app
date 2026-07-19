@@ -43,11 +43,14 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/` for 0.6B 
 
 ## Current version
 
-- **v0.8.7** (versionCode 30) — "Defensive leak fixes (Activity-context hygiene) + E2E verification on A059"
-- Released: 2026-07-19
-- APK: https://github.com/marodriguezd/android_transcribe_app/releases/tag/v0.8.7
-- Supersedes **v0.8.6** (released 2026-07-18): v0.8.6 added the defensive `assembleRelease` asserts and the post-processing prompt single source of truth. v0.8.7 adds two Activity-leak hardenings surfaced by code-review: `SettingsManager.getSystemPrompt` and `SettingsManager.applyDictionary` now route through `getContext()` (which calls `.getApplicationContext()`) instead of storing `prefs_context` raw, so a long-lived `SettingsManager` instance cannot leak any Activity reference handed in via the constructor. E2E transcription test on A059 (Android 16) validated the v0.8.6 source pipeline against dots.wav (588 chars Steve Jobs) + jfk.wav (108 chars byte-for-byte match) using the 0.6B Parakeet engine.
-- Latest commit on `develop` (8c1722d): **feat: multi-prompt post-processing + bundled debug assets + TFA improvements** (see Session history below). The versionCode/versionName were NOT bumped — this feature set is destined for the next release (v0.8.8 or later).
+- **v0.9.0** (versionCode 32) — "Clean-up release. 8 prior v0.x GitHub Releases hard-deleted; new narrative built around three pillars that distinguish this fork from upstream."
+- Released: 2026-07-20
+- APK: https://github.com/marodriguezd/android_transcribe_app/releases/tag/v0.9.0
+- The three pillars:
+  1. **Transcription engine** — kept the Rust/ONNX pipeline (`transcribe-rs` + NVIDIA Parakeet TDT 0.6B + Canary 180M Flash, INT8 quantized) instead of upstream's `v0.1.18` move to `transcribe.cpp` + Whisper.
+  2. **AI post-processing** — multi-prompt template system, default app prompt editable + exportable, default "My words" dictionary editable + exportable. Upstream has no post-processing system at all.
+  3. **Model selection UX** — first-run welcome dialog with three options + footprint inline (`Fast / 0.6B`, `Fastest / 180M`, `Use without / No model`). Real choice that the user can revisit anytime.
+- v0.8.x detailed history retained below (see "Session history (v0.8.x)" sub-sections) for debugging context. This v0.9.0 release consolidates that work into the pillar framing; the underlying behaviour is unchanged except for the versionName/Code bump and the marketing/narrative updates in `README.md`, `fastlane/metadata/`, and this file's "Current version" header.
 
 
 ## Device / ADB
@@ -81,8 +84,8 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/` for 0.6B 
 ## Branches
 
 - `main` (60548dd) — diverged from `develop` at v0.8.0; `develop` is 16 commits ahead
-- `develop` (8c1722d) — HEAD: "feat: multi-prompt post-processing + bundled debug assets + TFA improvements"
-- Tags: `v0.8.0` through `v0.8.7` exist; each tag marks a release APK build
+- `develop` — HEAD includes the v0.9.0 cleanup commits (version bump, fastlane metadata + README rewrite, AGENTS.md "Current version" + Session history consolidation)
+- Tags: `v0.8.0` through `v0.8.8` retained locally for git history audit; all GitHub Releases from `v0.2.0-ai` through `v0.8.8` were hard-deleted at the v0.9.0 release commit.
 
 ## Build & release
 
@@ -92,8 +95,31 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/` for 0.6B 
 
 # Create release (after bumping version + versionCode)
 gh release create vX.Y.Z --repo marodriguezd/android_transcribe_app \
-  --title "Title (vX.Y.Z)" --notes "..." app/build/outputs/apk/release/app-release.apk#APK
+  --title "Title (vX.Y.Z)" --notes "$(cat fastlane/metadata/android/en-US/changelogs/<versionCode>.txt)" \
+  app/build/outputs/apk/release/app-release.apk#APK
+
+# Hard-delete a stale release (irreversible — be sure)
+gh release delete vX.Y.Z --repo marodriguezd/android_transcribe_app --yes
+# `gh release delete` removes the release from the API and unlinks the APK
+# asset. Git tags are NOT deleted. The release is recoverable from GitHub
+# support within ~30 days on request, but not from the CLI. Verify with
+# `gh release view` and `gh release list` before deleting.
 ```
+
+### Play Store caveat (only relevant if listing on Play)
+
+`title.txt` and the `<application android:label>` in `AndroidManifest.xml`
+both still say "Offline Voice Input", and `applicationId` is the
+`dev.notune.transcribe` namespace shared with the upstream build. Play
+Store rejects duplicate titles and duplicate `applicationId`s on the same
+Play Store account, so listing this build on Play requires either (a)
+shipping under a different `applicationId` suffix with a unique title, or
+(b) deleting the upstream listing first. F-Droid and direct APK
+distribution have neither restriction.
+
+## Differentiation vs upstream
+
+This fork (`marodriguezd/android_transcribe_app`) diverges from `notune/android_transcribe_app` at commit `bdecb25` (upstream `v0.1.17`). README.md, fastlane/full_description.txt and the GitHub release notes for v0.9.0 all lead with the **three pillars** framing. The same package name (`dev.notune.transcribe`) on both forks means they cannot coexist on the same device — pick one.
 
 ## Session history (v0.8.3)
 

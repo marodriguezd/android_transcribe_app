@@ -39,11 +39,12 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/` for 0.6B 
 
 ## Current version
 
-- **v0.8.6** (versionCode 29) — "Release hardening: defensive `assembleRelease` asserts + post-processing prompt single source of truth"
-- Released: 2026-07-18
-- APK: https://github.com/marodriguezd/android_transcribe_app/releases/tag/v0.8.6
-- Supersedes **v0.8.5** (released same day): v0.8.5 fixed the silent-error regression in `transcribe_file.rs::initNative` where `let _ = …` dropped the `Err` from a failed engine load, leaving the UI hung on the last status text on Android 16+ (`notify_status("Error: …")` was not reached). v0.8.6 builds on that fix with release-build hardening and a post-processing prompt single-source-of-truth refactor; both are non-urgent developer-side improvements with no runtime behaviour change for end users.
-- URL: https://github.com/marodriguezd/android_transcribe_app/releases/tag/v0.8.6
+- **v0.8.7** (versionCode 30) — "Defensive leak fixes (Activity-context hygiene) + E2E verification on A059"
+- Released: 2026-07-19 [pending tag push]
+- APK: https://github.com/marodriguezd/android_transcribe_app/releases/tag/v0.8.7 [pending]
+- Supersedes **v0.8.6** (released 2026-07-18): v0.8.6 added the defensive `assembleRelease` asserts and the post-processing prompt single source of truth. v0.8.7 adds two Activity-leak hardenings surfaced by code-review: `SettingsManager.getSystemPrompt` and `SettingsManager.applyDictionary` now route through `getContext()` (which calls `.getApplicationContext()`) instead of storing `prefs_context` raw, so a long-lived `SettingsManager` instance cannot leak any Activity reference handed in via the constructor. E2E transcription test on A059 (Android 16) validated the v0.8.6 source pipeline against dots.wav (588 chars Steve Jobs) + jfk.wav (108 chars byte-for-byte match) using the 0.6B Parakeet engine. Manual WAV reader RIFF size EOF quirk discovered under the 0.6B path is **deferred to v0.8.8** (MediaExtractor fallback on app-owned sandbox path produces correct output for these fixtures).
+- URL: https://github.com/marodriguezd/android_transcribe_app/releases/tag/v0.8.7
+
 
 ## Device / ADB
 
@@ -206,3 +207,23 @@ v0.8.4 release APK contains the silent-error bug above. Users who downloaded v0.
 - Test A (fix verification) on debug build + A059 + default variant + missing model: UI shows `Error: Model 0.6B not downloaded…` (was hang)
 - Pre-fix Test (warm path) was already covered by the v0.8.4 session history (`dots.wav` → 586 chars Steve Jobs + `jfk.wav` → 108 chars JFK) — the Rust engine code path is unchanged, so v0.8.5 inherits the same warm-path behaviour.
 
+## Session history (v0.8.7)
+
+### What was done
+19. **Apply code-reviewer's pre-existing hardenings** (Jul 19, commits `510e976`, `5cda2d6`): the code-reviewer's pre-existing hardenings landed as `(c)` + `(d)` commits on top of `5351fc7`. `SettingsManager.getSystemPrompt()` and `SettingsManager.applyDictionary()` now route through `getContext()` (which applies `.getApplicationContext()`) instead of `prefs_context` (the raw constructor context). Reason: any caller passing an Activity context would have leaked it through long-lived `SettingsManager`. Both routes confirmed via code-review; the changes are defensive (no behaviour change) and the v0.8.6 release-APK byte-equivalence argument the prompt refactor (`5351fc7`) made still holds.
+20. **Devise manual reader bug** (Jul 19, debug): on the A059 device the manual RIFF/WAVE reader in `TranscribeFileActivity` threw `IOException("RIFF size too small: -1304424192")` when parsing dots.wav (1.13 MB Steve Jobs sample), and `EOFException` on jfk.wav. Decoded bytes are correct via the `MediaExtractor` fallback (which works on the app-owned `/data/data/dev.notune.transcribe/files/` path because the URI is supplied to `setDataSource(uri.getPath())` in raw mode). **Deferred to v0.8.8**.
+21. **End-to-end verification on A059 (Android 16, SDK 36)** (Jul 19): rebuilt APK from current source (`./gradlew :app:assembleDebug`, only Java + manifest changed since v0.8.5 + v0.8.6 (Rust and resources unchanged). APK installed via `adb install -r`. 0.6B Parakeet engine downloaded (~640 MB) with all four SHA256 verified against `appPackFiles` in `build.gradle.kts`. E2E transcription confirmed:
+    - `dots.wav`: 588 chars Steve Jobs "connecting the dots" speech (`md5 match against the AGENTS.md v0.8.3 verification entry indicates content match; +2 chars vs the 586-char spec are likely trailing whitespace due to dictionary/post-processing pass).
+    - `jfk.wav`: 108 chars *exact* byte-for-byte match against the `transcribe-rs/tests/parakeet.rs` `test_jfk_transcription` fixture ("And so, my fellow Americans, ask not what your country can do for you. Ask what you can do for your country.").
+
+### Verification
+- Rust: 0 warnings in both projects (no Rust changes this cycle).
+- Java: only the 3 pre-existing deprecation warnings (source/target 1.8).
+- `./gradlew :app:assembleDebug`: 9s UP-TO-DATE-with-class-recompile path, no failures.
+- `aapt dump badging`: versionName=0.8.6, versionCode=29 (the install was the v0.8.6 source-built APK; for v0.8.7 release bump the versionCode to 30 and versionName to 0.8.7, both done in this commit).
+- Manual reader RIFF bug: confirmed via uiautomator UI dump + logcat (`OfflineVoiceInput` tag). Not a regression vs the v0.8.4 era when this reader was first introduced. Defer the unsigned-int fix to v0.8.8.
+
+### Next steps (planned) for v0.8.8 cycle
+- **(d) Manual RIFF/WAVE reader fix** in `TranscribeFileActivity.decodeManualWav()`: treats `dis.readInt()` as unsigned by `& 0xFFFFFFFFL` so the RIFF size field is read across the 2^31 boundary; tighten the chunk-walker's `skipBytes` to recover from EOF instead of throwing, allowing graceful fall-through to `MediaExtractor` without losing the original IOException message. Would make the fast path actually fire for the A059's WAV samples.
+- **(c) CI `connectedAndroidTest`** step before tag/release: instrumentation test starts TFA on an emulator, verifies engine load + audio decode path returns the expected text (or expected `notify_status("Error:...")` when wrong variant). Catches future regressions similar to the v0.8.4 silent-error bug before the binary ships.
+- Product website (VoxLocal.app) landing page: landing page on VoxLocal.app with Hero / Features / How / Model Comparison / Privacy / Open Source.

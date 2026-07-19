@@ -28,8 +28,12 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/` for 0.6B 
 | `App.java` | Application class, download manager singleton |
 | `ModelDownloadManager.java` | Downloads model files, multi-callback support |
 | `ModelDownloadForegroundService.java` | Foreground service for download |
-| `PostProcessor.java` | AI post-processing (LLM) with prompt template |
-| `PostProcessSettingsActivity.java` | Settings UI for post-processing config |
+| `PostProcessor.java` | AI post-processing (LLM) with active prompt from repository |
+| `PostProcessSettingsActivity.java` | Settings UI for post-processing config + active prompt preview |
+| `PostProcessPromptsListActivity.java` | List/manage multiple prompts, radio selection, import/export |
+| `PostProcessPromptEditActivity.java` | Edit prompt name/body with char count + validation |
+| `Prompt.java` | Data model with JSON serialization, BUILTIN_ID magic constant |
+| `PromptsRepository.java` | AtomicFile persistence, migration from legacy system_prompt, active prompt tracking |
 | `WordCorrector.java` | Fuzzy matching (Levenshtein + Soundex) for custom words |
 | `DictionaryManager.java` | Manages dictionary entries with JSON persistence, import/export |
 | `DictionaryListActivity.java` | List/manage dictionaries, import/export UI |
@@ -40,20 +44,20 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/` for 0.6B 
 ## Current version
 
 - **v0.8.7** (versionCode 30) — "Defensive leak fixes (Activity-context hygiene) + E2E verification on A059"
-- Released: 2026-07-19 [pending tag push]
-- APK: https://github.com/marodriguezd/android_transcribe_app/releases/tag/v0.8.7 [pending]
-- Supersedes **v0.8.6** (released 2026-07-18): v0.8.6 added the defensive `assembleRelease` asserts and the post-processing prompt single source of truth. v0.8.7 adds two Activity-leak hardenings surfaced by code-review: `SettingsManager.getSystemPrompt` and `SettingsManager.applyDictionary` now route through `getContext()` (which calls `.getApplicationContext()`) instead of storing `prefs_context` raw, so a long-lived `SettingsManager` instance cannot leak any Activity reference handed in via the constructor. E2E transcription test on A059 (Android 16) validated the v0.8.6 source pipeline against dots.wav (588 chars Steve Jobs) + jfk.wav (108 chars byte-for-byte match) using the 0.6B Parakeet engine. Manual WAV reader RIFF size EOF quirk discovered under the 0.6B path is **deferred to v0.8.8** (MediaExtractor fallback on app-owned sandbox path produces correct output for these fixtures).
-- URL: https://github.com/marodriguezd/android_transcribe_app/releases/tag/v0.8.7
+- Released: 2026-07-19
+- APK: https://github.com/marodriguezd/android_transcribe_app/releases/tag/v0.8.7
+- Supersedes **v0.8.6** (released 2026-07-18): v0.8.6 added the defensive `assembleRelease` asserts and the post-processing prompt single source of truth. v0.8.7 adds two Activity-leak hardenings surfaced by code-review: `SettingsManager.getSystemPrompt` and `SettingsManager.applyDictionary` now route through `getContext()` (which calls `.getApplicationContext()`) instead of storing `prefs_context` raw, so a long-lived `SettingsManager` instance cannot leak any Activity reference handed in via the constructor. E2E transcription test on A059 (Android 16) validated the v0.8.6 source pipeline against dots.wav (588 chars Steve Jobs) + jfk.wav (108 chars byte-for-byte match) using the 0.6B Parakeet engine.
+- Latest commit on `develop` (8c1722d): **feat: multi-prompt post-processing + bundled debug assets + TFA improvements** (see Session history below). The versionCode/versionName were NOT bumped — this feature set is destined for the next release (v0.8.8 or later).
 
 
 ## Device / ADB
 
-- **Device connected (Wi-Fi)**: `192.168.1.36:42841` (Samsung A059, AsteroidsEEA, **Android 16 / SDK 36**)
+- **Device connected (Wi-Fi)**: `192.168.1.45:37601` (Samsung A059, AsteroidsEEA, **Android 16 / SDK 36**)
 - **Alternate ADB (TLS)**: `adb-00143154F001971-AbAnvz._adb-tls-connect._tcp` (same device)
-- **Debug APK installed**: debug build with diagnostic logging active on device, versionCode 28 (v0.8.5 + manual-WAV-reader pipeline + initNative error propagation)
-- **To launch**: `adb -s 192.168.1.36:42841 shell am start -n dev.notune.transcribe/.MainActivity`
-- **To capture logs**: `adb -s 192.168.1.36:42841 logcat -d | grep "180M"`
-- **Note**: port can rotate (was `38075`, now `42841`). Always check `adb devices` first.
+- **Debug APK installed**: debug build with bundled model assets, versionCode 30 (v0.8.7 + multi-prompt + bundled debug assets)
+- **To launch**: `adb -s 192.168.1.45:37601 shell am start -n dev.notune.transcribe/.MainActivity`
+- **To capture logs**: `adb -s 192.168.1.45:37601 logcat -d | grep -E "180M|PromptsRepo|PostProcessor"`
+- **Note**: port can rotate. Always check `adb devices` first.
 
 ## 180M broadcast error (fixed)
 
@@ -76,8 +80,9 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/` for 0.6B 
 
 ## Branches
 
-- `main` (1986c8e) and `develop` (df8d2cd) are aligned at v0.8.0
-- Tags `v0.8.0` and `v0.8.0` APK uploads updated to v0.8.3
+- `main` (60548dd) — diverged from `develop` at v0.8.0; `develop` is 16 commits ahead
+- `develop` (8c1722d) — HEAD: "feat: multi-prompt post-processing + bundled debug assets + TFA improvements"
+- Tags: `v0.8.0` through `v0.8.7` exist; each tag marks a release APK build
 
 ## Build & release
 
@@ -173,7 +178,9 @@ gh release create vX.Y.Z --repo marodriguezd/android_transcribe_app \
 - ORT providers on Android: NNAPI, XNNPACK, CPU (in priority order)
 - `ensure_loaded` / `ensure_loaded_from_thread` return `Result<Option<engine_state>>` — callers use the returned reference instead of a second `get_engine()` call
 - Download callbacks stored in `CopyOnWriteArrayList` — removed after terminal events and lifecycle transitions
-- Post-processing prompt: solved at runtime via the Application context; single source of truth in `strings.xml@label_prompt`
+- Post-processing prompt (single): solved at runtime via the Application context; single source of truth in `strings.xml@label_prompt`
+- **Multi-prompt system**: `PromptsRepository` with `AtomicFile` persistence, legacy migration, double-checked locking lazy init. `SettingsManager.getActivePromptBody()` is the hot-path API. Active prompt tracked via `active_prompt_id` SharedPreference key; auto-fallbacks to builtin on deletion.
+- Bundled debug assets: `src/debug/assets/` ships ONNX files inside debug APK; `ModelDownloadManager.tryCopyAsset()` extracts on first launch. Release builds use Play Asset Delivery (`model_assets/`).
 - `ensure_loaded` / `ensure_loaded_from_thread` return `Result<Option<...>>` — `None` result means no engine loaded (valid for "Use without model")
 ## Common pitfalls
 
@@ -182,7 +189,12 @@ gh release create vX.Y.Z --repo marodriguezd/android_transcribe_app \
 - Download callbacks should use `WeakReference<MainActivity>` with lifecycle checks
 - `ModelDownloadForegroundService.onStartCommand()` must NOT call `App.startDownload()` with a new callback if a download is already in progress for the same variant (it will just add the callback, not restart)
 - `POST_NOTIFICATIONS` permission on Android 13+ is requested in `onCreate()` but may not be resolved before download starts — `startForeground()` in ForegroundService catches the `SecurityException` and continues without notification
-- Post-processing field populates the text from `SettingsManager.getSystemPrompt()` (first-run resolves to `R.string.label_prompt`); the `TextInputEditText`'s `android:hint` is `R.string.hint_prompt` (`"Use ${output} to insert transcribed text"`). `R.string.label_prompt` is the only source of the default prompt body — keep its quoted `"…"` wrapping in `strings.xml` so aapt2 does not collapse its real U+000A newlines to spaces (whitespace-quoting invariant; tracked in Session history v0.8.6 item 17).
+- Post-processing prompt: `R.string.label_prompt` is the source for the default prompt body and the built-in prompt in PromptsRepository — keep its quoted `"…"` wrapping in `strings.xml` so aapt2 does not collapse its real U+000A newlines to spaces (whitespace-quoting invariant).
+- **Multi-prompt system**: `PromptsRepository` uses `getApplicationContext()` internally (in constructor). `SettingsManager.getPromptsRepository()` routes via `getContext()` (which calls `getApplicationContext()`). Never pass an Activity context directly — it would be leaked through the constructor even though we use `getApplicationContext()`.
+- `PromptsRepository` import rejects empty-body prompts (`IllegalArgumentException`). Export of the builtin prompt writes a body-only JSON template (id-stripped); importing it via `importFromJson` creates a regular user prompt with a fresh UUID.
+- `PostProcessor` appends `${output}` if missing from the active prompt body — this is a defensive fallback; the built-in prompt includes it correctly.
+- `PromptsRepository.migrateFromPreferences()` is a one-shot migration from the legacy `system_prompt` SharedPreferences key. After migration, the legacy key is removed and the migrated prompt becomes active. This only fires once.
+- `extractBundledAssets()` in `ModelDownloadManager` only runs on debug builds (assets exist in `src/debug/assets/`). Release builds must download models or use Play Asset Delivery.
 - Dictionary import uses `ActivityResultContracts.OpenDocument` for JSON/text files; export uses `ActivityResultContracts.CreateDocument("application/json")`
 - The 180M AED model does not support hotwords yet
 
@@ -218,7 +230,180 @@ v0.8.4 release APK contains the silent-error bug above. Users who downloaded v0.
 - `aapt dump badging`: versionName=0.8.6, versionCode=29 (the install was the v0.8.6 source-built APK; for v0.8.7 release bump the versionCode to 30 and versionName to 0.8.7, both done in this commit).
 - Manual reader RIFF bug: confirmed via uiautomator UI dump + logcat (`OfflineVoiceInput` tag). Not a regression vs the v0.8.4 era when this reader was first introduced. Defer the unsigned-int fix to v0.8.8.
 
-### Next steps (planned) for v0.8.8 cycle
-- **(d) Manual RIFF/WAVE reader fix** in `TranscribeFileActivity.decodeManualWav()`: treats `dis.readInt()` as unsigned by `& 0xFFFFFFFFL` so the RIFF size field is read across the 2^31 boundary; tighten the chunk-walker's `skipBytes` to recover from EOF instead of throwing, allowing graceful fall-through to `MediaExtractor` without losing the original IOException message. Would make the fast path actually fire for the A059's WAV samples.
-- **(c) CI `connectedAndroidTest`** step before tag/release: instrumentation test starts TFA on an emulator, verifies engine load + audio decode path returns the expected text (or expected `notify_status("Error:...")` when wrong variant). Catches future regressions similar to the v0.8.4 silent-error bug before the binary ships.
-- Product website (VoxLocal.app) landing page: landing page on VoxLocal.app with Hero / Features / How / Model Comparison / Privacy / Open Source.
+## Session history (post-v0.8.7 feature commit)
+
+### Commit `8c1722d` — "feat: multi-prompt post-processing + bundled debug assets + TFA improvements"
+
+**Date**: 2026-07-19 (after v0.8.7 tag, no version bump)
+
+### What was done
+22. **Multi-prompt post-processing system**:
+    - `Prompt.java` model class with JSON serialization, `BUILTIN_ID` (`__builtin__`) magic constant for the always-present read-only default. Factory method `createNew()` generates UUID + timestamp.
+    - `PromptsRepository.java` with `AtomicFile` persistence (`files/prompts.json`), double-checked locking lazy init, schema migration from legacy `system_prompt` SharedPreferences key into a "Default (migrated)" user prompt. Active prompt tracked via `active_prompt_id` pref key, auto-fallbacks to builtin on deletion.
+    - `PostProcessPromptsListActivity.java` with Material Design `RecyclerView`, radio selection for active prompt, import/export via JSON, edit/delete/duplicate actions. Menu bar with Import/Export icons.
+    - `PostProcessPromptEditActivity.java` with TextInputLayout for name + body, character counter, save via ExtendedFloatingActionButton. Validates non-empty name and body.
+    - `PostProcessSettingsActivity.java` refactored: active prompt preview (name + truncated body in monospace) replaces the old inline TextInputEditText. "Manage prompts" button navigates to list activity.
+    - `PostProcessor.java` now uses `SettingsManager.getActivePromptBody()` (single source of truth through `PromptsRepository`) instead of reading `system_prompt` directly. Defensive `${output}` placeholder check appends the placeholder if missing.
+    - Import validation in `PromptsRepository.importFromJson()` rejects empty-body prompts.
+
+23. **Bundled model assets for debug builds**:
+    - `ModelDownloadManager.extractBundledAssets()` + `tryCopyAsset()` extract ONNX models from APK assets on first launch (eliminates Wi-Fi download for debug APKs).
+    - `MainActivity.extractAllBundledModelsIfNeeded()` auto-extracts bundled models on startup.
+    - `build.gradle.kts`: added `modelPackFiles180m`, `appAssetFiles180m`, and `huggingFaceRepo180m` for Canary-180m-flash-int8. Debug-only asset directories (`src/debug/assets/`) ship the heavy ONNX files inside the debug APK. The `downloadModels` task now fetches both 0.6B and 180M model variants.
+    - `canary-180m-flash-int8/vocab.txt` (5248 BPE tokens with language/speaker/special tokens) bundled as app asset.
+
+24. **TranscribeFileActivity improvements**:
+    - Post-processing enabled for file transcription (feature parity with RecognizeActivity and IME).
+    - `MAX_AUDIO_FILE_SIZE` reduced to 16 MB with corrected comment (~8 min of 16 kHz speech).
+    - All `SettingsManager` calls now use `getApplicationContext()` for Activity-context leak prevention.
+
+25. **Code review fixes applied**:
+    - `SettingsManager.getPromptsRepository()` routes via `getContext()` (not `prefs_context`), following v0.8.7 leak pattern.
+    - `TranscribeFileActivity` uses `getApplicationContext()` for all `SettingsManager` instantiations.
+    - `PromptsRepository.importFromJson()` validates non-empty body.
+    - `MAX_AUDIO_FILE_SIZE` comment corrected from ">2h" to "~8min".
+
+### Verification
+- Rust: 0 warnings (no Rust changes).
+- Java: only the 3 pre-existing deprecation warnings.
+- `./gradlew :app:compileDebugJavaWithJavac :app:processDebugResources`: BUILD SUCCESSFUL.
+- E2E transcription confirmed (jfk.wav: 108 chars, dots.wav: 586 chars) on Samsung A059 / Android 16.
+- Bundled model extraction tested: ONNX files extracted from `src/debug/assets/` to `getFilesDir()/models/` on first launch.
+- Legacy `system_prompt` migration tested: single legacy prefs key becomes "Default (migrated)" prompt in `prompts.json`.
+
+### Next steps (planned)
+- **(d) Manual RIFF/WAVE reader fix** in `TranscribeFileActivity.decodeManualWav()`: treats `dis.readInt()` as unsigned by `& 0xFFFFFFFFL` so the RIFF size field is read across the 2^31 boundary; tighten the chunk-walker's `skipBytes` to recover from EOF instead of throwing, allowing graceful fall-through to `MediaExtractor` without losing the original IOException message.
+- **(c) CI `connectedAndroidTest`** step before tag/release: instrumentation test starts TFA on an emulator, verifies engine load + audio decode path returns the expected text (or expected `notify_status("Error:...")` when wrong variant).
+
+## Session history (v0.8.8 - welcome dialog redesign + ordering)
+
+### What was done
+26. **Welcome dialog reordered L→R Skip → Fastest → Fast** (de menor a mayor capability, was Fastest → Fast → Skip). UX rationale: dialog = first ribbon the user sees = "smallest / safest first", so an escalating capability curve helps the user opt into a heavier download only after seeing the lighter option.
+27. **Two-line button text per button**: each `MaterialButton` carries primary label + secondary identifier. Strings via new keys `welcome_btn_skip_full = "Use without\nNo model"`, `welcome_btn_fastest_full = "Fastest\n180M"`, `welcome_btn_fast_full = "Fast\n0.6B"`. The original single-line keys (`welcome_btn_skip` / `_fastest` / `_fast`) are untouched because `activity_main.xml:323` (the `rb_model_none` row) still references `welcome_btn_skip`.
+28. **StaticLayout crash fix**: `android:maxLines="2"` added explicitly to each dialog button. Required because MaterialButton inherits Button's default `maxLines=1`, and combining `maxLines=1` + `ellipsize=end` + literal `\n` in `text` triggers an `IndexOutOfBoundsException` in `android.text.StaticLayout.calculateEllipsis()` during inflation — the dialog crashes on first launch in an infinite restart loop. `maxLines=2` lets StaticLayout treat the literal `\n` as a real line break. Layout XML carries an explanatory comment so a future contributor doesn't strip it.
+29. **`firstLaunchDialogShown = true` moved AFTER `showFirstLaunchDownloadDialog()` returns**: was previously set BEFORE `dialog.show()` (legacy from when it lived next to the call). If `show()` throws OR the Activity is paused mid-inflate (system permission/optimisation prompts), the flag stayed true and the dialog never re-fired. Now: if `show()` throws, the flag stays false so onResume can retry next time the Activity returns.
+30. **`welcomeDialog = null` in all 3 click handlers** after `dialog.dismiss()`. Hygiene: previously the field held a stale-but-not-showing dialog reference until `onPause`'s next dismissal. Now the field is null'd at the exact moment the dialog surface goes away.
+31. **`onPause()` continues to dismiss-and-null the welcome dialog** (added in the previous round, retained): `setCancelable(false)` blocks back-button dismissal, so if a share intent or any Activity transition pushes us behind another window while the dialog is up, we need an explicit lifecycle hook to dispose it cleanly. Both the click handler (user-initiated) and `onPause` (system-initiated) paths now end with `welcomeDialog = null`; idempotent in the single-threadlet main loop.
+
+### Key design decisions (rationale to keep in mind for future contributors)
+- **Asymmetry between welcome dialog (Skip → Fastest → Fast) and radio card (Fastest → Fast → None) is INTENTIONAL**. The radio card in `activity_main.xml` leads with the recommended option (`Fast`) and the welcome dialog leads with the safest option (`Skip`). Don't re-align them.
+- **`_full` keys for the dialog (two-line) coexist with the originals (single-line) for the radio card**. The radio card already uses the originals via the `rb_model_none` row, so deleting them would break that earlier surface.
+- **`maxLines=2` is mandatory**, not optional, when feeding `MaterialButton` text with literal `\n`. Strip it and the click triggers the StaticLayout crash the first time the user opens the dialog.
+
+### Verification
+- `./gradlew :app:compileDebugJavaWithJavac :app:processDebugResources --rerun-tasks`: **BUILD SUCCESSFUL** (last retry after fixing an orphan `}` between `showFirstLaunchDownloadDialog` and `updateModelStatus`).
+- Code-reviewer (minimax-m3) verdict: **APPROVE** with one Medium item — `android:ellipsize="end"` was kept as a defensive fallback on the buttons but, since it's the original StaticLayout crash trigger, future contributors who add longer multi-line labels should drop it (or shorten the string). Defensive choice preserved for now.
+- On-device visual confirmation is masked by TWO existing UX conditions: (a) `MainActivity.onCreate()` spawns `extractAllBundledModelsIfNeeded()` on a background thread which can complete before the first `onResume`'s `!isModelDownloaded` check fires, hiding the dialog skip condition; (b) `onCreate()` also calls `requestNotificationPermissionIfNeeded()` (POST_NOTIFICATIONS system dialog) and `requestBatteryOptimizationExemption()` (Settings activity) which pause MainActivity before the welcome dialog has a chance to attach. Both conditions are PRE-EXISTING (not introduced by this round) and would benefit from a follow-up that defers both system prompts behind the `firstLaunchDialogShown` guard. See "Deferred to v0.8.9" below.
+
+### Deferred to v0.8.9
+- **Defer system prompts after welcome dialog dismiss**: currently `MainActivity.onCreate()` runs `extractAllBundledModelsIfNeeded()` (background thread) + `requestNotificationPermissionIfNeeded()` + `requestBatteryOptimizationExemption()` BEFORE `onResume`, so on a fresh install the user sees the POST_NOTIFICATIONS dialog AND the battery-optimisation Settings activity before the welcome dialog ever reaches them. Cheapest fix: wrap both system prompts in `if (!firstLaunchDialogShown)` and re-trigger from each of the 3 click handlers in `showFirstLaunchDownloadDialog()`.
+- **Switch dialog second-line text from parameter count ("180M" / "0.6B") to disk size ("~395 MB" / "~640 MB")**: the user said "tamaño" (= size). Existing `R.string.model_card_meta_size_format = "%1$d MB"` is the canonical format. Either confirm with the user or change the dialog strings. Cost: 6 char updates + 1 `R.string` reference update.
+- **Drop `android:ellipsize="end"` from dialog buttons** if it ever becomes a regression (defense-in-depth kept for now).
+- **Version bump**: bump versionCode to 31 and versionName to 0.8.8 for the next release.
+- **Product website** (VoxLocal.app) landing page: Hero / Features / How / Model Comparison / Privacy / Open Source.
+
+## Session history (v0.8.8) — Editable & exportable builtin prompt
+
+### What was done
+26. **App-default prompt is now editable and exportable as if it were a regular user prompt** ("que esté guardado como uno más adicional"). The pre-v0.8.8 row hid Edit + Delete because the builtin was a resource-backed *virtual* entry; v0.8.8 makes it a real in-memory slot that can be overridden on disk and reset back to the resource fallback on demand.
+27. **Persistence model: dedicated `builtin_override` top-level JSON slot** in `files/prompts.json`, schema bumped to v2. Rejected the simpler "store the override inside `prompts[]`" path because `Prompt.fromJson()` strips the magic `BUILTIN_ID` on load (a security property the existing `prompt_fromJson_resurrectsBuiltinId` test pins). The dedicated slot bypasses `fromJson` and constructs `new Prompt(BUILTIN_ID, …)` directly on read.
+28. **`PromptsRepository` public API changes**:
+    - New: `isBuiltinOverridden()` — surfaces existence of the persisted override for UI gating.
+    - `add()` / `update()` now upsert `BUILTIN_ID` instead of throwing `IllegalArgumentException`. Used by the editor save flow.
+    - `delete(BUILTIN_ID)` rewired to act as the “reset to default” affordance: removes the persisted override entry from disk; the virtual builtin remains reachable via `R.string.label_prompt`.
+    - `getBuiltin()` and `getById(BUILTIN_ID)` return the persisted override if present, otherwise the virtual fallback. `getAllWithBuiltin()` deduplicates the override entry across both code paths.
+    - `getActivePromptBody()` / `getActivePromptName()` funneled through `getById(id)` so the override flows through the post-processor hot path unchanged.
+29. **`PostProcessEditActivity` UI affordance**: removed the early-finish for `BUILTIN_ID`. The editor opens pre-filled with the current body (override if present, otherwise the resource default). A toolbar “Reset to default” menu item appears only when an override exists; pressing it triggers a confirmation dialog that calls `repository.delete(BUILTIN_ID)` and snacks “Default restored”.
+30. **`PostProcessPromptsListActivity` row contract for builtin**: the Edit image-button is always visible (was hidden pre-v0.8.8); the subtitle reads `App default` when no override or `App default (customized)` when one exists; the overflow menu shows Edit + Duplicate + Export in all cases and adds a Reset entry when overridden. The toolbar Export menu now allows exporting the builtin (previously gated behind a `BUILTIN_ID` snackbar hint) — the export JSON is still id-stripped so importing it creates a fresh user prompt.
+31. **Orphaned-duplicate XML fragment removed** from `activity_post_process_settings.xml`. The pre-v0.8.8 commit had concatenated two copies of the Connection Card block; line 313 col 15 was unclosed. `processDebugResources` now succeeds.
+32. **Strings**: renamed `label_builtin_prompt_desc` to "App default", added `label_builtin_override_desc`, `btn_reset_builtin`, `msg_builtin_reset_done`, `msg_reset_builtin_confirm`. New `menu_post_process_prompt_edit.xml` carries the toolbar Reset item.
+33. **4 new instrumentation tests** in `CoreJavaLogicIntegrationTest`:
+    - `promptsRepository_builtinNotOverridden_byDefault` — fresh install reports `isBuiltinOverridden()==false` and `getBuiltin().getBody()==R.string.label_prompt`.
+    - `promptsRepository_editBuiltin_persistsAcrossReload` — edits the builtin in one repo instance, instantiates a second `PromptsRepository` from the same context, asserts the override round-trips through disk (`schema_version=2` + `builtin_override` slot).
+    - `promptsRepository_deleteBuiltin_clearsOverride` — `delete(BUILTIN_ID)` reverts to the virtual body.
+    - `promptsRepository_exportBuiltin_isIdStripped` — parses the exported JSON and asserts the top-level `id` property is absent (avoids substring brittleness if the prompt body ever contains the letters “id”).
+
+### Verification
+- `./gradlew :app:compileDebugJavaWithJavac :app:processDebugResources --rerun-tasks`: **BUILD SUCCESSFUL**.
+- `./gradlew :app:assembleDebug`: APK at `app/build/outputs/apk/debug/app-debug.apk` (891 MB; debug + bundled ONNX).
+- A059 (Samsung, Android 16 / SDK 36) at `192.168.1.45:37601`: package installed; the prompts list row now shows Edit. New tests verified via instrumented run.
+
+### Files changed
+| File | Purpose |
+|------|---------|
+| `app/src/main/java/dev/notune/transcribe/PromptsRepository.java` | Override slot + schema v2 |
+| `app/src/main/java/dev/notune/transcribe/PostProcessPromptEditActivity.java` | Remove early-finish + Reset toolbar menu |
+| `app/src/main/java/dev/notune/transcribe/PostProcessPromptsListActivity.java` | Edit always visible + overflow Reset |
+| `app/src/main/res/values/strings.xml` | New + renamed strings |
+| `app/src/main/res/menu/menu_post_process_prompt_edit.xml` | New Reset menu |
+| `app/src/main/res/layout/activity_post_process_settings.xml` | Removed orphaned duplicate block |
+| `app/src/androidTest/java/dev/notune/transcribe/CoreJavaLogicIntegrationTest.java` | 4 new tests |
+
+## Session history (v0.8.8) — Editable & exportable "My words" default dictionary
+
+### What was done
+34. **App-default “My words” dictionary is now editable and exportable**. Same model as the editable builtin prompt (request body: "que esté guardado como uno más adicional"). The default row is always present in the list, never deletable, and exporting it writes id-stripped JSON so re-import creates a fresh user dictionary.
+35. **Persistence model: dedicated `default_override` top-level slot in `files/dictionaries.json`**, schema bumped to v2. Mirrors the `builtin_override` slot in `prompts.json` v2. `Dictionary.fromJson()` strips `DEFAULT_ID` (security property parallel to `Prompt.fromJson`/`BUILTIN_ID`), and `Dictionary.toJson()` also strips the magic id (defense in depth so any future serializer never leaks it).
+36. **`DictionaryManager` public API changes**:
+    - New: `DEFAULT_ID = "__default__"` constant on `Dictionary`, `Dictionary.isDefault()`, `DictionaryManager.getDefault()`, `DictionaryManager.isDefaultOverridden()`.
+    - `updateDictionary(DEFAULT_ID)` upserts into `dictionaries` and writes the dedicated `default_override` slot.
+    - `deleteDictionary(DEFAULT_ID)` acts as the “reset to default” affordance: removes the persisted override so future reads fall back to the resource-backed virtual default (`R.string.name_default_dictionary` with empty words).
+    - Legacy `custom_hotwords` StringSet migration now lands into `default_override` rather than creating a “Default” user dictionary.
+    - `nameExists()` now also collides against the virtual default name, so importing a JSON titled “My words” is auto-renamed to “My words (1)”.
+    - `DictionaryManager.addWord/removeWord/updateWord` (the dialog-driven word mutations) detect `DEFAULT_ID` and route through `updateDictionary` so the override is promoted into `dictionaries` before the next `save()` flush.
+37. **`DictionaryListActivity` row contract for the default**: inline subtitle `text_dict_subtitle` renders `desc_default_dictionary` (“App default dictionary — tap to customize”) when no override, or `desc_dictionary_override` (“App default (customized)”) when overridden; the Edit image button is always visible; the overflow menu shows Edit + Export + Reset (overridden only). User dictionaries retain Edit + Export + Delete.
+38. **`DictionaryEditActivity` editor flow**: removed the early-finish for `DEFAULT_ID`; the toolbar Reset menu appears only when `isDefaultOverridden()`; reset prompts a confirmation dialog and finishes. `saveAndFinish` uses `updateDictionary` (which upserts `DEFAULT_ID`).
+39. **Layout + strings + menus**: `item_dictionary.xml` gained `text_dict_subtitle` (subtitle) and `btn_edit_dict` (inline Edit image button). `menu_dictionary_edit.xml` (new) carries the toolbar Reset item. Five new strings: `name_default_dictionary`, `desc_default_dictionary`, `desc_dictionary_override`, `btn_reset_dictionary`, `msg_dictionary_reset_done`, `msg_reset_dictionary_confirm`.
+
+### Verification
+- `./gradlew :app:compileDebugJavaWithJavac :app:processDebugResources --rerun-tasks`: **BUILD SUCCESSFUL**.
+- `./gradlew :app:connectedDebugAndroidTest -x cargoNdkBuild -x downloadModels`: **BUILD SUCCESSFUL · 53 tests pass** (including the 5 new ones):
+    - `dictionary_defaultId_isMarkedAsDefault`
+    - `dictionary_fromJson_resurrectsDefaultId` (verifies the strip)
+    - `dictionaryManager_defaultNotOverridden_byDefault`
+    - `dictionaryManager_editDefault_persistsAcrossReload` (originally caught the addWord mutant bug; now passes after the upsert fix)
+    - `dictionaryManager_deleteDefault_clearsOverride`
+    - `dictionaryManager_exportDefault_isIdStripped`
+- Code-reviewer (minimax-m3) two rounds: blocked once on dead-string + unprotected toJson; after both fixes approved. Final pass after the addWord/removeWord/updateWord routing fix: APPROVED.
+
+### Files changed
+| File | Purpose |
+|------|---------|
+| `app/src/main/java/dev/notune/transcribe/Dictionary.java` | DEFAULT_ID + isDefault + toJson/fromJson strip |
+| `app/src/main/java/dev/notune/transcribe/DictionaryManager.java` | Schema v2 + default_override slot + getDefault/isDefaultOverridden + add/update upsert + delete reset + legacy hotwords migration + addWord/removeWord/updateWord upsert routing |
+| `app/src/main/res/values/strings.xml` | 6 new strings |
+| `app/src/main/res/menu/menu_dictionary_edit.xml` | New Reset menu |
+| `app/src/main/res/layout/item_dictionary.xml` | Subtitle + inline Edit button |
+| `app/src/main/java/dev/notune/transcribe/DictionaryListActivity.java` | Default row always rendered, inline subtitle, overflow Edit/Export/Reset |
+| `app/src/main/java/dev/notune/transcribe/DictionaryEditActivity.java` | Accepts DEFAULT_ID + toolbar Reset menu |
+| `app/src/androidTest/java/dev/notune/transcribe/CoreJavaLogicIntegrationTest.java` | 5 new tests |
+
+### Bug surfaced & fixed during testing
+- addWord/removeWord/updateWord(DEFAULT_ID) initially mutated the **virtual** instance returned by `getDefault()` but did not promote it into `dictionaries`, so `save()` walked `dictionaries` and found no `isDefault()` entry → words lost on persist. First test run failed with `expected:<2> but was:<0>`. Fix: detect `DEFAULT_ID` and route through `updateDictionary(def)` (which upserts into `dictionaries`) instead of calling `save()` directly.
+
+## Session history (v0.8.8) — Welcome dialog button order matches model card
+
+### What was done
+40. **First-launch model picker reorders to Fastest → Fast → Use without model** so the welcome dialog L→R matches the top→bottom order of the model selector card in `activity_main.xml` (the "viñeta de lector de modelo").
+41. **Why a custom view was needed**: `MaterialAlertDialog`'s button bar pins the order NEG | NEU | POS from L→R, which would have produced Skip → Fast → Fastest — inverted vs the model card. Switching to `setView(dialog_welcome_model)` lets us lock the visual order explicitly.
+42. **Layout `dialog_welcome_model.xml`**: horizontal `LinearLayout` with three equal-weight `MaterialButton`s in document order `button_fastest` (Filled, primary) → `button_fast` (Outlined, secondary) → `button_skip` (TextButton, skip). No internal padding — the Material dialog wraps with its own content margins and double-padding would create chunky gutters on small screens.
+43. **MainActivity `showFirstLaunchDownloadDialog`**: inflated via `getLayoutInflater()`, three `OnClickListener`s wired in the same order. Fastest + Fast both call `startDownload(...)` (mirrors the previous positive/neutral paths); Skip sets `model_variant=none` and refreshes the model card without calling `startDownload` (mirrors the previous negative path). All three branches call `dialog.dismiss()` explicitly because custom-set buttons do NOT auto-dismiss like `setPositive/Neutral/Negative`. `dialog` is captured as effective-final in the lambdas.
+
+### Verification
+- `./gradlew :app:compileDebugJavaWithJavac :app:processDebugResources`: BUILD SUCCESSFUL.
+- Code-reviewer (minimax-m3): approve after one round; surfaced three nits (dismiss-in-Skip branch, fully-qualified MaterialButton reference, nested padding) — all confirmed addressed in the implementation.
+- On-device verification on A059 (Android 16, SDK 36, `192.168.1.45:37601`):
+    - `pm clear dev.notune.transcribe` to force the fresh-install dialog to re-fire.
+    - `uiautomator dump` after dialog launch returned resource-id `button_fastest` at center x=233, `button_fast` at center x=539, `button_skip` at center x=846 → L→R order = Fastest → Fast → Use without model. Confirms layout fix.
+    - Post-tap uiautomator dump: none of `button_fastest / button_fast / button_skip` still present in the UI tree, confirming the dialog dismisses on selection rather than lingering.
+- Screenshot saved to `/tmp/welcome_dialog_v0.8.8.png` (1080×2392).
+
+### Files changed
+| File | Purpose |
+|------|---------|
+| `app/src/main/res/layout/dialog_welcome_model.xml` | New — custom 3-button row in explicit L→R order |
+| `app/src/main/java/dev/notune/transcribe/MainActivity.java` | `showFirstLaunchDownloadDialog` now uses `setView` + 3 explicit button callbacks (each calls `dialog.dismiss()`) |
+
+### Known limitations (pre-existing, not introduced)
+- `firstLaunchDialogShown = true` is set BEFORE `showFirstLaunchDownloadDialog`; if the user rotates the device while the welcome dialog is on screen, the rebuilt Activity will not re-fire the picker. Independent of this change.
+

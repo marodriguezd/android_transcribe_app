@@ -1,11 +1,17 @@
-Enable Android resources for the Robolectric offline test classpath (fixes the v0.8.7 Stale AAPT ID Resource$NotFoundException on AGP 8.x).
+New in v0.8.8
 
-Specifically: the 4 OfflineVoiceInputE2ETest unit tests that touched SettingsManager.getSystemPrompt() and PromptsRepository.getActivePromptBody() (which internally call context.getString(R.string.label_prompt)) were throwing android.content.res.Resources$NotFoundException: String resource ID #0x7f0f0072 because AGP 8.x flipped the unit-test isIncludeAndroidResources default to false — Robolectric's binary resource backend found an empty ResourceTable while the AAPT-generated R.class held stable IDs. The fix sets testOptions.unitTests.isIncludeAndroidResources = true so src/main/res/ is bundled into the test classpath. Verified 60/60 Robolectric unit tests pass (previously 56/60; 4 stuck on Resources$NotFoundException).
+• Multi-prompt post-processing: keep several AI prompts (tone, language, list-cleanup, etc.) and switch the active one before each dictation. Edit, duplicate, import and export prompts from the new "Manage prompts" screen.
 
-Pre-tag verification
-- Unit tests: 60/60 passed (Robolectric 4.11.1, @Config(sdk = 28)).
-- Instrumented test runner: bootstrap confirmed on Samsung A059 (Android 16 / SDK 36) via connectedDebugAndroidTest. 43/43 instrumented tests passed after a separate round-2 fix-up of 3 production bugs surfaced by the on-device run (filterTranscriptionOutput(null) now returns "", applyCaseAndPunctuation preserves dictionary case for lowercase input to avoid lowercasing user-registered proper nouns like "Parakeet" / "R&D" / "ChatGPT", @Assume guard added to the existing settingsManager_isModelDownloaded_nonExistent test so it skips on real devices that already have models).
+• The default app prompt is now editable and exportable. Customise it once and your tweaks persist; one-tap "Reset to default" returns to the built-in form.
 
-Known issues STILL deferred (work pending in working tree, NOT yet committed)
-- Java manual RIFF/WAVE reader in TranscribeFileActivity: the signed-int RIFF/chunk-size read produces a negative number on values >= 2^31 and misaligns the parser — fix landed in conversation (added readIntULE()) but the surrounding TranscribeFileActivity.java scoped-storage rewrite (ContentResolver.openInputStream + cache materializeFile + onNewIntent override) is still a pending update on TranscribeFileActivity.java in the working tree and will land in v0.8.9.
-- Pre-release audio share flow therefore still requires a workaround: `am -W start … -d content://media/external/audio/media/<id> ...` with explicit --grant-read-uri-permission, or a copy to /sdcard/Android/data/dev.notune.transcribe/files/. End-to-end MediaStore content:// URI transcription was confirmed in a separate in-session verification on A059: dots.wav (588 chars "connecting the dots") + jfk.wav (108 chars byte-for-byte match against transcribe-rs/tests/parakeet.rs::test_jfk_transcription).
+• The default "My words" dictionary is now editable and exportable as a regular user dictionary. Duplicate it to keep a personal copy, export it to share across devices, or reset it back to empty.
+
+• Welcome dialog redesigned for first-run clarity: each option now shows the model size next to its label ("Fast / 0.6B", "Fastest / 180M", "Use without / No model") and is ordered from least to most capable.
+
+• Bundled model assets: the debug APK now ships Parakeet (0.6B) and Canary (180M) ONNX weights inside the package, so first-run users can pick either variant without a Wi-Fi download.
+
+• Fix for a crash triggered when the welcome dialog rendered multi-line button text (StaticLayout IndexOutOfBoundsException).
+
+• Defensive fixes: dialog dismissal lifecycle on Activity pause, Activity-context leak hardening throughout SettingsManager / PostProcessor / DictionaryManager, and post-processing prompt ordering. AGP 8.x Robolectric resource-loading fix restores offline unit-test stability.
+
+• Existing fixes retained from v0.8.7: settings leak hardening, Activity-context hygiene, network-error bug for notifications channel.

@@ -9,6 +9,19 @@ import java.util.List;
 import java.util.UUID;
 
 public class Dictionary {
+    /**
+     * Magic id used by {@link DictionaryManager} to identify the always-present
+     * "My words" default dictionary. Like {@link Prompt#BUILTIN_ID}, it is a
+     * sentinel that lets callers address the default slot without persisting a
+     * stable user UUID.
+     *
+     * <p>Persisted overrides of the default use this id in
+     * {@link DictionaryManager}'s schema-v2 {@code default_override} JSON slot;
+     * never resurrected from user-supplied JSON: see
+     * {@link #fromJson(JSONObject)}.
+     */
+    public static final String DEFAULT_ID = "__default__";
+
     private String id;
     private String name;
     private List<String> words;
@@ -41,7 +54,14 @@ public class Dictionary {
 
     public JSONObject toJson() throws JSONException {
         JSONObject obj = new JSONObject();
-        obj.put("id", id);
+        // Strip the magic DEFAULT_ID when serializing the default slot —
+        // parallel to the security property in Dictionary.fromJson(). Even
+        // though DictionaryManager.save() and exportDictionary() both strip
+        // defensively, centralizing the strip here prevents any future caller
+        // (an export variant, an instrumentation fixture, a debug dump) from
+        // leaking the magic id into JSON. fromJson would then replace it
+        // with a random UUID, silently corrupting the override slot.
+        obj.put("id", isDefault() ? "" : (id == null ? "" : id));
         obj.put("name", name);
         obj.put("enabled", enabled);
         JSONArray arr = new JSONArray();
@@ -54,8 +74,26 @@ public class Dictionary {
         return obj;
     }
 
+    /**
+     * True iff this is the always-present "My words" default entry whose id
+     * is the magic {@link #DEFAULT_ID} sentinel. Used by the UI to swap in a
+     * virtual-row layout (with Reset / no Delete) and by the repository to
+     * short-circuit name-conflict checks against the override slot.
+     */
+    public boolean isDefault() {
+        return DEFAULT_ID.equals(id);
+    }
+
     public static Dictionary fromJson(JSONObject obj) throws JSONException {
         String id = obj.optString("id", UUID.randomUUID().toString());
+        // Never resurrect the magic default id from JSON. We only persist
+        // user-friendly exports whose id field is stripped, but guards are
+        // cheap; round-tripping a custom-hotwords migration that happens to
+        // carry the id would otherwise hijack the default slot on the next
+        // launch.
+        if (DEFAULT_ID.equals(id)) {
+            id = UUID.randomUUID().toString();
+        }
         String name = obj.getString("name");
         boolean enabled = obj.optBoolean("enabled", true);
         List<String> words = new ArrayList<>();

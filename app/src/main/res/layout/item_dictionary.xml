@@ -29,6 +29,14 @@
                 android:textAppearance="?attr/textAppearanceTitleMedium" />
 
             <TextView
+                android:id="@+id/text_dict_subtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textAppearance="?attr/textAppearanceLabelSmall"
+                android:textColor="?attr/colorPrimary"
+                android:visibility="gone" />
+
+            <TextView
                 android:id="@+id/text_dict_count"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
@@ -42,6 +50,15 @@
             android:layout_height="wrap_content"
             android:layout_marginEnd="8dp"
             android:contentDescription="@string/desc_enable_dictionary" />
+
+        <ImageButton
+            android:id="@+id/btn_edit_dict"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@android:drawable/ic_menu_edit"
+            android:contentDescription="@string/btn_edit"
+            android:scaleType="centerInside" />
 
         <ImageButton
             android:id="@+id/btn_dict_overflow"

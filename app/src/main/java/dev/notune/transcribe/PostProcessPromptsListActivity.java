@@ -76,11 +76,11 @@ public class PostProcessPromptsListActivity extends AppCompatActivity {
                 return true;
             } else if (id == R.id.menu_export_prompt) {
                 String active = promptsRepository.getActiveId();
-                if (Prompt.BUILTIN_ID.equals(active)) {
-                    Snackbar.make(findViewById(android.R.id.content),
-                            R.string.msg_prompts_export_builtin, Snackbar.LENGTH_SHORT).show();
-                    return true;
-                }
+                // Builtin is exportable as of v0.8.8 — falls through to
+                // the regular export launcher with id "__builtin__". The
+                // export JSON has the id field stripped, so re-importing
+                // creates a fresh user prompt rather than resurrecting the
+                // override slot.
                 pendingExportId = active;
                 launchExportDialog(active);
                 return true;
@@ -270,10 +270,19 @@ public class PostProcessPromptsListActivity extends AppCompatActivity {
                 });
 
                 if (p.isBuiltin()) {
-                    subtitleText.setText(R.string.label_builtin_prompt_desc);
+                    // Builtin row (v0.8.8 onward): always show Edit so the
+                    // user can customize; subtitle tells whether the
+                    // override is in effect; overflow offers Duplicate,
+                    // Export, and (if overridden) Reset to default. Delete
+                    // is intentionally hidden — the builtin slot cannot be
+                    // removed, only reset.
+                    boolean overridden = promptsRepository.isBuiltinOverridden();
+                    subtitleText.setText(overridden
+                            ? R.string.label_builtin_override_desc
+                            : R.string.label_builtin_prompt_desc);
                     subtitleText.setVisibility(View.VISIBLE);
-                    editBtn.setVisibility(View.GONE);
-                    overflowBtn.setVisibility(View.GONE);
+                    editBtn.setVisibility(View.VISIBLE);
+                    overflowBtn.setVisibility(View.VISIBLE);
                 } else {
                     subtitleText.setVisibility(View.GONE);
                     editBtn.setVisibility(View.VISIBLE);
@@ -296,8 +305,21 @@ public class PostProcessPromptsListActivity extends AppCompatActivity {
                         popup.getMenu().add(0, 3, 2, R.string.btn_export);
                         popup.getMenu().add(0, 4, 3, R.string.btn_delete);
                     } else {
-                        popup.getMenu().add(0, 5, 0, R.string.btn_export_disabled_for_builtin);
-                        // Disable: we render it but tap is a no-op.
+                        // Builtin (v0.8.8 onward): Edit becomes the
+                        // customisation affordance; duplicate captures the
+                        // current body (override or virtual) into a fresh
+                        // user prompt; Export writes the regular JSON
+                        // (id-stripped, so re-import creates a new user
+                        // prompt); Reset reverts to the resource-backed
+                        // default and only appears when an override is on
+                        // disk so the user can always reach the "pristine"
+                        // virtual state.
+                        popup.getMenu().add(0, 1, 0, R.string.btn_edit);
+                        popup.getMenu().add(0, 2, 1, R.string.prompt_duplicate);
+                        popup.getMenu().add(0, 3, 2, R.string.btn_export);
+                        if (promptsRepository.isBuiltinOverridden()) {
+                            popup.getMenu().add(0, 13, 3, R.string.btn_reset_builtin);
+                        }
                     }
                     popup.setOnMenuItemClickListener(item -> {
                         switch (item.getItemId()) {
@@ -308,7 +330,13 @@ public class PostProcessPromptsListActivity extends AppCompatActivity {
                                 launchExportDialog(p.getId());
                                 return true;
                             case 4: showDeleteDialog(p); return true;
-                            case 5: /* builtin export hint */ return true;
+                            case 13:
+                                promptsRepository.delete(Prompt.BUILTIN_ID);
+                                refreshList();
+                                Snackbar.make(findViewById(android.R.id.content),
+                                        R.string.msg_builtin_reset_done,
+                                        Snackbar.LENGTH_SHORT).show();
+                                return true;
                         }
                         return false;
                     });

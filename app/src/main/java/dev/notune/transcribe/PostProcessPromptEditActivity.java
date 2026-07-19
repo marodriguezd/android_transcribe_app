@@ -3,6 +3,8 @@ package dev.notune.transcribe;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.view.Menu;
+import android.view.MenuItem;
 import android.view.View;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -17,12 +19,21 @@ import com.google.android.material.textfield.TextInputLayout;
 /**
  * Edit (or create) a single post-processing prompt. Driven from
  * {@link PostProcessPromptsListActivity} via an Intent extra carrying
- * the prompt id. The builtin prompt is not editable — invoking this
- * activity with {@link Prompt#BUILTIN_ID} immediately finishes.
+ * the prompt id.
+ *
+ * <p>As of v0.8.8 the builtin prompt is editable: invoking this activity
+ * with {@link Prompt#BUILTIN_ID} opens the editor pre-filled with the
+ * current body (override if present, otherwise the resource-backed
+ * default). Saving persists an override entry with that id. A toolbar
+ * "Reset to default" menu action appears only when an override exists,
+ * so the user can revert to the virtual builtin without manually pasting
+ * the original prompt.
  */
 public class PostProcessPromptEditActivity extends AppCompatActivity {
 
     public static final String EXTRA_PROMPT_ID = "prompt_id";
+
+    private static final int MENU_ID_RESET = 0x10;
 
     private PromptsRepository promptsRepository;
     private Prompt prompt;
@@ -35,6 +46,7 @@ public class PostProcessPromptEditActivity extends AppCompatActivity {
     private TextInputEditText bodyEdit;
     private View charCount;
     private ExtendedFloatingActionButton saveFab;
+    private MaterialToolbar toolbar;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -45,11 +57,9 @@ public class PostProcessPromptEditActivity extends AppCompatActivity {
 
         String id = getIntent().getStringExtra(EXTRA_PROMPT_ID);
         prompt = id == null ? null : promptsRepository.getById(id);
-        if (prompt != null && prompt.isBuiltin()) {
-            // Refuse: builtin is read-only.
-            finish();
-            return;
-        }
+        // Builtin is editable as of v0.8.8: getById(BUILTIN_ID) returns
+        // either the persisted override or the virtual fallback so the
+        // editor opens with the body the user is currently using.
         if (prompt == null) {
             // Defensive: orphan Intent (missing EXTRA_PROMPT_ID or unknown id).
             // Build a draft prompt in memory but DO NOT add to the repository
@@ -61,7 +71,7 @@ public class PostProcessPromptEditActivity extends AppCompatActivity {
             isNew = true;
         }
 
-        MaterialToolbar toolbar = findViewById(R.id.toolbar);
+        toolbar = findViewById(R.id.toolbar);
         toolbar.setTitle(getString(
                 isNew ? R.string.title_new_prompt : R.string.title_edit_prompt,
                 prompt.getName()));
@@ -90,11 +100,40 @@ public class PostProcessPromptEditActivity extends AppCompatActivity {
         bodyEdit.addTextChangedListener(tw);
 
         saveFab.setOnClickListener(v -> saveAndFinish());
+
+        // Builtin entries that have been overridden offer "Reset to default"
+        // from the toolbar menu. The text editor flow handles Save via FAB,
+        // so the reset action lives there so the affordance is co-located with
+        // the editing UI rather than hidden behind the row's overflow menu.
+        if (prompt.isBuiltin() && promptsRepository.isBuiltinOverridden()) {
+            toolbar.inflateMenu(R.menu.menu_post_process_prompt_edit);
+            toolbar.setOnMenuItemClickListener(item -> {
+                if (item.getItemId() == R.id.menu_reset_builtin) {
+                    confirmResetBuiltin();
+                    return true;
+                }
+                return false;
+            });
+        }
     }
 
     @Override
     public void onBackPressed() {
         saveAndFinish();
+    }
+
+    private void confirmResetBuiltin() {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.btn_reset_builtin)
+                .setMessage(R.string.msg_reset_builtin_confirm)
+                .setPositiveButton(R.string.btn_reset_builtin, (d, w) -> {
+                    promptsRepository.delete(Prompt.BUILTIN_ID);
+                    Snackbar.make(findViewById(android.R.id.content),
+                            R.string.msg_builtin_reset_done, Snackbar.LENGTH_SHORT).show();
+                    finish();
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
     }
 
     private void updateCharCount() {
@@ -123,11 +162,17 @@ public class PostProcessPromptEditActivity extends AppCompatActivity {
 
         prompt.setName(name);
         prompt.setBody(body);
-        prompt.setUpdatedAt(System.currentTimeMillis());
         if (isNew) {
-            // First save for a defensive-created draft: persist now.
+            // First save for a defensive-created draft: persist now. Note
+            // that for an editing-the-builtin flow, isNew stays false: we
+            // reopen the same Prompt object that was loaded from
+            // getById() and call update() so the override slot is upserted.
             promptsRepository.add(prompt);
         } else {
+            // update() handles the BUILTIN_ID upsert case: if
+            // getBuiltin() returned the virtual fallback (no override on
+            // disk yet) the prompt object has id="__builtin__" with the
+            // resource-backed body, so update() will create the override.
             promptsRepository.update(prompt);
         }
         dirty = false;

@@ -190,7 +190,13 @@ public class WordCorrector {
         } else if (isCapitalized(core)) {
             result = Character.toUpperCase(replacement.charAt(0)) + replacement.substring(1);
         } else {
-            result = replacement.toLowerCase();
+            // Lowercase / mixed-case input: preserve the original
+            // capitalization of the dictionary replacement rather than
+            // forcing lowercase. Custom words are typically proper nouns
+            // ("Parakeet", "R&D", "ChatGPT") registered with their
+            // intended case; lowercasing them on every match would
+            // silently rewrite the user's intended spelling.
+            result = replacement;
         }
         return lead + result + trail;
     }
@@ -208,7 +214,11 @@ public class WordCorrector {
     }
 
     public static String filterTranscriptionOutput(String text, String lang) {
-        if (text == null || text.isEmpty()) return text;
+        // Return empty for null (defensive — transcription pipelines should
+        // never feed null text but if they do, the engine + UI prefer an
+        // empty string over a NullPointerException downstream).
+        if (text == null) return "";
+        if (text.isEmpty()) return text;
 
         String result = removeFillerWords(text, lang);
 

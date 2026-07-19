@@ -104,9 +104,9 @@ ${output}"</string>
     <string name="btn_hotwords_settings">Edit Words</string>
 
     <string name="section_model">Transcription Model</string>
-    <string name="desc_model">Choose a transcription model. Fastest (180M Flash) uses Canary. Fast (0.6B) uses Parakeet V3.</string>
+    <string name="desc_model">Choose a transcription model. Fastest (180M) uses Canary. Fast (0.6B) uses Parakeet V3.</string>
     <string name="model_fast">Fast (0.6B)</string>
-    <string name="model_fastest">Fastest (180M Flash)</string>
+    <string name="model_fastest">Fastest (180M)</string>
     <string name="model_status_downloaded">Downloaded</string>
     <string name="model_status_no_model">No model loaded</string>
     <string name="model_status_not_downloaded">Not downloaded</string>
@@ -121,12 +121,27 @@ ${output}"</string>
     <string name="welcome_model_title">Download a model</string>
     <string name="welcome_model_subtitle">Download the transcription model to get started. You can skip this and download later.</string>
     <string name="welcome_btn_fast">Fast (0.6B)</string>
-    <string name="welcome_btn_fastest">Fastest (180M Flash)</string>
+    <string name="welcome_btn_fastest">Fastest (180M)</string>
     <string name="welcome_btn_skip">Use without model</string>
+
+    <!-- Two-line variants of the welcome dialog buttons. The dialog is the
+         first thing seen on a fresh install ("Download a model"), so each button
+         carries primary label + secondary identifier to give at-a-glance
+         comparison of capability vs disk footprint. Locked order is
+         Skip -> Fastest -> Fast (decreasing size = increasing capability ascending). -->
+    <string name="welcome_btn_fast_full">Fast\n0.6B</string>
+    <string name="welcome_btn_fastest_full">Fastest\n180M</string>
+    <string name="welcome_btn_skip_full">Use without\nNo model</string>
 
     <!-- Dictionary List -->
     <string name="title_dictionary_list">Dictionaries</string>
     <string name="msg_no_dictionaries">No dictionaries yet. Tap + to create one.</string>
+    <string name="name_default_dictionary">My words</string>
+    <string name="desc_default_dictionary">App default dictionary — tap to customize</string>
+    <string name="desc_dictionary_override">App default (customized)</string>
+    <string name="btn_reset_dictionary">Reset to default</string>
+    <string name="msg_dictionary_reset_done">Default restored</string>
+    <string name="msg_reset_dictionary_confirm">Reset the “My words” dictionary to its original (empty) state? Your customization will be lost.</string>
     <string name="btn_add_dictionary">New Dictionary</string>
     <string name="btn_import_dictionary">Import</string>
     <string name="hint_new_dict_name">Dictionary name</string>
@@ -220,8 +235,15 @@ ${output}"</string>
     <string name="title_prompts_list">Post-Processing Prompts</string>
     <string name="subtitle_active_named">Active: %1$s</string>
     <string name="label_active_prompt">Active prompt</string>
-    <string name="label_builtin_prompt_desc">System default — read only</string>
+    <string name="label_builtin_prompt_desc">App default</string>
+    <string name="label_builtin_override_desc">App default (customized)</string>
     <string name="desc_select_active_prompt">Use this prompt for the next transcription</string>
+    <string name="btn_export_builtin_template">Export as template</string>
+    <string name="msg_builtin_template_exported">Template exported</string>
+    <string name="btn_reset_builtin">Reset to default</string>
+    <string name="msg_builtin_reset_done">Default restored</string>
+    <string name="msg_reset_builtin_confirm">Reset the app default prompt to its original text? Your customization will be lost.</string>
+    <string name="label_prompt_tap_overflow">Tap ⋮ for Duplicate or Export</string>
     <string name="hint_prompt_name">Prompt name</string>
     <string name="hint_prompt_body">Prompt body</string>
     <string name="prompt_char_count">%1$d chars</string>
@@ -235,7 +257,7 @@ ${output}"</string>
     <string name="fab_new_prompt">New prompt</string>
     <string name="btn_manage_prompts">Manage prompts</string>
     <string name="prompt_duplicate">Duplicate</string>
-    <string name="btn_export_disabled_for_builtin">Built-in default can\&#39;t be exported</string>
+
     <string name="menu_import_prompts">Import</string>
     <string name="menu_export_prompts">Export active</string>
     <string name="msg_prompts_imported">Imported as \"%1$s\"</string>
@@ -245,4 +267,46 @@ ${output}"</string>
     <string name="msg_prompts_export_builtin">Select a custom prompt first to export it</string>
     <string name="error_prompt_name_empty">Name cannot be empty</string>
     <string name="error_prompt_body_empty">Prompt body cannot be empty</string>
+
+    <!-- Settings UI redesign (Phase B) -->
+    <string name="card_provider_title">Provider</string>
+    <string name="card_connection_title">Connection</string>
+    <string name="card_model_title">Model</string>
+    <string name="card_active_prompt_title">Active prompt</string>
+    <string name="provider_presets_caption">Quick presets — pick one to prefill the API base URL.</string>
+    <string name="chip_provider_openai">OpenAI</string>
+    <string name="chip_provider_groq">Groq</string>
+    <string name="chip_provider_ollama">Ollama</string>
+    <string name="chip_provider_lmstudio">LM Studio</string>
+    <string name="pref_openai_url">https://api.openai.com/v1/</string>
+    <string name="pref_groq_url">https://api.groq.com/openai/v1/</string>
+    <string name="pref_ollama_url">http://localhost:11434/v1/</string>
+    <string name="pref_lmstudio_url">http://localhost:1234/v1/</string>
+    <string name="desc_post_process_enable">Turn on to send each transcript through your language model. Disable to keep it fully local.</string>
+    <string name="desc_provider_card">Pick a host or override the URL below. All four presets use the OpenAI-compatible /chat/completions contract.</string>
+    <string name="desc_connection_card">The base URL is appended with /chat/completions automatically. The API key is stored encrypted.</string>
+    <string name="desc_model_card">The model id the server should run. Tap \"Fetch from server\" to populate from /v1/models.</string>
+    <string name="desc_active_prompt_card">Used for the next transcription. Tap Manage to edit or add more.</string>
+    <string name="desc_model_caption">Most providers expose their model list at /v1/models.</string>
+
+    <!-- Model variant card redesign (Phase C) -->
+    <string name="model_card_variant_fast_title">Fast (0.6B)</string>
+    <string name="model_card_variant_fastest_title">Fastest (180M)</string>
+    <string name="model_card_variant_none_title">Use without model</string>
+    <string name="model_card_section_title">Transcription Model</string>
+    <string name="model_card_caption">Pick a model to run offline. Cards show the size, the languages it covers, and what to do next.</string>
+    <string name="model_card_languages_caption">Languages: %1$s</string>
+    <string name="model_card_action_download">Download</string>
+    <string name="model_card_action_choose">Choose</string>
+    <string name="model_card_action_delete">Delete</string>
+    <string name="model_card_action_none_choose">Switch</string>
+    <string name="model_card_status_active">Active</string>
+    <string name="model_card_status_downloaded">Downloaded</string>
+    <string name="model_card_status_not_downloaded">Not downloaded</string>
+    <string name="model_card_status_no_model">No model loaded</string>
+    <string name="model_card_action_active_labeled">Currently active</string>
+    <string name="model_card_meta_size_format">%1$d MB</string>
+    <string name="model_card_meta_parakeet">Parakeet TDT v3 (English)</string>
+    <string name="model_card_meta_canary">Canary 180M (English)</string>
+    <string name="model_card_meta_languages_en">English</string>
 </resources>

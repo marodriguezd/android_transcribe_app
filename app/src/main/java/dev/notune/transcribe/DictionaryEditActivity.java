@@ -12,7 +12,7 @@ import androidx.appcompat.app.AppCompatActivity;
 import androidx.recyclerview.widget.LinearLayoutManager;
 import androidx.recyclerview.widget.RecyclerView;
 
-import com.google.android.material.appbar.MaterialToolbar;
+import androidx.appcompat.widget.Toolbar;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.floatingactionbutton.ExtendedFloatingActionButton;
 import com.google.android.material.snackbar.Snackbar;
@@ -27,6 +27,7 @@ public class DictionaryEditActivity extends AppCompatActivity {
     private DictionaryManager dictionaryManager;
     private String dictId;
     private Dictionary dictionary;
+    private Toolbar toolbar;
     private TextInputEditText editName;
     private RecyclerView recyclerView;
     private TextView emptyText;
@@ -40,6 +41,10 @@ public class DictionaryEditActivity extends AppCompatActivity {
 
         dictionaryManager = new DictionaryManager(this);
         dictId = getIntent().getStringExtra("dict_id");
+        // getById(DEFAULT_ID) honours the persisted override when present;
+        // otherwise it returns the virtual fallback. Both are editable from
+        // v0.8.8 onward (the previous early-finish path is gone — see
+        // v0.8.8 Session history item).
         dictionary = dictionaryManager.getById(dictId);
 
         if (dictionary == null) {
@@ -47,7 +52,7 @@ public class DictionaryEditActivity extends AppCompatActivity {
             return;
         }
 
-        MaterialToolbar toolbar = findViewById(R.id.toolbar);
+        toolbar = findViewById(R.id.toolbar);
         toolbar.setTitle(dictionary.getName());
         toolbar.setNavigationOnClickListener(v -> saveAndFinish());
 
@@ -64,6 +69,21 @@ public class DictionaryEditActivity extends AppCompatActivity {
         ExtendedFloatingActionButton fab = findViewById(R.id.fab_add_word);
         fab.setOnClickListener(v -> showAddWordDialog());
 
+        // Toolbar Reset menu (parallel to PostProcessPromptEditActivity): only
+        // appears when the default has an override on disk. The reset action
+        // removes the override entry so subsequent reads return the
+        // resource-backed virtual default.
+        if (dictionary.isDefault() && dictionaryManager.isDefaultOverridden()) {
+            toolbar.inflateMenu(R.menu.menu_dictionary_edit);
+            toolbar.setOnMenuItemClickListener(item -> {
+                if (item.getItemId() == R.id.menu_reset_dictionary) {
+                    confirmResetDefault();
+                    return true;
+                }
+                return false;
+            });
+        }
+
         refreshList();
     }
 
@@ -72,10 +92,29 @@ public class DictionaryEditActivity extends AppCompatActivity {
         saveAndFinish();
     }
 
+    private void confirmResetDefault() {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.btn_reset_dictionary)
+                .setMessage(R.string.msg_reset_dictionary_confirm)
+                .setPositiveButton(R.string.btn_reset_dictionary, (d, w) -> {
+                    dictionaryManager.deleteDictionary(Dictionary.DEFAULT_ID);
+                    Snackbar.make(findViewById(android.R.id.content),
+                            R.string.msg_dictionary_reset_done, Snackbar.LENGTH_SHORT).show();
+                    finish();
+                })
+                .setNegativeButton(android.R.string.cancel, null)
+                .show();
+    }
+
     private void saveAndFinish() {
         String name = editName.getText().toString().trim();
         if (!name.isEmpty()) {
             dictionary.setName(name);
+            // updateDictionary upserts for the DEFAULT_ID slot
+            // (creates the override on first edit; replaces on subsequent
+            // edits). The name override is harmless: a custom name sticks
+            // for as long as the user keeps it, but defaults back to
+            // R.string.name_default_dictionary after a Reset.
             dictionaryManager.updateDictionary(dictionary);
         }
         finish();

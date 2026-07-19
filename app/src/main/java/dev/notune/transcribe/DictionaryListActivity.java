@@ -76,10 +76,21 @@ public class DictionaryListActivity extends AppCompatActivity {
     }
 
     private void refreshList() {
-        List<Dictionary> dictionaries = dictionaryManager.getAll();
-        adapter.setData(dictionaries);
-        emptyText.setVisibility(dictionaries.isEmpty() ? View.VISIBLE : View.GONE);
-        recyclerView.setVisibility(dictionaries.isEmpty() ? View.GONE : View.VISIBLE);
+        // Always show the default “My words” dictionary as the first row, even
+        // when no override is on disk. The list is empty visually only when
+        // (a) the user has not enabled the default AND (b) no user dictionaries exist.
+        Dictionary defaultDict = dictionaryManager.getDefault();
+        List<Dictionary> userDicts = new ArrayList<>();
+        for (Dictionary d : dictionaryManager.getAll()) {
+            if (!d.isDefault()) userDicts.add(d);
+        }
+        List<Dictionary> allWithDefault = new ArrayList<>();
+        allWithDefault.add(defaultDict);
+        allWithDefault.addAll(userDicts);
+        adapter.setData(allWithDefault);
+        boolean empty = userDicts.isEmpty();
+        emptyText.setVisibility(empty ? View.VISIBLE : View.GONE);
+        recyclerView.setVisibility(empty ? View.GONE : View.VISIBLE);
     }
 
     private void showNewDictionaryDialog() {
@@ -194,6 +205,23 @@ public class DictionaryListActivity extends AppCompatActivity {
         public void onBindViewHolder(ViewHolder holder, int position) {
             Dictionary dict = data.get(position);
             holder.nameText.setText(dict.getName());
+
+            // Default row shows an inline subtitle paragraph (parallel to
+            // the prompts row) so users discover that the row is the
+            // editable app-default dictionary without having to open
+            // overflow. The subtitle toggles between "App default
+            // dictionary — tap to customize" (virtual/no override) and
+            // "App default (customized)" (override on disk) before falling
+            // through to a plain word count for user dictionaries.
+            if (dict.isDefault()) {
+                boolean overridden = dictionaryManager.isDefaultOverridden();
+                holder.subtitleText.setText(overridden
+                        ? R.string.desc_dictionary_override
+                        : R.string.desc_default_dictionary);
+                holder.subtitleText.setVisibility(View.VISIBLE);
+            } else {
+                holder.subtitleText.setVisibility(View.GONE);
+            }
             holder.countText.setText(getString(R.string.words_count, dict.getWordCount()));
 
             holder.toggle.setOnCheckedChangeListener(null);
@@ -201,6 +229,16 @@ public class DictionaryListActivity extends AppCompatActivity {
             holder.toggle.setOnCheckedChangeListener((v, checked) -> {
                 dict.setEnabled(checked);
                 dictionaryManager.updateDictionary(dict);
+            });
+
+            // Inline Edit image button — always visible, parallels the
+            // prompts Edit affordance. Tapping it routes to the same
+            // editor activity, which now accepts the default id without
+            // finishing early.
+            holder.editBtn.setOnClickListener(v -> {
+                Intent intent = new Intent(DictionaryListActivity.this, DictionaryEditActivity.class);
+                intent.putExtra("dict_id", dict.getId());
+                startActivity(intent);
             });
 
             holder.itemView.setOnClickListener(v -> {
@@ -211,9 +249,24 @@ public class DictionaryListActivity extends AppCompatActivity {
 
             holder.overflowBtn.setOnClickListener(v -> {
                 PopupMenu popup = new PopupMenu(DictionaryListActivity.this, v);
-                popup.getMenu().add(0, 1, 0, R.string.btn_edit);
-                popup.getMenu().add(0, 2, 1, R.string.btn_export);
-                popup.getMenu().add(0, 3, 2, R.string.btn_delete);
+                if (!dict.isDefault()) {
+                    popup.getMenu().add(0, 1, 0, R.string.btn_edit);
+                    popup.getMenu().add(0, 2, 1, R.string.btn_export);
+                    popup.getMenu().add(0, 3, 2, R.string.btn_delete);
+                } else {
+                    // Default row (v0.8.8 onward): Edit opens the editor;
+                    // Export writes the id-stripped JSON; Reset reverts to
+                    // the resource-backed virtual default and only appears
+                    // when an override is on disk so the user can always
+                    // reach the “pristine” virtual state. Delete is
+                    // intentionally absent — the default slot cannot be
+                    // removed, only reset.
+                    popup.getMenu().add(0, 1, 0, R.string.btn_edit);
+                    popup.getMenu().add(0, 2, 1, R.string.btn_export);
+                    if (dictionaryManager.isDefaultOverridden()) {
+                        popup.getMenu().add(0, 4, 2, R.string.btn_reset_dictionary);
+                    }
+                }
                 popup.setOnMenuItemClickListener(item -> {
                     switch (item.getItemId()) {
                         case 1:
@@ -228,6 +281,13 @@ public class DictionaryListActivity extends AppCompatActivity {
                         case 3:
                             showDeleteDialog(dict);
                             return true;
+                        case 4:
+                            dictionaryManager.deleteDictionary(Dictionary.DEFAULT_ID);
+                            refreshList();
+                            Snackbar.make(findViewById(android.R.id.content),
+                                    R.string.msg_dictionary_reset_done,
+                                    Snackbar.LENGTH_SHORT).show();
+                            return true;
                     }
                     return false;
                 });
@@ -239,15 +299,18 @@ public class DictionaryListActivity extends AppCompatActivity {
         public int getItemCount() { return data.size(); }
 
         class ViewHolder extends RecyclerView.ViewHolder {
-            TextView nameText, countText;
+            TextView nameText, subtitleText, countText;
             MaterialSwitch toggle;
+            ImageButton editBtn;
             ImageButton overflowBtn;
 
             ViewHolder(View itemView) {
                 super(itemView);
                 nameText = itemView.findViewById(R.id.text_dict_name);
+                subtitleText = itemView.findViewById(R.id.text_dict_subtitle);
                 countText = itemView.findViewById(R.id.text_dict_count);
                 toggle = itemView.findViewById(R.id.switch_dict_enabled);
+                editBtn = itemView.findViewById(R.id.btn_edit_dict);
                 overflowBtn = itemView.findViewById(R.id.btn_dict_overflow);
             }
         }

@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- First-launch "Download a model" dialog button row.
+
+     Buttons are ordered L→R = de menor a mayor capability:
+     Skip ("Use without / No model") → Fastest ("Fastest / 180M") → Fast ("Fast / 0.6B").
+     The radio card in activity_main.xml keeps the inverse top→bottom order
+     (Fastest → Fast → None) because that card already shows full text in
+     column form, and the welcome dialog is the FIRST thing the user sees,
+     so the escalation logic is "smallest / safest first".
+
+     Each MaterialButton carries primary label + secondary identifier on two
+     lines (\n in the source string). The OutlinedButton default 6dp
+     insetTop/insetBottom is zeroed so 72dp is the actual rendered height —
+     enough for two lines of body text + comfortable touch target (>=48dp).
+
+     ellipsize=end is kept as a defensive fallback in case a future
+     contributor adds a longer second line. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="horizontal">
+
+    <!-- maxLines=2 is mandatory when the button text contains a literal
+         "\n". MaterialButton inherits Button's default maxLines=1, and
+         combining maxLines=1 + ellipsize=end + a multi-line string with
+         "\n" triggers an IndexOutOfBoundsException in android.text
+         .StaticLayout.calculateEllipsis() during inflation — the
+         layout pass crashes before the dialog can be drawn and the
+         process is restarted in a crash loop. maxLines=2 here lets
+         StaticLayout treat "\n" as the legit line break it is. -->
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/button_skip"
+        style="@style/Widget.Material3.Button.OutlinedButton"
+        android:layout_width="0dp"
+        android:layout_height="72dp"
+        android:layout_weight="1"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:text="@string/welcome_btn_skip_full" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/button_fastest"
+        style="@style/Widget.Material3.Button.OutlinedButton"
+        android:layout_width="0dp"
+        android:layout_height="72dp"
+        android:layout_weight="1"
+        android:layout_marginStart="8dp"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:text="@string/welcome_btn_fastest_full" />
+
+    <com.google.android.material.button.MaterialButton
+        android:id="@+id/button_fast"
+        style="@style/Widget.Material3.Button.OutlinedButton"
+        android:layout_width="0dp"
+        android:layout_height="72dp"
+        android:layout_weight="1"
+        android:layout_marginStart="8dp"
+        android:insetTop="0dp"
+        android:insetBottom="0dp"
+        android:maxLines="2"
+        android:ellipsize="end"
+        android:text="@string/welcome_btn_fast_full" />
+</LinearLayout>

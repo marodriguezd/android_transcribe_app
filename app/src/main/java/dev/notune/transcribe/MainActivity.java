@@ -73,6 +73,12 @@ public class MainActivity extends AppCompatActivity {
     private boolean firstLaunchDialogShown = false;
     private boolean modelSelectionChanging = false;
     private ModelDownloadManager.ProgressCallback currentCallback;
+    // Tracked so onPause() can dismiss the welcome dialog if a share intent or
+    // any other Activity transition pushes us behind another window while the
+    // dialog is up — setCancelable(false) blocks user-initiated back-button
+    // dismissal, so without an explicit onPause dismiss() the dialog stays
+    // visible-and-alive with leaky lambda captures until process death.
+    private androidx.appcompat.app.AlertDialog welcomeDialog;
     private final Handler mainHandler = new Handler(android.os.Looper.getMainLooper());
 
     @Override
@@ -246,8 +252,14 @@ public class MainActivity extends AppCompatActivity {
             boolean anyDownloaded = settingsManager.isModelDownloaded("0.6b")
                     || settingsManager.isModelDownloaded("180m");
             if (!anyDownloaded) {
-                firstLaunchDialogShown = true;
+                // Set firstLaunchDialogShown AFTER showFirstLaunchDownloadDialog
+                // returns successfully: if dialog.show() throws (e.g. the
+                // StaticLayout crash we hit with multi-line button text)
+                // or the Activity is paused (system permission/optimisation
+                // prompts) before the dialog attaches, the flag stays false
+                // and the dialog can re-fire on the next onResume.
                 showFirstLaunchDownloadDialog(settingsManager);
+                firstLaunchDialogShown = true;
             }
         }
     }
@@ -260,6 +272,15 @@ public class MainActivity extends AppCompatActivity {
             if (dm != null) dm.removeCallback(currentCallback);
         }
         currentCallback = null;
+        // See comment on welcomeDialog field. setCancelable(false) on the
+        // dialog means user-initiated back-button dismissal is blocked; if
+        // we get pushed behind another Activity (e.g. a share intent), we
+        // need to dispose the dialog ourselves or it will leak through the
+        // lambda captures of the click listeners.
+        if (welcomeDialog != null && welcomeDialog.isShowing()) {
+            welcomeDialog.dismiss();
+        }
+        welcomeDialog = null;
     }
 
     private void reconnectDownloadCallbacks() {
@@ -720,33 +741,60 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void showFirstLaunchDownloadDialog(SettingsManager sm) {
-        new MaterialAlertDialogBuilder(this)
+        // Use a custom view instead of setPositive/Neutral/Negative buttons
+        // so we can lock the L→R order to Fastest → Fast → Use without
+        // model. The default MaterialAlertDialog button bar paints NEG | NEU
+        // | POS from left to right — which would render as
+        // Use without model | Fast | Fastest — and that doesn't match the
+        // top→bottom order of the model selector card in activity_main.xml
+        // (which the user expects to be the same "viñeta").
+        View view = getLayoutInflater().inflate(R.layout.dialog_welcome_model, null);
+        com.google.android.material.button.MaterialButton btnFastest =
+                view.findViewById(R.id.button_fastest);
+        com.google.android.material.button.MaterialButton btnFast =
+                view.findViewById(R.id.button_fast);
+        com.google.android.material.button.MaterialButton btnSkip =
+                view.findViewById(R.id.button_skip);
+
+        final androidx.appcompat.app.AlertDialog dialog = new MaterialAlertDialogBuilder(this)
                 .setTitle(R.string.welcome_model_title)
                 .setMessage(R.string.welcome_model_subtitle)
                 .setCancelable(false)
-                .setPositiveButton(R.string.welcome_btn_fastest, (d, w) -> {
-                    sm.setModelVariant("180m");
-                    modelSelectionChanging = true;
-                    modelGroup.check(R.id.rb_model_fastest);
-                    modelSelectionChanging = false;
-                    startDownload("180m", sm);
-                })
-                .setNeutralButton(R.string.welcome_btn_fast, (dialog, which) -> {
-                    sm.setModelVariant("0.6b");
-                    modelSelectionChanging = true;
-                    modelGroup.check(R.id.rb_model_fast);
-                    modelSelectionChanging = false;
-                    startDownload("0.6b", sm);
-                })
-                .setNegativeButton(R.string.welcome_btn_skip, (d, w) -> {
-                    sm.setModelVariant("none");
-                    modelSelectionChanging = true;
-                    modelGroup.check(R.id.rb_model_none);
-                    modelSelectionChanging = false;
-                    updateModelStatus(modelStatus, "none", sm);
-                    updateDeleteButtons(btnDeleteFast, btnDeleteModelFastest, sm);
-                })
+                .setView(view)
                 .show();
+        // Track so onPause() can dispose the dialog when MainActivity is
+        // paused while the dialog is up — setCancelable(false) blocks
+        // back-button dismissal, so we need an explicit Activity-lifecycle hook.
+        welcomeDialog = dialog;
+
+        btnFastest.setOnClickListener(v -> {
+            sm.setModelVariant("180m");
+            modelSelectionChanging = true;
+            modelGroup.check(R.id.rb_model_fastest);
+            modelSelectionChanging = false;
+            startDownload("180m", sm);
+            dialog.dismiss();
+            welcomeDialog = null;
+        });
+        btnFast.setOnClickListener(v -> {
+            sm.setModelVariant("0.6b");
+            modelSelectionChanging = true;
+            modelGroup.check(R.id.rb_model_fast);
+            modelSelectionChanging = false;
+            startDownload("0.6b", sm);
+            dialog.dismiss();
+            welcomeDialog = null;
+        });
+        btnSkip.setOnClickListener(v -> {
+            sm.setModelVariant("none");
+            modelSelectionChanging = true;
+            modelGroup.check(R.id.rb_model_none);
+            modelSelectionChanging = false;
+            updateModelStatus(modelStatus, "none", sm);
+            updateDeleteButtons(btnDeleteFast, btnDeleteModelFastest, sm);
+            dialog.dismiss();
+            welcomeDialog = null;
+        });
     }
 
     private void updateModelStatus(TextView tv, String variant, SettingsManager sm) {

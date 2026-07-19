@@ -21,8 +21,28 @@ import java.util.UUID;
 /**
  * Persists user-saved post-processing prompts in {@code files/prompts.json}
  * via {@link AtomicFile} so a crash or power loss cannot leave a half-
- * written JSON blob. The "builtin" prompt (which comes from
- * {@code R.string.label_prompt}) is virtual and never written to disk.
+ * written JSON blob.
+ *
+ * <p>The "builtin" prompt is the {@link Prompt#BUILTIN_ID} slot. It has two
+ * modes:
+ * <ul>
+ *   <li><b>Virtual</b> (default): the body is read live from
+ *       {@code R.string.label_prompt} and the name from
+ *       {@code R.string.name_builtin_prompt}. Nothing is written to disk —
+ *       upgrades to the bundled default naturally propagate.</li>
+ *   <li><b>Overridden</b>: once the user edits the builtin via
+ *       {@link PostProcessPromptEditActivity}, an override entry with
+ *       {@code id="__builtin__"} is persisted to {@code prompts.json}. All
+ *       read paths then prefer the override. {@link #isBuiltinOverridden()}
+ *       surfaces this to the UI so the row can render "App default
+ *       (customized)" and a "Reset to default" affordance appears in the
+ *       editor and overflow menu.</li>
+ * </ul>
+ *
+ * <p>{@link #delete(String)} with {@link Prompt#BUILTIN_ID} is the inverse:
+ * it removes the override entry from disk so subsequent reads fall back to
+ * the resource-backed virtual builtin. It is <i>not</i> a "this prompt is
+ * gone" semantic — the builtin slot always exists.
  *
  * <p>Persisted alongside by {@link #KEY_ACTIVE_PROMPT_ID} is the active
  * prompt UUID. The active id defaults to {@link Prompt#BUILTIN_ID} if
@@ -57,16 +77,38 @@ public class PromptsRepository {
 
     // -------- public API --------
 
-    /** All user-saved prompts (excluding the always-present builtin). */
+    /**
+     * All user-saved prompts plus any builtin override (identified by
+     * {@link Prompt#BUILTIN_ID}). Excludes the virtual-only builtin when no
+     * override exists — callers that want a flat user-only list should keep
+     * using the helper.
+     */
     public synchronized List<Prompt> getUserPrompts() {
         ensureLoaded();
         return new ArrayList<>(prompts);
     }
 
-    /** Lookup by id; returns the virtual builtin for {@link Prompt#BUILTIN_ID}. */
+    /**
+     * True if the user has saved a builtin override (id =
+     * {@link Prompt#BUILTIN_ID}) to disk. UI uses this to render the
+     * "App default (customized)" subtitle and offer the "Reset to default"
+     * affordance.
+     */
+    public synchronized boolean isBuiltinOverridden() {
+        ensureLoaded();
+        for (Prompt p : prompts) {
+            if (Prompt.BUILTIN_ID.equals(p.getId())) return true;
+        }
+        return false;
+    }
+
+    /**
+     * Lookup by id. For {@link Prompt#BUILTIN_ID}, returns the persisted
+     * override if present, otherwise the resource-backed virtual builtin.
+     */
     public synchronized Prompt getById(String id) {
         if (Prompt.BUILTIN_ID.equals(id)) {
-            return buildBuiltin();
+            return getBuiltin();
         }
         ensureLoaded();
         for (Prompt p : prompts) {
@@ -75,27 +117,59 @@ public class PromptsRepository {
         return null;
     }
 
-    /** The always-present builtin prompt (read-only virtual entry). */
+    /**
+     * The always-present builtin prompt. Returns the persisted override if
+     * present, otherwise the resource-backed virtual fallback from
+     * {@code R.string.label_prompt} / {@code R.string.name_builtin_prompt}.
+     */
     public synchronized Prompt getBuiltin() {
+        ensureLoaded();
+        for (Prompt p : prompts) {
+            if (Prompt.BUILTIN_ID.equals(p.getId())) return p;
+        }
         return buildBuiltin();
     }
 
-    /** Combined list: builtin first, then user prompts in insertion order. */
+    /**
+     * Combined list: builtin first, then user prompts in insertion order.
+     * If the builtin is overridden, the overridden entry from
+     * {@link #prompts} is omitted here because {@link #getBuiltin()} already
+     * surfaces it — avoiding a duplicate row in the editor UI.
+     */
     public synchronized List<Prompt> getAllWithBuiltin() {
         List<Prompt> all = new ArrayList<>();
-        all.add(buildBuiltin());
+        all.add(getBuiltin());
         ensureLoaded();
-        all.addAll(prompts);
+        for (Prompt p : prompts) {
+            if (Prompt.BUILTIN_ID.equals(p.getId())) continue;
+            all.add(p);
+        }
         return all;
     }
 
     public synchronized void add(Prompt newPrompt) {
         ensureLoaded();
-        if (Prompt.BUILTIN_ID.equals(newPrompt.getId())) {
-            throw new IllegalArgumentException("Cannot persist builtin prompt");
-        }
         if (newPrompt.getId() == null || newPrompt.getId().isEmpty()) {
             newPrompt.setId(UUID.randomUUID().toString());
+        }
+        if (Prompt.BUILTIN_ID.equals(newPrompt.getId())) {
+            // Upsert: replace the existing builtin override if any,
+            // otherwise append. The "virtual builtin if no override" path
+            // never reaches this branch — callers from the editor flow
+            // arrive here only after the user has saved an edited body,
+            // so we want to persist it.
+            for (int i = 0; i < prompts.size(); i++) {
+                if (Prompt.BUILTIN_ID.equals(prompts.get(i).getId())) {
+                    newPrompt.setUpdatedAt(System.currentTimeMillis());
+                    prompts.set(i, newPrompt);
+                    save();
+                    return;
+                }
+            }
+            newPrompt.setUpdatedAt(System.currentTimeMillis());
+            prompts.add(newPrompt);
+            save();
+            return;
         }
         prompts.add(newPrompt);
         save();
@@ -104,7 +178,20 @@ public class PromptsRepository {
     public synchronized void update(Prompt updated) {
         ensureLoaded();
         if (Prompt.BUILTIN_ID.equals(updated.getId())) {
-            throw new IllegalArgumentException("Cannot edit builtin prompt");
+            // Upsert builtin override: replace existing entry if any,
+            // otherwise append (e.g. user edits the virtual builtin for the
+            // first time — there is no prior entry on disk).
+            updated.setUpdatedAt(System.currentTimeMillis());
+            for (int i = 0; i < prompts.size(); i++) {
+                if (Prompt.BUILTIN_ID.equals(prompts.get(i).getId())) {
+                    prompts.set(i, updated);
+                    save();
+                    return;
+                }
+            }
+            prompts.add(updated);
+            save();
+            return;
         }
         for (int i = 0; i < prompts.size(); i++) {
             if (prompts.get(i).getId().equals(updated.getId())) {
@@ -116,10 +203,23 @@ public class PromptsRepository {
         }
     }
 
+    /**
+     * Delete a user prompt, or — if {@code id == {@link Prompt#BUILTIN_ID}} —
+     * clear the persisted builtin override (a "reset to default" action).
+     * The virtual builtin slot is never removed; it always exists in
+     * {@link #getBuiltin()} via the resource fallback.
+     */
     public synchronized void delete(String id) {
         ensureLoaded();
         if (Prompt.BUILTIN_ID.equals(id)) {
-            throw new IllegalArgumentException("Cannot delete builtin prompt");
+            // Reset to the resource-backed default: drop the override entry.
+            boolean removed = prompts.removeIf(p -> Prompt.BUILTIN_ID.equals(p.getId()));
+            if (removed) {
+                save();
+                // Active prompt stays at BUILTIN_ID (no fallback needed —
+                // it still maps to the virtual builtin).
+            }
+            return;
         }
         boolean removed = prompts.removeIf(p -> p.getId().equals(id));
         if (removed) {
@@ -168,21 +268,19 @@ public class PromptsRepository {
      */
     public synchronized String getActivePromptBody() {
         String id = getActiveId();
-        if (Prompt.BUILTIN_ID.equals(id)) {
-            return context.getString(R.string.label_prompt);
-        }
         Prompt p = getById(id);
-        return p != null ? p.getBody() : context.getString(R.string.label_prompt);
+        if (p != null) return p.getBody();
+        // Stale active id (e.g. user prompt was deleted) — fall back to
+        // the resource-backed virtual builtin.
+        return context.getString(R.string.label_prompt);
     }
 
     /** Display label for the active prompt (the user-visible name). */
     public synchronized String getActivePromptName() {
         String id = getActiveId();
-        if (Prompt.BUILTIN_ID.equals(id)) {
-            return context.getString(R.string.name_builtin_prompt);
-        }
         Prompt p = getById(id);
-        return p != null ? p.getName() : context.getString(R.string.name_builtin_prompt);
+        if (p != null) return p.getName();
+        return context.getString(R.string.name_builtin_prompt);
     }
 
     // -------- import / export --------
@@ -222,12 +320,15 @@ public class PromptsRepository {
         return finalName;
     }
 
-    /** Serialize a single prompt to pretty JSON. The id is omitted. */
+    /**
+     * Serialize a single prompt to pretty JSON. The {@code id} is omitted.
+     * The app-default (virtual) prompt is exported as an ordinary body-only
+     * JSON template: importing it via {@link #importFromJson(String)} creates
+     * a normal user prompt with a fresh UUID, so changes to the built-in
+     * never leak into the live {@link R.string#label_prompt} source of truth.
+     */
     public synchronized String exportToJson(String id) throws JSONException {
         ensureLoaded();
-        if (Prompt.BUILTIN_ID.equals(id)) {
-            throw new IllegalArgumentException("Cannot export builtin prompt");
-        }
         Prompt p = getById(id);
         if (p == null) {
             throw new IllegalArgumentException("Prompt not found: " + id);
@@ -298,20 +399,33 @@ public class PromptsRepository {
             String json = sb.toString();
             if (json.isEmpty()) return;
             JSONObject root = new JSONObject(new JSONTokener(json));
-            JSONArray arr = root.optJSONArray("prompts");
-            if (arr != null) {
+            JSONArray arr = root.optJSONArray("prompts");                if (arr != null) {
                 for (int i = 0; i < arr.length(); i++) {
                     JSONObject obj = arr.optJSONObject(i);
                     if (obj == null) continue;
                     Prompt p = Prompt.fromJson(obj);
-                    // Defensive: skip if id collides with builtin (shouldn't happen, but guard).
-                    if (Prompt.BUILTIN_ID.equals(p.getId())) continue;
                     // Skip duplicates (older writes could collide).
                     boolean dup = false;
                     for (Prompt existing : prompts) {
                         if (existing.getId().equals(p.getId())) { dup = true; break; }
                     }
                     if (!dup) prompts.add(p);
+                }
+            }
+            // Read the builtin override from its dedicated slot. We construct
+            // the Prompt directly (bypassing Prompt.fromJson()'s BUILTIN_ID
+            // strip) so the magic id survives the round-trip. The "prompts[]"
+            // path above never holds the override, so there's no conflict
+            // with the strip behaviour.
+            JSONObject override = root.optJSONObject("builtin_override");
+            if (override != null) {
+                String name = override.optString("name",
+                        context.getString(R.string.name_builtin_prompt));
+                String body = override.optString("body",
+                        context.getString(R.string.label_prompt));
+                long updatedAt = override.optLong("updatedAt", 0L);
+                if (!name.isEmpty() && !body.isEmpty()) {
+                    prompts.add(new Prompt(Prompt.BUILTIN_ID, name, body, updatedAt));
                 }
             }
         } catch (FileNotFoundException notFound) {
@@ -327,11 +441,26 @@ public class PromptsRepository {
             fos = file.startWrite();
             JSONObject root = new JSONObject();
             JSONArray arr = new JSONArray();
+            // The builtin override is persisted in its own top-level slot
+            // rather than mixed into the prompts[] array, because
+            // Prompt.fromJson() strips the magic BUILTIN_ID on read (a
+            // security property: never resurrect the magic id from JSON).
+            // Writing here and reading back via a dedicated path keeps the
+            // override id intact across reloads.
+            JSONObject builtinJson = null;
             for (Prompt p : prompts) {
+                if (Prompt.BUILTIN_ID.equals(p.getId())) {
+                    builtinJson = p.toJson();
+                    builtinJson.remove("id");
+                    continue;
+                }
                 arr.put(p.toJson());
             }
             root.put("prompts", arr);
-            root.put("schema_version", 1);
+            if (builtinJson != null) {
+                root.put("builtin_override", builtinJson);
+            }
+            root.put("schema_version", 2);
             fos.write(root.toString().getBytes("UTF-8"));
             file.finishWrite(fos);
         } catch (IOException | JSONException e) {

@@ -10,12 +10,23 @@ android {
     compileSdk = 35
     ndkVersion = "28.2.13676358"
 
+    // AGP 8.x defaults isIncludeAndroidResources = false for unit tests,
+    // so Robolectric 4.11.1 cannot resolve R.string.X at runtime and
+    // throws Resources$NotFoundException. Setting it true merges
+    // src/main/res/ + src/test/res/ into the test classpath.
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
+
     defaultConfig {
         applicationId = "dev.notune.transcribe"
         minSdk = 26
         targetSdk = 35
-        versionCode = 30
-        versionName = "0.8.7"
+        versionCode = 31
+        versionName = "0.8.8"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
             abiFilters += "arm64-v8a"
         }
@@ -119,6 +130,9 @@ dependencies {
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
     testImplementation("org.robolectric:robolectric:4.11.1")
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.test:runner:1.5.2")
+    androidTestImplementation("androidx.test:rules:1.5.0")
+    androidTestImplementation("androidx.test.ext:junit:1.1.5")
 
     // Material/AppCompat transitively pull the legacy kotlin-stdlib-jdk7/jdk8:1.6.21
     // (via kotlinx-coroutines-android), whose classes were folded into

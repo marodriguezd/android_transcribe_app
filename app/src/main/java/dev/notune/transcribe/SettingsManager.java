@@ -148,7 +148,11 @@ public class SettingsManager {
     }
 
     public String applyDictionary(String text) {
-        java.util.List<String> words = new DictionaryManager(prefs_context).getActiveWordsList();
+        // Route context via getContext() (which calls .getApplicationContext()) for the
+        // same reason as getSystemPrompt(): prefs_context is the raw constructor arg and
+        // may be an Activity context, which DictionaryManager would retain on a
+        // long-lived instance.
+        java.util.List<String> words = new DictionaryManager(getContext()).getActiveWordsList();
         if (words == null || words.isEmpty()) return text;
         double threshold = getWordCorrectionThreshold();
         WordCorrector corrector = new WordCorrector(words, threshold);

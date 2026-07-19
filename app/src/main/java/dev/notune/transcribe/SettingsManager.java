@@ -102,11 +102,13 @@ public class SettingsManager {
     public String getSystemPrompt() {
         // Single source of truth for the default system prompt lives in
         // app/src/main/res/values/strings.xml (`label_prompt`).
-        // prefs_context is the Application context, so getString(R.string.label_prompt)
-        // can safely resolve without leaking an Activity. Keep the strings.xml entry
-        // byte-equivalent (decoded) to whatever was previously inlined in DEFAULT_PROMPT
-        // to avoid silent drift across copy/edit surfaces.
-        return prefs.getString(KEY_SYSTEM_PROMPT, prefs_context.getString(R.string.label_prompt));
+        // Resolve via getContext() (which calls .getApplicationContext()) rather than
+        // prefs_context directly: the constructor's raw `context` parameter may be an
+        // Activity context, and retaining it on a long-lived SettingsManager instance
+        // would leak the Activity. Keep the strings.xml entry byte-equivalent
+        // (decoded) to whatever was previously inlined in DEFAULT_PROMPT to avoid
+        // silent drift across copy/edit surfaces.
+        return prefs.getString(KEY_SYSTEM_PROMPT, getContext().getString(R.string.label_prompt));
     }
 
     public void setSystemPrompt(String prompt) {

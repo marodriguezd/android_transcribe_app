@@ -1,0 +1,13 @@
+name: Event Router Test
+
+# Test minimal para diagnosticar si el trigger de push funciona en este repo
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  hello:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Echo test
+        run: echo "Trigger funciona correctamente (sha=${{ github.sha }})"

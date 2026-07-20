@@ -3,6 +3,7 @@ name: Build Debug APK
 # Se activa en CADA push a cualquier rama
 on:
   push:
+  workflow_dispatch:
 
 jobs:
   build:

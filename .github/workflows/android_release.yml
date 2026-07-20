@@ -78,3 +78,21 @@ jobs:
       with:
         name: app-debug-${{ github.ref_name }}
         path: ${{ env.APK_NAME }}
+
+    - name: Send Telegram notification
+      if: always()
+      uses: appleboy/telegram-action@0.1.1
+      with:
+        to: ${{ secrets.TELEGRAM_CHAT_ID }}
+        token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        disable_web_page_preview: true
+        format: html
+        message: |
+          ${{ job.status == 'success' && '&#9989;' || '&#10060;' }} <b>Build ${{ job.status == 'success' && 'completado' || 'falló' }}</b>
+
+          • <b>Rama:</b> ${{ github.ref_name }}
+          • <b>Commit:</b> <a href="https://github.com/${{ github.repository }}/commit/${{ github.sha }}">${{ github.sha }}</a> - ${{ github.event.head_commit.message || 'sin mensaje' }}
+          ${{ job.status == 'success' && format('• <b>APK:</b> {0}', env.APK_NAME) || '' }}
+
+          &#128279; <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">Ver workflow</a>
+          ${{ job.status == 'success' && format('&#128230; <a href="https://github.com/{0}/actions/runs/{1}/artifacts">Descargar APK</a>', github.repository, github.run_id) || '' }}

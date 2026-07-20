@@ -433,3 +433,105 @@ v0.8.4 release APK contains the silent-error bug above. Users who downloaded v0.
 ### Known limitations (pre-existing, not introduced)
 - `firstLaunchDialogShown = true` is set BEFORE `showFirstLaunchDownloadDialog`; if the user rotates the device while the welcome dialog is on screen, the rebuilt Activity will not re-fire the picker. Independent of this change.
 
+## Session history (post-v0.9.0 housekeeping) — 2026-07-20
+
+This entry documents the post-v0.9.0 cleanup pass that brought the local + remote repo into a clean, aligned state. Subtasks are listed in chronological order. All operations were executed from a Linux host; no Android SDK / NDK / `cargo-ndk` available locally — release-side builds remained CI-only as documented in the v0.8.x history.
+
+### 1. Discovery / pre-state
+- `origin/develop` was 20 commits ahead of `origin/main`. The most recent tag `v0.9.0` (`659f4125`) sat on `develop`; `origin/main` was frozen at `v0.8.0` (`39619e1`) with 13 commits of CI hardening only. README, AGENTS descriptions, and Fastlane metadata differed markedly between branches.
+- Local tag inventory: `v0.9.0`, `v0.8.0`–`v0.8.8` (active fork cycle), `v0.7.0`, `v0.6.0`, `v0.5.0`, `v0.4.0-ai`, `v0.3.0-ai`, `v0.2.0-ai`. GitHub Releases: 0 (post-hard-delete of 8 prior v0.x Releases per the v0.9.0 narrative).
+
+### 2. Branch strategy decision
+- **`main` is the canonical / public-facing branch**; `develop` mirrors it going forward. `develop` is retained for future feature cycles but loses authority over releases. Default branch on GitHub: `main`.
+- Rationale: GitHub's default clone URL, badge URL, and CI workflow triggers anchor on `main`. The fork-of-upstream narrative already centred what was in `main`. Trunk-based posture with `develop` as integration.
+- User explicitly approved both: (a) bring main's CI into develop, and (b) push develop to main.
+
+### 3. Merge CI from `main` into `develop` — commit `a6b574a`
+- `git checkout -b develop origin/develop` (created local `develop`).
+- `git merge --no-ff origin/main` produced 4 conflict files, all on paths both branches had modified:
+  - `app/build.gradle.kts`: git **auto-merged** — develop's 379-line v0.9.0 build file retained; main's 7-line CI debug-coexistence block (`applicationIdSuffix = ".debug"`, `versionNameSuffix = "-debug"`) survived at lines 48–52.
+  - `.github/workflows/android_release.yml`: resolved with `--theirs` — kept main's 226-line hardened workflow (Telegram notifications, stable debug signing, secrets bridging, step summary).
+  - `AGENTS.md`: resolved with `--ours` — kept develop's 435-line three-pillar narrative.
+  - `README.md`: resolved with `--ours` — kept develop's three-pillar narrative + status-badge removal.
+- New files from main (no conflicts): `.github/workflows/event-test.yml` (13 lines), `scripts/ci/setup_secrets.sh` (103 lines).
+- Code-reviewer approved with one optional follow-up: "CI secrets management" 4-line section from `AGENTS.md` main could be grafted later. Deemed optional since develop's three-pillar narrative covers the same ground rhetorically.
+- Verification (pre-commit):
+  - `versionCode=32` / `versionName="0.9.0"` preserved.
+  - 180M / canary-180m-flash-int8 model support preserved (in `downloadModels` task + `modelPackFiles180m`).
+  - Defensive release-build asserts (added in v0.8.6) preserved in `app/build.gradle.kts` `afterEvaluate {}`.
+  - `unitTests { isIncludeAndroidResources = true }` preserved (Robolectric 4.11.1 needs this).
+  - `androidTestImplementation` deps (runner / rules / ext:junit) preserved (E2E test `OfflineVoiceInputE2ETest.java` needs these).
+  - `applicationIdSuffix = ".debug"` block present in merged `app/build.gradle.kts`.
+
+### 4. Fast-forward `main` to `develop` — both at `a6b574a`
+- `git checkout main && git merge --ff-only develop` — no merge commit needed since develop already contained the merged state.
+- Rationale for keeping the `-no-ff` merge from Step 3 (instead of FF earlier): preserving the audit trail showing "this is where the CI hardening from main landed in the v0.9.0 cycle". Future contributors can `git log --first-parent` and see the merge point clearly.
+
+### 5. Push to origin
+- `git push -u origin main develop` — clean FF for both branches from their previous origin commits (main `39619e1` → `a6b574a`, develop `659f4125` → `a6b574a` via FF only — actually the no-ff merge demand also worked because origin's local-track was an ancestor).
+- `git fetch --tags origin` to sync the local tags-tracking refs.
+- `git tag -f v0.9.0 HEAD && git push -f origin v0.9.0` — force-move the `v0.9.0` tag from `659f4125` to `a6b574a` so the tag correctly points at the merge commit that contains v0.9.0 code + CI in one place.
+- `gh repo edit --default-branch main` (via gh CLI, authenticated as `marodriguezd`).
+- Verification: `git ls-remote origin main develop v0.9.0` showed all three at the expected SHAs.
+
+### 6. Audit + purge of legacy tags
+- Target list (4): `v0.5.0` (tag name vs `build.gradle.kts versionName` mismatch: tag says `v0.5.0` but build.gradle had `versionName="0.4.0"`); `v0.4.0-ai`, `v0.3.0-ai`, `v0.2.0-ai` (pre-fork AI-era tags, all three pointing at commits with `versionCode=15` / `versionName="0.1.14"` — pointless duplication).
+- Surviving inventory (8): `v0.9.0`, `v0.8.0`–`v0.8.8` (active fork cycle), `v0.7.0`, `v0.6.0`.
+- Execution: `git tag -d <tag>` then `git push origin --delete <tag>` for each.
+- Purged commits remain in git history (tags are pointers, not commits); the cleanup-release rationale is preserved per the v0.9.0 narrative.
+
+### 7. GitHub Releases: audit confirmed 0
+- `gh release list --repo marodriguezd/android_transcribe_app --limit 100` returned `[]`.
+- Consistent with the AGENTS.md v0.9.0 line "8 prior v0.x GitHub Releases hard-deleted".
+- `v0.9.0` tag exists but no GitHub Release yet — deferred, see §11.
+
+### 8. AGENTS.md doc updates
+- The `## Branches` section was stale (still said `main (60548dd) — diverged from develop at v0.8.0`). Rewrote it to reflect: branch alignment at `a6b574a` (later `9834358` after doc commits), default branch set to `main`, surviving tag inventory, GitHub Releases=0 with deferred-release command documented.
+- Two commits, in sequence:
+  - `d70bc91` — primary rewrite of `## Branches` section.
+  - `9834358` — added a caveat to the deferred-release instructions documenting the v0.8.6 release-build asserts. Code-reviewer in the prior turn flagged this as a foot-gun: anyone running `./gradlew assembleRelease` locally without `release.keystore` + env vars would fail-fast on the new asserts. The caveat lists the four pre-conditions explicitly: (a) `release.keystore` at project root, (b) `KEY_ALIAS` / `KEY_PASS` / `STORE_PASS` env vars, or `CI=true` to skip the keystore-existence check (warn-only in CI), (c) `isMinifyEnabled = false` on the release build type (default true).
+
+### 9. GitHub Actions — verified badge passing
+- Direct SVG fetch via curl: both shields encoded `passing`.
+  - `https://github.com/marodriguezd/android_transcribe_app/actions/workflows/android_release.yml/badge.svg` → `<title>Build Debug APK - passing</title>`
+  - `https://github.com/marodriguezd/android_transcribe_app/actions/workflows/event-test.yml/badge.svg` → `<title>Event Router Test - passing</title>`
+- Run inspection via `gh run list`: `Event Router Test` passes on `main`, `develop`, `v0.9.0`. `Build Debug APK` passes on `develop` and `v0.9.0`; the `main `Build Debug APK` initially reported `in_progress` (downloading ~640 MB of model assets from HuggingFace + compiling) and concluded successfully. The two doc commits (d70bc91, 9834358) on top of the merge did not re-trigger builds — consistent with whatever path filters the workflow has.
+
+### 10. `git gc --prune=now --aggressive`
+- Triggered by the dangling objects left by the legacy-tag purge. 3 dangling commits were eligible for pruning (their tree and blob objects referenced via indirect paths).
+- Output: `git gc` ran in ~3.24 seconds.
+- Before: 70 loose objects (356 KB), 1 898 in-pack (17 371 KB), 3 dangling.
+- After: 0 loose objects (0 KB), 1 940 in-pack (16 870 KB), 0 dangling.
+- Net: −501 KB pack size, −356 KB loose, −3 dangling. Refs unchanged.
+- `git fsck` post-gc clean.
+
+### 11. Deferred (mobile build env constraint — not a bug, a workflow decision)
+- **`gh release create v0.9.0`** was NOT executed in this session. The user opted to defer because the active build host lacks JDK + NDK + `cargo-ndk`, and the v0.8.6 release-build asserts would fail-fast locally without `release.keystore` + the required env vars.
+- Pre-conditions for the next session (documented inline in `## Branches`):
+  1. Build `app-release.apk`: `./build.sh` or `./gradlew assembleRelease`.
+  2. Ensure `release.keystore` at project root or `CI=true` env; export `KEY_ALIAS` / `KEY_PASS` / `STORE_PASS`.
+  3. Run:
+     ```sh
+     gh release create v0.9.0 \
+       --repo marodriguezd/android_transcribe_app \
+       --target main \
+       --notes-file fastlane/metadata/android/en-US/changelogs/32.txt \
+       app/build/outputs/apk/release/app-release.apk#Offline\ Voice\ Input\ v0.9.0.apk
+     ```
+- Why the CI workflow doesn't do this for us: `android_release.yml` only produces **debug** APKs as artifacts (no signing material in CI secrets beyond DEBUG keystore, which is auto-cached for stable debug-coexistence). Release APK + GitHub Release must be manual.
+
+### End-of-session invariants
+
+| Ref | SHA | Notes |
+|---|---|---|
+| `main` (local + origin) | `9834358` | Default branch on GitHub |
+| `develop` (local + origin) | `9834358` | Mirrors `main` |
+| `v0.9.0` (tag, local + origin) | `a6b574a` | Points at code-merge commit; unchanged across the two doc commits above |
+
+- Working tree: clean. `git fsck`: 0 errors. Dangling objects: 0.
+- Local tags: 8. Origin tags: 8. Identical inventory.
+- Badge SVGs: both `passing`.
+- GitHub Releases: 0 (1 deferred, see §11).
+- `.git/` size post-gc: ~16.5 MB.
+
+

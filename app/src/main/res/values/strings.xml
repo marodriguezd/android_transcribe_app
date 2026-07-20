@@ -177,7 +177,7 @@ ${output}"</string>
     <string name="msg_word_empty">Word cannot be empty</string>
 
     <!-- Post-Process Settings -->
-    <string name="post_process_settings_saved">Configuración guardada</string>
+    <string name="post_process_settings_saved">Settings saved</string>
 
     <!-- Dictionary -->
     <string name="dictionary_exported">Dictionary exported</string>

@@ -307,15 +307,7 @@ public class MainActivity extends AppCompatActivity {
         if (rbModelFast == null) return;
         SettingsManager sm = settingsManager;
         String current = sm.getModelVariant();
-        modelSelectionChanging = true;
-        if ("180m".equals(current)) {
-            modelGroup.check(R.id.rb_model_fastest);
-        } else if ("none".equals(current)) {
-            modelGroup.check(R.id.rb_model_none);
-        } else {
-            modelGroup.check(R.id.rb_model_fast);
-        }
-        modelSelectionChanging = false;
+        selectRadioButton(current);
         updateModelStatus(modelStatus, current, sm);
         updateDeleteButtons(btnDeleteFast, btnDeleteModelFastest, sm);
 
@@ -517,15 +509,7 @@ public class MainActivity extends AppCompatActivity {
         btnDeleteModelFastest = findViewById(R.id.btn_delete_model_fastest);
         rbModelNone = findViewById(R.id.rb_model_none);
         String current = sm.getModelVariant();
-        modelSelectionChanging = true;
-        if ("180m".equals(current)) {
-            modelGroup.check(R.id.rb_model_fastest);
-        } else if ("none".equals(current)) {
-            modelGroup.check(R.id.rb_model_none);
-        } else {
-            modelGroup.check(R.id.rb_model_fast);
-        }
-        modelSelectionChanging = false;
+        selectRadioButton(current);
         
         updateModelStatus(modelStatus, current, sm);
         updateDeleteButtons(btnDeleteFast, btnDeleteModelFastest, sm);
@@ -587,6 +571,41 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    /**
+     * Programmatic equivalent of tapping one of the three model radios.
+     * <p>
+     * The three {@code MaterialRadioButton}s sit inside {@code LinearLayouts}
+     * (so the delete button can sit beside the radio on the same row), which
+     * means {@code RadioGroup}'s direct-child auto-uncheck traversal is
+     * unreliable across Android versions and after rapid programmatic
+     * switches it can leave more than one radio visually selected. We fix
+     * that defensively by explicitly {@code clearCheck()}-ing the group
+     * and calling {@code setChecked} on every RadioButton ourselves,
+     * with the {@link #modelSelectionChanging} flag suppressing the
+     * {@code onCheckedChange} listener so we don't recursively trigger
+     * an engine switch from our own state update.
+     */
+    private void selectRadioButton(String variant) {
+        if (rbModelFastest == null || rbModelFast == null || rbModelNone == null
+                || modelGroup == null) {
+            return;
+        }
+        boolean prev = modelSelectionChanging;
+        modelSelectionChanging = true;
+        modelGroup.clearCheck();
+        rbModelFastest.setChecked(false);
+        rbModelFast.setChecked(false);
+        rbModelNone.setChecked(false);
+        if ("180m".equals(variant)) {
+            rbModelFastest.setChecked(true);
+        } else if ("none".equals(variant)) {
+            rbModelNone.setChecked(true);
+        } else {
+            rbModelFast.setChecked(true);
+        }
+        modelSelectionChanging = prev;
+    }
+
     private void startDownload(String variant, SettingsManager sm) {
         try {
             if (modelProgress != null) {
@@ -645,15 +664,7 @@ public class MainActivity extends AppCompatActivity {
                     a.modelProgress.setVisibility(View.GONE);
                     a.btnRetry.setVisibility(View.GONE);
                     a.settingsManager.invalidateModelCache(variant);
-                    a.modelSelectionChanging = true;
-                    if ("180m".equals(variant)) {
-                        a.modelGroup.check(R.id.rb_model_fastest);
-                    } else if ("0.6b".equals(variant)) {
-                        a.modelGroup.check(R.id.rb_model_fast);
-                    } else if ("none".equals(variant)) {
-                        a.modelGroup.check(R.id.rb_model_none);
-                    }
-                    a.modelSelectionChanging = false;
+                    a.selectRadioButton(variant);
                     a.modelStatus.setText(a.getString(R.string.model_status_downloaded));
                     a.updateModelStatus(a.modelStatus, variant, a.settingsManager);
                     a.updateDeleteButtons(a.btnDeleteFast, a.btnDeleteModelFastest, a.settingsManager);
@@ -709,15 +720,13 @@ public class MainActivity extends AppCompatActivity {
                     sm.deleteModel(variant);
 
                     if (sm.getModelVariant().equals(variant)) {
-                        modelSelectionChanging = true;
-                        if ("180m".equals(variant)) {
-                            modelGroup.check(R.id.rb_model_fast);
-                            sm.setModelVariant("0.6b");
-                        } else {
-                            modelGroup.check(R.id.rb_model_fastest);
-                            sm.setModelVariant("180m");
-                        }
-                        modelSelectionChanging = false;
+                        // Auto-fallback to the *other* downloaded variant when
+                        // the user deletes the currently-active one. We update
+                        // the prefs *before* the radio selection so the helper
+                        // sees the canonical variant name.
+                        String targetVariant = "180m".equals(variant) ? "0.6b" : "180m";
+                        sm.setModelVariant(targetVariant);
+                        selectRadioButton(targetVariant);
                     }
 
                     updateModelStatus(modelStatus, sm.getModelVariant(), sm);
@@ -769,27 +778,21 @@ public class MainActivity extends AppCompatActivity {
 
         btnFastest.setOnClickListener(v -> {
             sm.setModelVariant("180m");
-            modelSelectionChanging = true;
-            modelGroup.check(R.id.rb_model_fastest);
-            modelSelectionChanging = false;
+            selectRadioButton("180m");
             startDownload("180m", sm);
             dialog.dismiss();
             welcomeDialog = null;
         });
         btnFast.setOnClickListener(v -> {
             sm.setModelVariant("0.6b");
-            modelSelectionChanging = true;
-            modelGroup.check(R.id.rb_model_fast);
-            modelSelectionChanging = false;
+            selectRadioButton("0.6b");
             startDownload("0.6b", sm);
             dialog.dismiss();
             welcomeDialog = null;
         });
         btnSkip.setOnClickListener(v -> {
             sm.setModelVariant("none");
-            modelSelectionChanging = true;
-            modelGroup.check(R.id.rb_model_none);
-            modelSelectionChanging = false;
+            selectRadioButton("none");
             updateModelStatus(modelStatus, "none", sm);
             updateDeleteButtons(btnDeleteFast, btnDeleteModelFastest, sm);
             dialog.dismiss();

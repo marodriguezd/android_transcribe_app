@@ -75,13 +75,16 @@ jobs:
         echo "APK_NAME=android_transcribe_app-${BRANCH_NAME}-${COMMIT_HASH}-debug.apk" >> $GITHUB_ENV
 
     - name: Upload Debug APK
+      if: env.APK_NAME != ''
+      continue-on-error: true
       uses: actions/upload-artifact@v4
       with:
         name: app-debug-${{ github.ref_name }}
         path: ${{ env.APK_NAME }}
 
     - name: Send Telegram notification
-      if: always()
+      if: always() && secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != ''
+      continue-on-error: true
       uses: appleboy/telegram-action@0.1.1
       with:
         to: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -97,3 +100,17 @@ jobs:
 
           &#128279; <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">Ver workflow</a>
           ${{ job.status == 'success' && format('&#128230; <a href="https://github.com/{0}/actions/runs/{1}/artifacts">Descargar APK</a>', github.repository, github.run_id) || '' }}
+
+    - name: Write Step Summary
+      if: always()
+      run: |
+        {
+          echo "## &#128296; android_transcribe_app debug build"
+          echo
+          echo "- **Rama:** <code>${{ github.ref_name }}</code>"
+          echo "- **Commit:** <code>${{ github.sha }}</code>"
+          echo "- **Estado:** ${{ job.status == 'success' && '&#9989; OK' || '&#10060; FAIL' }}"
+          echo "- **APK en disco:** <code>${APK_NAME:-no generado}</code>"
+          echo "- **Artifact esperado:** <code>app-debug-${{ github.ref_name }}</code>"
+          echo "- **Run:** https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        } >> "$GITHUB_STEP_SUMMARY"

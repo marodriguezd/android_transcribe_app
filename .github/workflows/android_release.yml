@@ -63,6 +63,18 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-gradle-
 
+    # GitHub Actions runners are ephemeral: without this cache every run
+    # regenerates ~/.android/debug.keystore, so two consecutive CI debug
+    # builds have different signing certificates and the second fails to
+    # install on top of the first (INSTALL_FAILED_UPDATE_INCOMPATIBLE).
+    # A stable, OS-scoped, branch-agnostic key keeps the same keystore
+    # across all debug builds, so users can always sideload-update.
+    - name: Cache Android Debug Keystore
+      uses: actions/cache@v4
+      with:
+        path: ~/.android/debug.keystore
+        key: ${{ runner.os }}-android-debug-keystore-stable
+
     - name: Build Debug APK
       run: |
         ./gradlew assembleDebug

@@ -79,6 +79,32 @@ org.gradle.java.home=/path/to/jdk17
 ```
 
 
+### Installing CI Artifacts (debug builds from GitHub Actions)
+
+Every push runs [`.github/workflows/android_release.yml`](.github/workflows/android_release.yml) and uploads the debug APK as a zip artifact named `app-debug-&lt;branch&gt;`. To install it on any device:
+
+1. **Extract first** — GitHub Actions wraps every artifact in a zip. After download, unzip it:
+   ```bash
+   unzip ~/Downloads/app-debug-main.zip -d ci-apk/
+   ls ci-apk/*.apk   # the actual APK is here
+   ```
+2. **Install via adb** (recommended for developers):
+   ```bash
+   adb install -r ci-apk/android_transcribe_app-main-*-debug.apk
+   ```
+3. **Sideload manually** — transfer the `.apk` to your phone and tap it from a file manager. Android may ask for "Install unknown apps" permission; grant it for your file manager and proceed.
+4. **Quick CLI** (alternative):
+   ```bash
+   gh run download &lt;run-id&gt; -n app-debug-main
+   adb install -r *.apk
+   ```
+
+&gt; **Common gotchas**
+&gt; - **"El paquete no es válido"**: usually means the file you tried to install is the artifact zip, not the extracted APK. Extract with `unzip` first and try again. If the file doesn't even look like a zip, re-download — it may be truncated.
+&gt; - **Debug APKs across CI runs**: the workflow caches `~/.android/debug.keystore` per runner-OS with a stable key so every debug build shares the same debug signing certificate. You can sideload-update any CI build on top of any other without uninstalling. If GitHub ever evicts the cache, one uninstall resets the cycle.
+&gt; - **First install of the debug build** coexisting with the official release: the debug variant uses applicationId `dev.notune.transcribe.debug` (vs release `dev.notune.transcribe`), so both can be installed side by side.
+
+
 ### Signing
 
 For release builds, place a `release.keystore` in the project root and set these environment variables:

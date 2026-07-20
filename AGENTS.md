@@ -121,6 +121,7 @@ gh release create vX.Y.Z --repo marodriguezd/android_transcribe_app \
 - ORT providers on Android: NNAPI, XNNPACK, CPU (in priority order)
 - `ensure_loaded` / `ensure_loaded_from_thread` return `Result<Option<engine_state>>` — callers use the returned reference instead of a second `get_engine()` call
 - Download callbacks stored in `CopyOnWriteArrayList` — removed after terminal events and lifecycle transitions
+- CI debug signing: ~/.android/debug.keystore is cached via actions/cache@v4 in android_release.yml with stable, branch-agnostic key ${{ runner.os }}-android-debug-keystore-stable — every debug APK from CI shares the same signing certificate, so users can sideload-update across CI runs without adb uninstall. Pairs with applicationIdSuffix=".debug" so debug also coexists with the release build.
 - Post-processing prompt: defined in `SettingsManager.DEFAULT_PROMPT` and `strings.xml@label_prompt`
 
 ## CI secrets management

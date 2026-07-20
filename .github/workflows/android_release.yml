@@ -86,23 +86,28 @@ jobs:
       env:
         BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        STATUS_EMOJI: ${{ job.status == 'success' && '✅' || '❌' }}
+        STATUS_TEXT: ${{ job.status == 'success' && 'completado' || 'falló' }}
+        APKL: ${{ env.APK_NAME || '(no generado)' }}
       if: always() && env.BOT_TOKEN != '' && env.CHAT_ID != ''
       continue-on-error: true
-      uses: appleboy/telegram-action@0.1.1
-      with:
-        to: ${{ env.CHAT_ID }}
-        token: ${{ env.BOT_TOKEN }}
-        disable_web_page_preview: true
-        format: html
-        message: |
-          ${{ job.status == 'success' && '&#9989;' || '&#10060;' }} <b>Build ${{ job.status == 'success' && 'completado' || 'falló' }}</b>
-
-          • <b>Rama:</b> ${{ github.ref_name }}
-          • <b>Commit:</b> <a href="https://github.com/${{ github.repository }}/commit/${{ github.sha }}">${{ github.sha }}</a> - ${{ github.event.head_commit.message || 'sin mensaje' }}
-          ${{ job.status == 'success' && format('• <b>APK:</b> {0}', env.APK_NAME) || '' }}
-
-          &#128279; <a href="https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}">Ver workflow</a>
-          ${{ job.status == 'success' && format('&#128230; <a href="https://github.com/{0}/actions/runs/{1}/artifacts">Descargar APK</a>', github.repository, github.run_id) || '' }}
+      run: |
+        printf '%s\n' \
+          "📡 Build ${STATUS_TEXT} ${STATUS_EMOJI}" \
+          "" \
+          "• Rama: ${GITHUB_REF_NAME}" \
+          "• Commit: ${GITHUB_SHA}" \
+          "• APK: ${APKL}" \
+          "• Artifact esperado: app-debug-${GITHUB_REF_NAME}" \
+          "" \
+          "🔗 Workflow: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+          > /tmp/tg_msg.txt
+        curl -sS --fail-with-body \
+          "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+          -d chat_id="${CHAT_ID}" \
+          -d disable_web_page_preview=true \
+          --data-urlencode "text@/tmp/tg_msg.txt" \
+          || echo "::warning::Telegram notification failed (build status unaffected)"
 
     - name: Write Step Summary
       if: always()

@@ -1,5 +1,8 @@
 # Offline Voice Input (Android)
 
+[![Build Status](https://github.com/marodriguezd/android_transcribe_app/actions/workflows/android_release.yml/badge.svg)](https://github.com/marodriguezd/android_transcribe_app/actions/workflows/android_release.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 An offline, privacy-focused voice input keyboard, live subtitle tool, and AI-powered text refiner (Handy-like) for Android, built with Rust.
 
 [<img src="https://i.ibb.co/q0mdc4Z/get-it-on-github.png"

@@ -1,17 +1,12 @@
-name: Build Android App
+name: Build Debug APK
 
+# Se activa en CADA push a cualquier rama
 on:
   push:
-    tags:
-      - 'v*'
-    branches:
-      - main
 
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
     - uses: actions/checkout@v4
@@ -67,59 +62,19 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-gradle-
 
-    - name: Decode Keystore
-      env:
-        KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+    - name: Build Debug APK
       run: |
-        echo "$KEYSTORE_BASE64" | base64 --decode > release.keystore
+        ./gradlew assembleDebug
 
-    - name: Build Release APK
-      env:
-        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-        KEY_PASS: ${{ secrets.KEY_PASS }}
-        STORE_PASS: ${{ secrets.STORE_PASS }}
+    - name: Rename APK with commit info
       run: |
-        ./gradlew assembleRelease
+        COMMIT_HASH=$(git rev-parse --short HEAD)
+        BRANCH_NAME=$(echo "${GITHUB_REF#refs/heads/}" | tr '/' '-')
+        cp app/build/outputs/apk/debug/app-debug.apk "android_transcribe_app-${BRANCH_NAME}-${COMMIT_HASH}-debug.apk"
+        echo "APK_NAME=android_transcribe_app-${BRANCH_NAME}-${COMMIT_HASH}-debug.apk" >> $GITHUB_ENV
 
-    - name: Build Release AAB
-      env:
-        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-        KEY_PASS: ${{ secrets.KEY_PASS }}
-        STORE_PASS: ${{ secrets.STORE_PASS }}
-      run: |
-        ./gradlew bundleRelease
-
-    - name: Extract Version Name
-      id: extract_version
-      run: |
-        VERSION_NAME=$(grep 'versionName' app/build.gradle.kts | head -1 | grep -oP '"[^"]*"' | tr -d '"')
-        echo "Detected Version: $VERSION_NAME"
-        echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
-
-    - name: Rename Artifacts
-      run: |
-        cp app/build/outputs/apk/release/app-release.apk android_transcribe_app_v${{ env.VERSION_NAME }}.apk
-        cp app/build/outputs/bundle/release/app-release.aab android_transcribe_app_v${{ env.VERSION_NAME }}.aab
-
-    - name: Upload APK Artifact
+    - name: Upload Debug APK
       uses: actions/upload-artifact@v4
       with:
-        name: app-release-apk-v${{ env.VERSION_NAME }}
-        path: android_transcribe_app_v${{ env.VERSION_NAME }}.apk
-
-    - name: Upload AAB Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: app-release-aab-v${{ env.VERSION_NAME }}
-        path: android_transcribe_app_v${{ env.VERSION_NAME }}.aab
-
-    - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
-      with:
-        name: Release v${{ env.VERSION_NAME }}
-        # Use the tagged commit's message as the release notes.
-        body: ${{ github.event.head_commit.message }}
-        files: |
-          android_transcribe_app_v${{ env.VERSION_NAME }}.apk
-          android_transcribe_app_v${{ env.VERSION_NAME }}.aab
+        name: app-debug-${{ github.ref_name }}
+        path: ${{ env.APK_NAME }}

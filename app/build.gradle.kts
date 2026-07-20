@@ -45,6 +45,13 @@ android {
     }
 
     buildTypes {
+        // Debug installs as dev.notune.transcribe.debug so it can coexist
+        // side-by-side with the release build (different applicationId ⇒
+        // no signature conflict on update).
+        debug {
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
         release {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("release")

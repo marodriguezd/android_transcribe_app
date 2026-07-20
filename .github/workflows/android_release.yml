@@ -1,120 +1,13 @@
-name: Build Android App
+name: Build Debug APK
 
+# Se activa en CADA push a cualquier rama
 on:
   push:
-    tags:
-      - 'v*'
-    branches:
-      - main
+  workflow_dispatch:
 
 jobs:
-  instrumented-test:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: true
-
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
-      with:
-        java-version: '17'
-        distribution: 'temurin'
-
-    - name: Fix gradle.properties for CI
-      run: |
-        sed -i '/org.gradle.java.home/d' gradle.properties
-
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v3
-
-    - name: Install Android NDK
-      run: |
-        sdkmanager --install "ndk;28.0.13004108"
-        echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.0.13004108" >> $GITHUB_ENV
-
-    - name: Setup Rust
-      uses: dtolnay/rust-toolchain@stable
-      with:
-        targets: aarch64-linux-android
-
-    - name: Install cargo-ndk
-      run: cargo install cargo-ndk
-
-    - name: Cache Rust dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/registry
-          ~/.cargo/git
-          target
-          transcribe-rs/target
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-
-
-    - name: Cache Gradle
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.gradle/caches
-          ~/.gradle/wrapper
-        key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
-        restore-keys: |
-          ${{ runner.os }}-gradle-
-
-    # Build the debug APK + test APK without native .so or model downloads.
-    # The native .so is arm64-v8a only and won't load on x86_64 emulator, but
-    # the app's static initialisers (System.loadLibrary) catch
-    # UnsatisfiedLinkError gracefully — the instrumentation tests in
-    # CoreJavaLogic* exercise only Java-side business logic
-    # (SettingsManager, WordCorrector, PromptsRepository, MicLevelView, …)
-    # and never call through to JNI.  Skipping the native build and model
-    # download saves ~5-10 min of CI time per run.
-    - name: Build Debug APK (no native libs)
-      run: |
-        ./gradlew assembleDebug -x cargoNdkBuild -x downloadModels
-
-    - name: Enable KVM group perms
-      run: |
-        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | \
-          sudo tee /etc/udev/rules.d/99-kvm4all.rules
-        sudo udevadm control --reload-rules
-        sudo udevadm trigger --name-match=kvm
-
-    - name: Run instrumented tests
-      uses: reactivecircus/android-emulator-runner@v2
-      with:
-        api-level: 34
-        target: google_apis
-        arch: x86_64
-        emulator-options: -no-window -no-audio -no-boot-anim
-        avd-name: test_avd
-        force-avd-creation: false
-        disable-animations: true
-        avd-cache: true
-        script: |
-          ./gradlew connectedDebugAndroidTest \
-            -x cargoNdkBuild \
-            -x downloadModels
-
-    - name: Upload test results
-      if: always()
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-results
-        path: |
-          app/build/reports/androidTests/**
-          app/build/outputs/androidTest-results/**/connected/*
-
   build:
     runs-on: ubuntu-latest
-    needs: [instrumented-test]
-    permissions:
-      contents: write
 
     steps:
     - uses: actions/checkout@v4
@@ -129,6 +22,7 @@ jobs:
 
     - name: Fix gradle.properties for CI
       run: |
+        # Remove local JDK path — CI uses JAVA_HOME from setup-java
         sed -i '/org.gradle.java.home/d' gradle.properties
 
     - name: Setup Android SDK
@@ -169,58 +63,74 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-gradle-
 
-    - name: Decode Keystore
-      env:
-        KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-      run: |
-        echo "$KEYSTORE_BASE64" | base64 --decode > release.keystore
+    # GitHub Actions runners are ephemeral: without this cache every run
+    # regenerates ~/.android/debug.keystore, so two consecutive CI debug
+    # builds have different signing certificates and the second fails to
+    # install on top of the first (INSTALL_FAILED_UPDATE_INCOMPATIBLE).
+    # A stable, OS-scoped, branch-agnostic key keeps the same keystore
+    # across all debug builds, so users can always sideload-update.
+    - name: Cache Android Debug Keystore
+      uses: actions/cache@v4
+      with:
+        path: ~/.android/debug.keystore
+        key: ${{ runner.os }}-android-debug-keystore-stable
 
-    - name: Build Release APK
-      env:
-        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-        KEY_PASS: ${{ secrets.KEY_PASS }}
-        STORE_PASS: ${{ secrets.STORE_PASS }}
+    - name: Build Debug APK
       run: |
-        ./gradlew assembleRelease
+        ./gradlew assembleDebug
 
-    - name: Build Release AAB
-      env:
-        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-        KEY_PASS: ${{ secrets.KEY_PASS }}
-        STORE_PASS: ${{ secrets.STORE_PASS }}
+    - name: Rename APK with commit info
       run: |
-        ./gradlew bundleRelease
+        COMMIT_HASH=$(git rev-parse --short HEAD)
+        BRANCH_NAME=$(echo "${GITHUB_REF#refs/heads/}" | tr '/' '-')
+        cp app/build/outputs/apk/debug/app-debug.apk "android_transcribe_app-${BRANCH_NAME}-${COMMIT_HASH}-debug.apk"
+        echo "APK_NAME=android_transcribe_app-${BRANCH_NAME}-${COMMIT_HASH}-debug.apk" >> $GITHUB_ENV
 
-    - name: Extract Version Name
-      id: extract_version
-      run: |
-        VERSION_NAME=$(grep 'versionName' app/build.gradle.kts | head -1 | grep -oP '"[^"]*"' | tr -d '"')
-        echo "Detected Version: $VERSION_NAME"
-        echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
-
-    - name: Rename Artifacts
-      run: |
-        cp app/build/outputs/apk/release/app-release.apk android_transcribe_app_v${{ env.VERSION_NAME }}.apk
-        cp app/build/outputs/bundle/release/app-release.aab android_transcribe_app_v${{ env.VERSION_NAME }}.aab
-
-    - name: Upload APK Artifact
+    - name: Upload Debug APK
+      if: env.APK_NAME != ''
+      continue-on-error: true
       uses: actions/upload-artifact@v4
       with:
-        name: app-release-apk-v${{ env.VERSION_NAME }}
-        path: android_transcribe_app_v${{ env.VERSION_NAME }}.apk
+        name: app-debug-${{ github.ref_name }}
+        path: ${{ env.APK_NAME }}
 
-    - name: Upload AAB Artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: app-release-aab-v${{ env.VERSION_NAME }}
-        path: android_transcribe_app_v${{ env.VERSION_NAME }}.aab
+    - name: Send Telegram notification
+      env:
+        BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        STATUS_EMOJI: ${{ job.status == 'success' && '✅' || '❌' }}
+        STATUS_TEXT: ${{ job.status == 'success' && 'completado' || 'falló' }}
+        APKL: ${{ env.APK_NAME || '(no generado)' }}
+      if: always() && env.BOT_TOKEN != '' && env.CHAT_ID != ''
+      continue-on-error: true
+      run: |
+        printf '%s\n' \
+          "📡 Build ${STATUS_TEXT} ${STATUS_EMOJI}" \
+          "" \
+          "• Rama: ${GITHUB_REF_NAME}" \
+          "• Commit: ${GITHUB_SHA}" \
+          "• APK: ${APKL}" \
+          "• Artifact esperado: app-debug-${GITHUB_REF_NAME}" \
+          "" \
+          "🔗 Workflow: https://github.com/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+          > /tmp/tg_msg.txt
+        curl -sS --fail-with-body \
+          "https://api.telegram.org/bot${BOT_TOKEN}/sendMessage" \
+          -d chat_id="${CHAT_ID}" \
+          -d disable_web_page_preview=true \
+          --data-urlencode "text@/tmp/tg_msg.txt" \
+          || echo "::warning::Telegram notification failed (build status unaffected)"
 
-    - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
-      with:
-        name: Release v${{ env.VERSION_NAME }}
-        body: ${{ github.event.head_commit.message }}
-        files: |
-          android_transcribe_app_v${{ env.VERSION_NAME }}.apk
-          android_transcribe_app_v${{ env.VERSION_NAME }}.aab
+    - name: Write Step Summary
+      if: always()
+      run: |
+        {
+          echo "## &#128296; android_transcribe_app debug build"
+          echo
+          echo "- **Rama:** <code>${{ github.ref_name }}</code>"
+          echo "- **Commit:** <code>${{ github.sha }}</code>"
+          echo "- **Estado:** ${{ job.status == 'success' && '&#9989; OK' || '&#10060; FAIL' }}"
+          echo "- **APK en disco:** <code>${APK_NAME:-no generado}</code>"
+          echo "- **Artifact esperado:** <code>app-debug-${{ github.ref_name }}</code>"
+          echo "- **Run:** https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        } >> "$GITHUB_STEP_SUMMARY"

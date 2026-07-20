@@ -83,12 +83,15 @@ jobs:
         path: ${{ env.APK_NAME }}
 
     - name: Send Telegram notification
-      if: always() && secrets.TELEGRAM_BOT_TOKEN != '' && secrets.TELEGRAM_CHAT_ID != ''
+      env:
+        BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      if: always() && env.BOT_TOKEN != '' && env.CHAT_ID != ''
       continue-on-error: true
       uses: appleboy/telegram-action@0.1.1
       with:
-        to: ${{ secrets.TELEGRAM_CHAT_ID }}
-        token: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        to: ${{ env.CHAT_ID }}
+        token: ${{ env.BOT_TOKEN }}
         disable_web_page_preview: true
         format: html
         message: |

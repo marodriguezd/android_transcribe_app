@@ -36,6 +36,7 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/` for 0.6B 
 | `DictionaryEditActivity.java` | Edit individual dictionary entries |
 | `src/engine.rs` | Global engine singleton, model loading/switching |
 | `src/main_activity.rs` | JNI bridge for initNative/switchModel |
+| `scripts/ci/setup_secrets.sh` | Operator: gh CLI, sets TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID via silent read + stdin pipe (no --body) |
 
 ## Current version
 
@@ -121,6 +122,13 @@ gh release create vX.Y.Z --repo marodriguezd/android_transcribe_app \
 - `ensure_loaded` / `ensure_loaded_from_thread` return `Result<Option<engine_state>>` — callers use the returned reference instead of a second `get_engine()` call
 - Download callbacks stored in `CopyOnWriteArrayList` — removed after terminal events and lifecycle transitions
 - Post-processing prompt: defined in `SettingsManager.DEFAULT_PROMPT` and `strings.xml@label_prompt`
+
+## CI secrets management
+
+- **Operator script**: `scripts/ci/setup_secrets.sh` - run manually; not part of the runtime; not auto-invoked by CI.
+- **Auth**: requires `GH_TOKEN` with `repo` scope exported in the calling shell.
+- **Mechanism**: silent `read -rs` + stdin pipe to `gh secret set` (no `--body`); under the standard threat model (no `set -x`, no `bash -x`, no `/proc/<cmdline>` eavesdropping) values stay out of `argv`, `~/.bash_history`, and `ps aux`.
+- **Collision safety**: existing secrets require an explicit `yes` to overwrite; inventory is printed before and after each run.
 
 ## Common pitfalls
 

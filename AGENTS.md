@@ -83,9 +83,9 @@ Models are stored in `getFilesDir()/models/parakeet-tdt-0.6b-v3-int8/` for 0.6B 
 
 ## Branches
 
-- `main` (60548dd) — diverged from `develop` at v0.8.0; `develop` is 16 commits ahead
-- `develop` — HEAD includes the v0.9.0 cleanup commits (version bump, fastlane metadata + README rewrite, AGENTS.md "Current version" + Session history consolidation)
-- Tags: `v0.8.0` through `v0.8.8` retained locally for git history audit; all GitHub Releases from `v0.2.0-ai` through `v0.8.8` were hard-deleted at the v0.9.0 release commit.
+- `main` and `develop` aligned at commit `a6b574a` ("merge: bring CI hardening from main into develop"). Both branches point at the same SHA — the canonical posture is "main is the trunk, develop mirrors it going forward". Default branch on GitHub: `main` (set via `gh repo edit --default-branch main`, 2026-07-20).
+- Tag inventory after the v0.9.0 cleanup: `v0.9.0` (force-moved to `a6b574a`), `v0.8.0`-`v0.8.8` (the active fork cycle, all reachable from `main`), `v0.7.0`, `v0.6.0`. The pre-fork `-ai` cycle (`v0.2.0-ai` → `v0.4.0-ai`) + the versionName-mismatched `v0.5.0` were purged locally + on origin via `git tag -d` + `git push origin --delete`.
+- **GitHub Releases: 0** (`gh release list` returns empty). `v0.9.0` tag exists; the v0.9.0 Release is **deferred** — APK release build was skipped at this commit (mobile build env constraint, no JDK / NDK / cargo-ndk locally). To publish it later: build `app-release.apk` (./build.sh or ./gradlew assembleRelease), then `gh release create v0.9.0 --target main --notes-file fastlane/metadata/android/en-US/changelogs/32.txt app/build/outputs/apk/release/app-release.apk#Offline\ Voice\ Input\ v0.9.0.apk`. The CI workflow `android_release.yml` produces debug APKs as artifacts on every push; the release APK + GitHub Release must be done manually.
 
 ## Build & release
 

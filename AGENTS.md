@@ -520,6 +520,54 @@ This entry documents the post-v0.9.0 cleanup pass that brought the local + remot
      ```
 - Why the CI workflow doesn't do this for us: `android_release.yml` only produces **debug** APKs as artifacts (no signing material in CI secrets beyond DEBUG keystore, which is auto-cached for stable debug-coexistence). Release APK + GitHub Release must be manual.
 
+## Session history (post-v0.9.0 hotfix #1) — 2026-07-20
+
+Two user-reported defects addressed in commit `a31a77f` on `develop` (push to `origin/develop` triggered the `Build Debug APK` CI workflow; `main` left untouched because the v0.9.0 housekeeping block already noted `main` is the trunk and only gets fast-forwarded during housekeeping-style coordinated moves, never for single-fix commits).
+
+### What was done
+41. **All-English output on the direct model path (and everywhere else)**. The only Spanish string remaining in user-facing resources was the post-process "saved" toast:
+    - Was: `<string name="post_process_settings_saved">Configuración guardada</string>` in `app/src/main/res/values/strings.xml`.
+    - Now: `<string name="post_process_settings_saved">Settings saved</string>`.
+    Verified the rest of the user-facing surface is English by sampling the candidate paths: the three Rust CLI examples (`transcribe-rs/examples/parakeet_cli.rs`, `transcribe.rs`, `openai.rs`) print their banner / model-load / transcription lines in English; the test fixtures in `transcribe-rs/tests/parakeet.rs` (`jfk.wav` → "And so, my fellow Americans, ask not what your country can do for you...") and `whisper.rs` (Quirk/Quid/Quill transcript) expect English output; the two shipped models are English-only per `R.string.model_card_meta_parakeet` ("Parakeet TDT v3 (English)") and `model_card_meta_canary` ("Canary 180M (English)"). So the project invariant — *no Spanish / non-English user-facing string ships* — is now enforced for the post-process flow specifically, and consistent with the rest of the surface.
+42. **RadioGroup visual-state defensiveness for rapid programmatic switches.** Introduced a private `selectRadioButton(String variant)` helper in `MainActivity` that:
+    - null-guards `rbModelFastest` / `rbModelFast` / `rbModelNone` / `modelGroup` before any view access (defensive against the AGENTS.md "Common pitfalls" note that the three RadioButtons may be null if `setupModelSelection` has not run);
+    - saves and restores the `modelSelectionChanging` flag rather than clobbering it to `false` on exit (safer than the prior pattern — no caller accidentally cleared by the helper);
+    - calls `modelGroup.clearCheck()` *and* `setChecked(false)` on every RadioButton, then `setChecked(true)` on the target.
+    The reason for the manual loop is that the three `MaterialRadioButton`s sit inside `LinearLayout`s (so the per-row delete `ImageButton` can sit beside the radio), which makes `RadioGroup`'s direct-child auto-uncheck traversal unreliable across Android versions — and the v0.8.3 fix that switched `RadioButton.setChecked(true)` to `RadioGroup.check(id)` did not catch this because the RadioButtons are not **direct** children of the Group. After rapid `updateModelSelectionUI()` / `onComplete()` / `confirmDeleteModel()` re-syncs, more than one radio can stay visually selected.
+    Replaced the 5 sites that previously did the manual `modelGroup.check(id)` + `modelSelectionChanging = true; ...; = false` dance:
+    - `updateModelSelectionUI()` — onResume re-sync path.
+    - `setupModelSelection()` — initial sync on `onCreate` (before listener attachment).
+    - `createDownloadCallback.onComplete()` — after a model finishes downloading, before kicking off the JNI switch. (Inside the anonymous inner class, the call is `a.selectRadioButton(variant)`.)
+    - `confirmDeleteModel()` auto-fallback branch — when the user deletes the currently-active variant, the auto-fallback to the *other* downloadable variant is preserved bit-for-bit (deleting 180m → falls back to 0.6b, deleting 0.6b → falls back to 180m). The refactor also tightened the order: `setModelVariant(targetVariant)` BEFORE the radio sync so the helper sees the canonical variant name, eliminating a one-line window where `updateDeleteButtons()` could read a stale prefs value.
+    - All three click handlers in `showFirstLaunchDownloadDialog()` — Fastest / Fast / Skip.
+    The **only** remaining `RadioButton.setChecked(true)` calls in the project live inside `selectRadioButton()` itself (i.e. the helper). The v0.8.3 "no `setChecked` outside `RadioGroup.check`" invariant is therefore upgraded to: **"no `setChecked` outside the `selectRadioButton` helper"** — a single chokepoint for any future "stuck checks" regression.
+
+### Verification
+- `git diff --stat` for `a31a77f`: 2 files changed, +93 / −46 in `MainActivity.java`, 1 string line in `strings.xml` (net +3).
+- Code-reviewer (minimax-m3): **APPROVED** — A (helper null-guards + flag envelope + no new thread → no WeakReference obligation), B (5 sites consistent), C (`confirmDeleteModel` auto-fallback preserved; cleaner because `setModelVariant` now precedes the radio sync), D (Spanish fixed; rest of user-facing surface already English), E (only caller of `RadioButton.setChecked(true)` is the helper itself).
+- Killed the in-flight bash attempts that mis-escaped parentheses / apostrophes in inline `-m` arguments (first commit attempt failed because the shell split on `setChecked(...)` and the smart quotes around `'rbModelFast'`); retried with `git commit -F commit_msg_fix_radio.txt` and the same content landed cleanly. Temp file removed after the commit succeeded.
+- CI verification: `gh api /repos/marodriguezd/android_transcribe_app/actions/runs?per_page=3` confirms Actions is auto-enabled for this repo and the push to `develop` triggered both workflows:
+    - `Event Router Test` for `a31a77f` → `status: completed`, `conclusion: success`.
+    - `Build Debug APK` for `a31a77f` → `status: in_progress` at last poll (the cargo-ndk step is downloading the Parakeet bundle from HuggingFace — first heavy build after resuming Actions on a clean Linux worker takes ~5–10 min). The APK artifact will materialise in the run's *Artifacts* block once it concludes.
+    No manual run-dispatch was needed; the workflow's `on: push:` is sufficient.
+
+### Files changed
+| File | Purpose |
+|------|---------|
+| `app/src/main/java/dev/notune/transcribe/MainActivity.java` | New private `selectRadioButton(variant)` helper; replaced 5 manual `modelGroup.check(...)` call sites |
+| `app/src/main/res/values/strings.xml` | `post_process_settings_saved` translated Spanish → English |
+
+### Limits
+- No local JDK / NDK / `cargo-ndk` (Linux host), so `./gradlew :app:compileDebugJavaWithJavac` cannot run here. CI is the only validator that exercises the Java compile + R8 + cargo-ndk Rust link chain. Typecheck responsibility moves to the Action's `gradle/actions/setup-gradle@v2` step.
+- Commit was pushed to `develop`, not `main`. `main` is the trunk per the v0.9.0 housekeeping agreement; coordination for a `develop → main` FF would be a separate, deliberate step (the v0.9.0 README/AGENTS narrative still anchors on `main`).
+
+### Next steps (for the user)
+- Monitor the `Build Debug APK` run on `develop` (linked to commit `a31a77f`) in the Actions tab; once green, download the APK artifact (zip with `app-debug.apk`).
+- `adb -s 192.168.1.45:37601 install -r app-debug.apk` to flash the A059.
+- On-device smoke test the **Transcription Model** card (Fastest 180M ↔ Fast 0.6B ↔ Use without model) under rapid taps — **only one** radio should stay lit at any time. If two still appear lit after this build, the next debugging tranche should restructure `activity_main.xml` so the RadioButtons are *direct* children of `rg_model` (LinearLayouts as wrappers in the same RadioGroup are the root cause of this class of bug).
+- Verify the post-process settings toast reads `Settings saved` (English), not `Configuración guardada`.
+- (Pre-v0.9.1 release prep) bump `versionCode` 32 → 33 and `versionName` 0.9.0 → 0.9.1 in `app/build.gradle.kts`; author `fastlane/metadata/android/en-US/changelogs/33.txt` covering both fixes; sign the release APK locally (requires `release.keystore` at project root + `KEY_ALIAS` / `KEY_PASS` / `STORE_PASS` exported, otherwise the v0.8.6 defensive build asserts fail-fast); `gh release create v0.9.1 --target main --notes-file changelogs/33.txt` with the signed APK.
+
 ### End-of-session invariants
 
 | Ref | SHA | Notes |

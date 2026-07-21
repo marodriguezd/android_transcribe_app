@@ -1,6 +1,6 @@
 use once_cell::sync::Lazy;
 use std::sync::{Arc, Condvar, Mutex};
-use transcribe_rs::engines::parakeet::{Parakeet180mModel, ParakeetEngine};
+use transcribe_rs::engines::parakeet::{CanaryLanguage, Parakeet180mModel, ParakeetEngine};
 use transcribe_rs::TranscriptionEngine;
 
 use jni::objects::{GlobalRef, JObject, JString};
@@ -42,6 +42,33 @@ impl EngineWrapper {
         match self {
             EngineWrapper::V0_6b(eng) => eng.set_hotwords(words),
             EngineWrapper::V180m(_) => { /* hotwords not supported for 180M yet */ }
+        }
+    }
+
+    /// Update the language the next transcription will use. Only the Canary
+    /// 180M variant tokenises source/target language explicitly in its
+    /// decoder prefix; the 0.6B Parakeet TDT path is language-agnostic and
+    /// auto-detects from the audio, so the renderer call is a no-op there.
+    /// Returns true if the call caused a state change, false otherwise
+    /// (useful for the JNI bridge to log "noop for v0_6b" without silent drops).
+    pub fn set_language(&mut self, lang: CanaryLanguage) -> bool {
+        match self {
+            EngineWrapper::V0_6b(_) => false,
+            EngineWrapper::V180m(m) => {
+                m.set_language(lang);
+                true
+            }
+        }
+    }
+
+    /// Current language the Canary variant will use for the next call.
+    /// 0.6B Parakeet is a CTC transducer with no explicit language state,
+    /// so we return `Auto` (matches the actual model behaviour — v3 is
+    /// auto-detecting multilingual).
+    pub fn current_language(&self) -> CanaryLanguage {
+        match self {
+            EngineWrapper::V0_6b(_) => CanaryLanguage::Auto,
+            EngineWrapper::V180m(m) => m.current_language(),
         }
     }
 }
@@ -362,6 +389,31 @@ pub fn switch_model(env: &mut JNIEnv, context: &JObject, variant: ModelVariant) 
     result
 }
 
+/// Update the source/target language on the currently loaded Canary 180M
+/// engine. No-op when the loaded engine is the 0.6B Parakeet (does not
+/// expose a language context — it is CTC + auto-detect). Returns an error
+/// if no engine is loaded yet; the caller is expected to retry on the
+/// next engine-load event (e.g. the user picks Canary from the variant
+/// radio). The 180M load path (`do_load_180m`) applies the persisted
+/// preference on construction, so a fresh download picks up the user's
+/// last selection without needing this call.
+pub fn set_language(lang: CanaryLanguage) -> Result<(), String> {
+    let guard = GLOBAL_ENGINE.lock().unwrap_or_else(|poisoned| {
+        log::error!("GLOBAL_ENGINE mutex poisoned, recovering");
+        poisoned.into_inner()
+    });
+    let (_, eng_arc) = guard
+        .as_ref()
+        .ok_or_else(|| "No engine loaded".to_string())?;
+    let mut eng = eng_arc.lock().unwrap_or_else(|poisoned| {
+        log::error!("engine mutex poisoned, recovering");
+        poisoned.into_inner()
+    });
+    let changed = eng.set_language(lang);
+    log::info!("engine set_language({:?}) changed={}", lang, changed);
+    Ok(())
+}
+
 fn do_load(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
     let variant = read_model_variant(env, context);
     do_load_with_variant(env, context, variant)
@@ -380,6 +432,55 @@ fn do_load_with_variant(env: &mut JNIEnv, context: &JObject, variant: ModelVaria
             Ok(())
         }
     }
+}
+
+/// Read the `transcription_language` preference from Java SharedPreferences.
+/// Defaults to `"auto"` (so Canary's decoder gets `<|unklang|>` on both sides
+/// — no language forced, model detects from audio). Unknown / missing values
+/// are coerced to `Auto` by [`CanaryLanguage::from_pref`].
+fn read_transcription_language(env: &mut JNIEnv, context: &JObject) -> CanaryLanguage {
+    let prefs_name = match env.new_string("transcribe_settings") {
+        Ok(s) => s,
+        Err(_) => return CanaryLanguage::Auto,
+    };
+    let prefs = match env.call_method(
+        context,
+        "getSharedPreferences",
+        "(Ljava/lang/String;I)Landroid/content/SharedPreferences;",
+        &[(&prefs_name).into(), jni::objects::JValue::Int(0)],
+    ) {
+        Ok(v) => match v.l() {
+            Ok(o) => o,
+            Err(_) => return CanaryLanguage::Auto,
+        },
+        Err(_) => return CanaryLanguage::Auto,
+    };
+    let key = match env.new_string("transcription_language") {
+        Ok(s) => s,
+        Err(_) => return CanaryLanguage::Auto,
+    };
+    let default = match env.new_string("auto") {
+        Ok(s) => s,
+        Err(_) => return CanaryLanguage::Auto,
+    };
+    let result = env.call_method(
+        &prefs,
+        "getString",
+        "(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;",
+        &[(&key).into(), (&default).into()],
+    );
+    let lang_str = match result.and_then(|v| v.l()) {
+        Ok(jobj) => {
+            let jstr = JString::from(jobj);
+            env.get_string(&jstr)
+                .map(|s| s.into())
+                .unwrap_or_else(|_| "auto".to_string())
+        }
+        Err(_) => "auto".to_string(),
+    };
+    let parsed = CanaryLanguage::from_pref(&lang_str);
+    log::info!("read_transcription_language: pref={} -> {:?}", lang_str, parsed);
+    parsed
 }
 
 fn do_load_0_6b(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
@@ -486,12 +587,20 @@ fn do_load_180m(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
 
     notify_status(env, context, "Initializing fastest engine...");
 
+    // Read the persisted language preference BEFORE constructing the model
+    // so its first `transcribe_samples` already uses the user's choice.
+    // After construction we set the language on the loaded instance too so
+    // the JNI bridge sees a consistent field (defensive against any caller
+    // path that reads current_language() right after load).
+    let initial_lang = read_transcription_language(env, context);
+
     match Parakeet180mModel::from_memory(
         &encoder_bytes,
         &decoder_bytes,
         &vocab_content,
     ) {
-        Ok(model) => {
+        Ok(mut model) => {
+            model.set_language(initial_lang);
             *GLOBAL_ENGINE.lock().unwrap_or_else(|poisoned| {
                 log::error!("GLOBAL_ENGINE mutex poisoned, recovering");
                 poisoned.into_inner()

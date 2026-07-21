@@ -69,6 +69,23 @@ public class MainActivity extends AppCompatActivity {
     private RadioButton rbModelNone;
     private ImageButton btnDeleteModelFastest;
     private Button btnRetry;
+    // Language picker UI. Visible only when the 180M Canary variant is
+    // the selected model — Parakeet 0.6B v3 auto-detects via CTC so the
+    // picker would be a misleading no-op there, and "Use without model"
+    // has no engine to apply the setting to. See updateLanguagePickerVisibility.
+    private View containerLanguagePicker;
+    private com.google.android.material.chip.ChipGroup chipGroupLanguage;
+    private com.google.android.material.chip.Chip chipLanguageAuto;
+    private com.google.android.material.chip.Chip chipLanguageEn;
+    private com.google.android.material.chip.Chip chipLanguageEs;
+    private com.google.android.material.chip.Chip chipLanguageDe;
+    private com.google.android.material.chip.Chip chipLanguageFr;
+    private boolean languageSelectionChanging = false;
+    // Neutral "what this model covers" subtitle. Always visible so the
+    // user sees the model’s language coverage regardless of the
+    // ChipGroup picker state (the picker is only relevant for Canary
+    // 180M since 0.6B auto-detects via CTC).
+    private TextView textModelLanguages;
     private SeekBar seekThreshold;
     private boolean firstLaunchDialogShown = false;
     private boolean modelSelectionChanging = false;
@@ -206,6 +223,8 @@ public class MainActivity extends AppCompatActivity {
         });
 
         setupModelSelection(settingsManager);
+        setupLanguagePicker(settingsManager);
+        textModelLanguages = findViewById(R.id.text_model_languages);
 
         // Materialise any bundled model assets (debug-only) into
         // getFilesDir()/models/<variant>/ so the user (and tests) can
@@ -310,6 +329,10 @@ public class MainActivity extends AppCompatActivity {
         selectRadioButton(current);
         updateModelStatus(modelStatus, current, sm);
         updateDeleteButtons(btnDeleteFast, btnDeleteModelFastest, sm);
+        // selectRadioButton() above already calls updateLanguagePickerVisibility
+        // and updateLanguagesSubtitle, so they stay in lockstep with the
+        // selected radio from any caller path (download completion,
+        // confirm-delete auto-fallback, welcome dialog buttons).
 
         ModelDownloadManager dm = ((App) getApplication()).getDownloadManager();
         if (dm != null && dm.isDownloading()) {
@@ -498,6 +521,8 @@ public class MainActivity extends AppCompatActivity {
 
     private native void switchModel(MainActivity activity, String variant);
 
+    private native void nativeSetLanguage(MainActivity activity, String lang);
+
     private void setupModelSelection(SettingsManager sm) {
         modelGroup = findViewById(R.id.rg_model);
         modelStatus = findViewById(R.id.text_model_status);
@@ -604,6 +629,45 @@ public class MainActivity extends AppCompatActivity {
             rbModelFast.setChecked(true);
         }
         modelSelectionChanging = prev;
+        // Keep the picker visibility AND the languages subtitle in lockstep
+        // with whatever radio is now checked. Catches the cases where
+        // selectRadioButton is called from outside the user-tap path
+        // (download completion, confirm-delete auto-fallback, welcome
+        // dialog buttons).
+        updateLanguagePickerVisibility(variant);
+        updateLanguagesSubtitle(variant);
+    }
+
+    /**
+     * Populate the persistent "Languages: …" subtitle with the coverage
+     * list for the currently-selected variant. Always visible regardless
+     * of the ChipGroup picker state. Defensive against null view in case
+     * onCreate never bound it (e.g. early crash path).
+     */
+    private void updateLanguagesSubtitle(String variant) {
+        if (textModelLanguages == null) return;
+        if ("180m".equals(variant)) {
+            textModelLanguages.setText(R.string.model_card_languages_canary_compact);
+            textModelLanguages.setVisibility(View.VISIBLE);
+        } else if ("0.6b".equals(variant)) {
+            textModelLanguages.setText(R.string.model_card_languages_parakeet_compact);
+            textModelLanguages.setVisibility(View.VISIBLE);
+        } else {
+            // "none" — no engine loaded, no coverage to advertise.
+            textModelLanguages.setVisibility(View.GONE);
+        }
+    }
+
+    /**
+     * Show the language picker only when the variant is the Canary 180M
+     * model. The picker is meaningless for 0.6B Parakeet (it auto-detects
+     * via CTC) and for "none" (no engine loaded). Defensive against null
+     * views in case setupLanguagePicker never ran (e.g. early crash path).
+     */
+    private void updateLanguagePickerVisibility(String variant) {
+        if (containerLanguagePicker == null) return;
+        boolean visible = "180m".equals(variant);
+        containerLanguagePicker.setVisibility(visible ? View.VISIBLE : View.GONE);
     }
 
     private void startDownload(String variant, SettingsManager sm) {
@@ -797,6 +861,111 @@ public class MainActivity extends AppCompatActivity {
             updateDeleteButtons(btnDeleteFast, btnDeleteModelFastest, sm);
             dialog.dismiss();
             welcomeDialog = null;
+        });
+    }
+
+    /**
+     * Mirror of {@link #setupModelSelection} for the Canary 180M language
+     * picker ChipGroup. Resolves all chip views, sets whichever chip is
+     * currently selected from the prefs (default {@code "auto"} maps to
+     * the Auto chip), and wires the {@code OnCheckedChange} listener so
+     * each tap persists the pref via {@link SettingsManager#setTranscriptionLanguage}
+     * and pushes the change into the loaded engine via
+     * {@link #nativeSetLanguage}. The native call is a no-op if the
+     * current engine is 0.6B, so we don't have to branch on the variant
+     * here — visibility is already gated by
+     * {@link #updateLanguagePickerVisibility}.
+     */
+    private void setupLanguagePicker(SettingsManager sm) {
+        containerLanguagePicker = findViewById(R.id.container_language_picker);
+        chipGroupLanguage = findViewById(R.id.chip_group_language);
+        chipLanguageAuto = findViewById(R.id.chip_language_auto);
+        chipLanguageEn = findViewById(R.id.chip_language_en);
+        chipLanguageEs = findViewById(R.id.chip_language_es);
+        chipLanguageDe = findViewById(R.id.chip_language_de);
+        chipLanguageFr = findViewById(R.id.chip_language_fr);
+
+        // Null-guard every view: if any chip or container is missing the
+        // row simply doesn't participate. The visibility toggle in
+        // updateLanguagePickerVisibility already short-circuits on null.
+        if (containerLanguagePicker == null || chipGroupLanguage == null
+                || chipLanguageAuto == null || chipLanguageEn == null
+                || chipLanguageEs == null || chipLanguageDe == null
+                || chipLanguageFr == null) {
+            return;
+        }
+
+        // Restore the persisted selection without firing the listener.
+        // The flag pattern mirrors selectRadioButton() — the listener
+        // side-effect writes prefs and pushes to native; we don't want
+        // to fire it during cold-start repopulation.
+        String saved = sm.getTranscriptionLanguage();
+        if (saved == null) saved = "auto";
+        // No listener is attached yet during this restore (it is wired
+        // immediately below), so the programmatic setChecked calls here
+        // cannot bounce through the chip listener. No flag needed.
+        switch (saved) {
+            case "en":
+                chipLanguageEn.setChecked(true);
+                break;
+            case "es":
+                chipLanguageEs.setChecked(true);
+                break;
+            case "de":
+                chipLanguageDe.setChecked(true);
+                break;
+            case "fr":
+                chipLanguageFr.setChecked(true);
+                break;
+            default:
+                chipLanguageAuto.setChecked(true);
+                break;
+        }
+
+        // Note: we deliberately do NOT push `saved` to the native engine
+        // here. The engine load path (`do_load_180m`) reads the same
+        // `transcription_language` preference and applies it on
+        // construction, so a fresh download already picks up the user’s
+        // last selection. Calling nativeSetLanguage now would hit
+        // GLOBAL_ENGINE == None on cold start and just log a
+        // "no engine loaded" error — harmless but noisy in logcat.
+
+        chipGroupLanguage.setOnCheckedStateChangeListener((group, checkedIds) -> {
+            // Flag is unused at present (listener attached after restore),
+            // but kept as a defensive guard so any future caller that
+            // programmatically setChecked before this listener fires does
+            // not trigger a pref write / native round-trip.
+            if (languageSelectionChanging) return;
+            if (checkedIds == null || checkedIds.isEmpty()) return;
+            int checkedId = checkedIds.get(0);
+            String lang;
+            if (checkedId == R.id.chip_language_auto) {
+                lang = "auto";
+            } else if (checkedId == R.id.chip_language_en) {
+                lang = "en";
+            } else if (checkedId == R.id.chip_language_es) {
+                lang = "es";
+            } else if (checkedId == R.id.chip_language_de) {
+                lang = "de";
+            } else if (checkedId == R.id.chip_language_fr) {
+                lang = "fr";
+            } else {
+                return;
+            }
+            sm.setTranscriptionLanguage(lang);
+            nativeSetLanguage(this, lang);
+            // Confirm in UI so the user knows the next dictation will use
+            // their selection. Map the pref code to the readable chip
+            // label so the user sees "Language: Spanish" not "Language: ES".
+            String label;
+            switch (lang) {
+                case "en": label = getString(R.string.language_english); break;
+                case "es": label = getString(R.string.language_spanish); break;
+                case "de": label = getString(R.string.language_german); break;
+                case "fr": label = getString(R.string.language_french); break;
+                default:   label = getString(R.string.language_auto); break;
+            }
+            snackbar(getString(R.string.msg_language_set, label));
         });
     }
 

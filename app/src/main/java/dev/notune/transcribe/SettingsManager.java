@@ -21,6 +21,19 @@ public class SettingsManager {
 
     private static final String KEY_HOTWORDS = "custom_hotwords";
     private static final String KEY_MODEL_VARIANT = "model_variant";
+    /**
+     * Source/target language preference for the Canary 180M AED model.
+     * Stored as a plain string (`"auto"`, `"en"`, `"es"`, `"de"`, `"fr"`).
+     * The decoder prefix builder in `model_180m.rs` translates this into
+     * the matching `<|lang|>` token ID (or `<|unklang|>` for Auto, which
+     * lets Canary language-detect from the audio itself).
+     *
+     * The 0.6B Parakeet TDT path ignores this preference entirely — v3 is
+     * already multilingual via CTC auto-detection, so we do not condition
+     * it on a language setting.
+     */
+    private static final String KEY_TRANSCRIPTION_LANGUAGE = "transcription_language";
+    private static final String DEFAULT_TRANSCRIPTION_LANGUAGE = "auto";
     private static final String KEY_WORD_CORRECTION_THRESHOLD = "word_correction_threshold";
     private static final String DEFAULT_API_URL = "https://api.openai.com/v1";
     private static final String DEFAULT_MODEL = "gpt-4o-mini";
@@ -215,6 +228,24 @@ public class SettingsManager {
 
     public void setModelVariant(String variant) {
         prefs.edit().putString(KEY_MODEL_VARIANT, variant).apply();
+    }
+
+    /**
+     * Returns the Canary 180M source/target language preference
+     * (`"auto"`, `"en"`, `"es"`, `"de"`, `"fr"`). Defaults to `"auto"` so
+     * Canary's decoder gets `<|unklang|>` on both sides and the model
+     * itself picks the language from the audio (matches the v0.9.0
+     * post-v0.8.8 test inventory and is the safest fallback for a
+     * multilingual household). Unknown / null values fall through to
+     * `Auto` via {@code CanaryLanguage::from_pref}` on the Rust side.
+     */
+    public String getTranscriptionLanguage() {
+        String v = prefs.getString(KEY_TRANSCRIPTION_LANGUAGE, DEFAULT_TRANSCRIPTION_LANGUAGE);
+        return v != null ? v : DEFAULT_TRANSCRIPTION_LANGUAGE;
+    }
+
+    public void setTranscriptionLanguage(String language) {
+        prefs.edit().putString(KEY_TRANSCRIPTION_LANGUAGE, language).apply();
     }
 
     public boolean isModelDownloaded(String variant) {

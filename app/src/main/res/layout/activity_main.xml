@@ -327,6 +327,95 @@
 
                     </RadioGroup>
 
+                    <!-- Languages subtitle. ALWAYS visible
+                         (regardless of variant selected) so the user can
+                         see what the chosen model covers at a glance.
+                         Populated by updateLanguagesSubtitle in
+                         MainActivity. Canary lists its 4 supported
+                         languages; Parakeet summarises 25 European
+                         languages to a single line. -->
+                    <TextView
+                        android:id="@+id/text_model_languages"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="?attr/colorOnSurfaceVariant"
+                        android:layout_marginTop="8dp"/>
+
+                    <!-- Language picker. Shown only when Canary 180M is
+                         the currently selected variant (180m is the only
+                         model whose decoder prefix carries an explicit
+                         source/target language token). Parakeet 0.6B v3
+                         auto-detects from the audio, so the picker would
+                         be a confusing no-op there; "Use without model"
+                         already has no engine to apply the setting to.
+                         The visibility toggle lives in
+                         {@link MainActivity#updateLanguagePickerVisibility}. -->
+                    <LinearLayout
+                        android:id="@+id/container_language_picker"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:layout_marginTop="8dp"
+                        android:visibility="gone">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/desc_language_section"
+                            android:textAppearance="?attr/textAppearanceBodySmall"
+                            android:textColor="?attr/colorOnSurfaceVariant"
+                            android:layout_marginBottom="6dp"/>
+
+                        <com.google.android.material.chip.ChipGroup
+                            android:id="@+id/chip_group_language"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            app:singleSelection="true"
+                            app:selectionRequired="true">
+
+                            <com.google.android.material.chip.Chip
+                                android:id="@+id/chip_language_auto"
+                                style="@style/Widget.Material3.Chip.Filter"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/language_auto"
+                                android:checkable="true"/>
+
+                            <com.google.android.material.chip.Chip
+                                android:id="@+id/chip_language_en"
+                                style="@style/Widget.Material3.Chip.Filter"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/language_english"
+                                android:checkable="true"/>
+
+                            <com.google.android.material.chip.Chip
+                                android:id="@+id/chip_language_es"
+                                style="@style/Widget.Material3.Chip.Filter"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/language_spanish"
+                                android:checkable="true"/>
+
+                            <com.google.android.material.chip.Chip
+                                android:id="@+id/chip_language_de"
+                                style="@style/Widget.Material3.Chip.Filter"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/language_german"
+                                android:checkable="true"/>
+
+                            <com.google.android.material.chip.Chip
+                                android:id="@+id/chip_language_fr"
+                                style="@style/Widget.Material3.Chip.Filter"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="@string/language_french"
+                                android:checkable="true"/>
+                        </com.google.android.material.chip.ChipGroup>
+                    </LinearLayout>
+
                     <TextView
                         android:id="@+id/text_model_status"
                         android:layout_width="match_parent"

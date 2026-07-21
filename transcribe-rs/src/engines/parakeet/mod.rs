@@ -83,5 +83,5 @@ pub use engine::{
     TimestampGranularity,
 };
 pub use model::{ParakeetError, ParakeetModel, TimestampedResult};
-pub use model_180m::{Parakeet180mError, Parakeet180mModel};
+pub use model_180m::{CanaryLanguage, Parakeet180mError, Parakeet180mModel};
 pub use timestamps::{convert_timestamps, WordBoundary};

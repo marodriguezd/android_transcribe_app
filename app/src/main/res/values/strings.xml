@@ -254,6 +254,7 @@ ${output}"</string>
     <string name="msg_prompt_deleted">Prompt deleted</string>
     <string name="msg_prompt_duplicated">Duplicated as \"%1$s\"</string>
     <string name="empty_prompts">No custom prompts yet. Tap + to create one, or the built-in default above will be used.</string>
+    <string name="msg_language_set">Language: %1$s</string>
     <string name="fab_new_prompt">New prompt</string>
     <string name="btn_manage_prompts">Manage prompts</string>
     <string name="prompt_duplicate">Duplicate</string>
@@ -297,6 +298,27 @@ ${output}"</string>
     <string name="model_card_caption">Pick a model to run offline. Cards show the size, the languages it covers, and what to do next.</string>
     <string name="model_card_languages_caption">Languages: %1$s</string>
     <string name="model_card_action_download">Download</string>
+
+    <!-- Transcription language picker (only relevant for Canary 180M; 0.6B
+         Parakeet TDT auto-detects, so the picker is hidden for that variant).
+         Auto maps to `&lt;|unklang|&gt;` on both source/target slots — Canary's
+         decoder then language-detects from the audio itself. The other four
+         force the matching &lt;|lang|&gt; token on both slots. -->
+    <string name="desc_language_section">Language (Canary 180M only)</string>
+    <string name="language_auto">Auto</string>
+    <string name="language_english">English</string>
+    <string name="language_spanish">Spanish</string>
+    <string name="language_german">German</string>
+    <string name="language_french">French</string>
+
+    <!-- Compact "what this model can transcribe" subtitle, shown as a
+         neutral TextView under the model card so the languages line is
+         visible regardless of whether the language picker (ChipGroup) is
+         itself visible. Canary lists the 4 named languages explicitly;
+         Parakeet summarises 25 European languages to a single line so
+         the row stays readable on small screens. -->
+    <string name="model_card_languages_canary_compact">Languages: English, Spanish, German, French</string>
+    <string name="model_card_languages_parakeet_compact">Languages: 25 European languages</string>
     <string name="model_card_action_choose">Choose</string>
     <string name="model_card_action_delete">Delete</string>
     <string name="model_card_action_none_choose">Switch</string>
@@ -306,7 +328,9 @@ ${output}"</string>
     <string name="model_card_status_no_model">No model loaded</string>
     <string name="model_card_action_active_labeled">Currently active</string>
     <string name="model_card_meta_size_format">%1$d MB</string>
-    <string name="model_card_meta_parakeet">Parakeet TDT v3 (English)</string>
-    <string name="model_card_meta_canary">Canary 180M (English)</string>
+    <string name="model_card_meta_parakeet">Parakeet TDT v3 (multilingual)</string>
+    <string name="model_card_meta_canary">Canary 180M (4 languages)</string>
     <string name="model_card_meta_languages_en">English</string>
+    <string name="model_card_meta_languages_canary">English, Spanish, German, French</string>
+    <string name="model_card_meta_languages_parakeet">Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Slovak, Slovenian, Spanish, Swedish, Russian, Ukrainian</string>
 </resources>

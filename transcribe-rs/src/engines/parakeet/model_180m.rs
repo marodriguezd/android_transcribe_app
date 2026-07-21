@@ -18,6 +18,48 @@ pub struct TimestampedResult {
     pub tokens: Vec<String>,
 }
 
+/// Language selection for the Canary 180M AED model. Canary's decoder is fed a
+/// 10-token prefix where positions 4 + 5 are source/target language — to make
+/// Spanish/German/French transcription work, those positions must NOT always
+/// be `<|en|>`. `Auto` uses `<|unklang|>` on both sides so the model itself
+/// detects the language from the audio (Canary-180m-flash supports
+/// English, Spanish, German, French; anything else will fall back to one of
+/// these four or to English).
+///
+/// Mapping to vocab tokens (loaded from `canary-180m-flash-int8/vocab.txt`):
+///   en     -> <|en|>      (id 62)
+///   es     -> <|es|>      (id 169)
+///   de     -> <|de|>      (id 76)
+///   fr     -> <|fr|>      (id 69)
+///   auto   -> <|unklang|> (id 21) on both source/target sides
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CanaryLanguage {
+    #[default]
+    Auto,
+    En,
+    Es,
+    De,
+    Fr,
+}
+
+impl CanaryLanguage {
+    /// Parse a preference string. Accepts `"auto"` (default) or the ISO-639-1
+    /// two-letter code. Unknown / empty values fall back to `Auto`.
+    /// `transcription_language` preference from Java is a plain string
+    /// (`"auto"`, `"en"`, `"es"`, `"de"`, `"fr"`); unknown values are
+    /// coerced to `Auto` so a typo in the pref file does NOT crash the load.
+    pub fn from_pref(s: &str) -> Self {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "en" => CanaryLanguage::En,
+            "es" => CanaryLanguage::Es,
+            "de" => CanaryLanguage::De,
+            "fr" => CanaryLanguage::Fr,
+            // "auto" and anything else (incl. "") maps to Auto
+            _ => CanaryLanguage::Auto,
+        }
+    }
+}
+
 #[derive(thiserror::Error, Debug)]
 pub enum Parakeet180mError {
     #[error("ONNX Runtime error: {0}")]
@@ -39,7 +81,34 @@ pub struct Parakeet180mModel {
     decoder: Session,
     vocab: Vec<String>,
     eos_token_id: i64,
-    transcribe_input: Vec<i64>,
+    /// Per-language source/target token IDs (positions 4 and 5 of the
+    /// 10-token decoder prefix). `lang_unksrc_id` is the id of
+    /// `<|unklang|>` which we use as both source AND target when the user
+    /// picks Auto — Canary then language-detects from the audio itself.
+    lang_en_id: i64,
+    lang_es_id: i64,
+    lang_de_id: i64,
+    lang_fr_id: i64,
+    lang_unksrc_id: i64,
+    /// Static prefix tokens (positions 0..=3 and 6..=9 of the 10-token
+    /// decoder prefix). These are language-independent: space, then the
+    /// Canary context/transcript delimiters, then the emo/PnC/ITN/timestamp/
+    /// diarize toggles. Kept as plain fields so we can rebuild the prefix
+    /// per call without re-tokenising.
+    pre_space_id: i64,
+    pre_startofcontext_id: i64,
+    pre_startoftranscript_id: i64,
+    pre_emo_undefined_id: i64,
+    pre_pnc_id: i64,
+    pre_noitn_id: i64,
+    pre_notimestamp_id: i64,
+    pre_nodiarize_id: i64,
+    /// Current selection — defaults to Auto so a fresh install behaves the
+    /// way the model was trained for (no language forcing). Update via
+    /// [`Self::set_language`] from the JNI bridge when the user toggles
+    /// their preference; no ONNX reload is needed because the prefix is
+    /// re-tokenised at the top of every `transcribe_samples` call.
+    current_lang: CanaryLanguage,
     decoder_num_layers: i64,
     decoder_hidden_size: i64,
 }
@@ -64,28 +133,56 @@ impl Parakeet180mModel {
         let eos_token_id = *token_map.get("<|endoftext|>")
             .ok_or_else(|| Parakeet180mError::MissingToken("<|endoftext|>".into()))?;
 
-        let transcribe_input = vec![
-            *token_map.get(" ")
-                .ok_or_else(|| Parakeet180mError::MissingToken("space ' '".into()))?,
-            *token_map.get("<|startofcontext|>")
-                .ok_or_else(|| Parakeet180mError::MissingToken("<|startofcontext|>".into()))?,
-            *token_map.get("<|startoftranscript|>")
-                .ok_or_else(|| Parakeet180mError::MissingToken("<|startoftranscript|>".into()))?,
-            *token_map.get("<|emo:undefined|>")
-                .ok_or_else(|| Parakeet180mError::MissingToken("<|emo:undefined|>".into()))?,
-            *token_map.get("<|en|>")
-                .ok_or_else(|| Parakeet180mError::MissingToken("<|en|>".into()))?,
-            *token_map.get("<|en|>")
-                .ok_or_else(|| Parakeet180mError::MissingToken("<|en|> (target)".into()))?,
-            *token_map.get("<|pnc|>")
-                .ok_or_else(|| Parakeet180mError::MissingToken("<|pnc|>".into()))?,
-            *token_map.get("<|noitn|>")
-                .ok_or_else(|| Parakeet180mError::MissingToken("<|noitn|>".into()))?,
-            *token_map.get("<|notimestamp|>")
-                .ok_or_else(|| Parakeet180mError::MissingToken("<|notimestamp|>".into()))?,
-            *token_map.get("<|nodiarize|>")
-                .ok_or_else(|| Parakeet180mError::MissingToken("<|nodiarize|>".into()))?,
-        ];
+        // Static (language-independent) prefix tokens. We resolve each
+        // `<|...|>` ID once at load time; the language-dependent positions
+        // (4 + 5) are looked up dynamically per call from `lang_*_id`.
+        let pre_space_id = *token_map
+            .get(" ")
+            .ok_or_else(|| Parakeet180mError::MissingToken("space ' '".into()))?;
+        let pre_startofcontext_id = *token_map
+            .get("<|startofcontext|>")
+            .ok_or_else(|| Parakeet180mError::MissingToken("<|startofcontext|>".into()))?;
+        let pre_startoftranscript_id = *token_map
+            .get("<|startoftranscript|>")
+            .ok_or_else(|| Parakeet180mError::MissingToken("<|startoftranscript|>".into()))?;
+        let pre_emo_undefined_id = *token_map
+            .get("<|emo:undefined|>")
+            .ok_or_else(|| Parakeet180mError::MissingToken("<|emo:undefined|>".into()))?;
+        let pre_pnc_id = *token_map
+            .get("<|pnc|>")
+            .ok_or_else(|| Parakeet180mError::MissingToken("<|pnc|>".into()))?;
+        let pre_noitn_id = *token_map
+            .get("<|noitn|>")
+            .ok_or_else(|| Parakeet180mError::MissingToken("<|noitn|>".into()))?;
+        let pre_notimestamp_id = *token_map
+            .get("<|notimestamp|>")
+            .ok_or_else(|| Parakeet180mError::MissingToken("<|notimestamp|>".into()))?;
+        let pre_nodiarize_id = *token_map
+            .get("<|nodiarize|>")
+            .ok_or_else(|| Parakeet180mError::MissingToken("<|nodiarize|>".into()))?;
+
+        // Language tokens for source/target positions (4 + 5). Canary's
+        // decoder treats these as a tag-and-generate pair: <|en|> <|es|>
+        // means "transcribe English audio, output Spanish text", which is
+        // how cross-lingual translation works in the Canary family. We
+        // always set source == target (pure ASR, no translation) and let
+        // the user pick from {en, es, de, fr} or fall through to
+        // <|unklang|> on both sides for auto-detection.
+        let lang_en_id = *token_map
+            .get("<|en|>")
+            .ok_or_else(|| Parakeet180mError::MissingToken("<|en|>".into()))?;
+        let lang_es_id = *token_map
+            .get("<|es|>")
+            .ok_or_else(|| Parakeet180mError::MissingToken("<|es|>".into()))?;
+        let lang_de_id = *token_map
+            .get("<|de|>")
+            .ok_or_else(|| Parakeet180mError::MissingToken("<|de|>".into()))?;
+        let lang_fr_id = *token_map
+            .get("<|fr|>")
+            .ok_or_else(|| Parakeet180mError::MissingToken("<|fr|>".into()))?;
+        let lang_unksrc_id = *token_map
+            .get("<|unklang|>")
+            .ok_or_else(|| Parakeet180mError::MissingToken("<|unklang|>".into()))?;
 
         let decoder_inputs = decoder.inputs();
         for input in decoder_inputs {
@@ -130,10 +227,66 @@ impl Parakeet180mModel {
             decoder,
             vocab,
             eos_token_id,
-            transcribe_input,
+            lang_en_id,
+            lang_es_id,
+            lang_de_id,
+            lang_fr_id,
+            lang_unksrc_id,
+            pre_space_id,
+            pre_startofcontext_id,
+            pre_startoftranscript_id,
+            pre_emo_undefined_id,
+            pre_pnc_id,
+            pre_noitn_id,
+            pre_notimestamp_id,
+            pre_nodiarize_id,
+            current_lang: CanaryLanguage::Auto,
             decoder_num_layers,
             decoder_hidden_size,
         })
+    }
+
+    /// Update the source/target language for subsequent `transcribe_samples`
+    /// calls. Does NOT touch the loaded ONNX sessions — the decoder
+    /// re-tokenises the prefix on every call, so only the two `lang_*_id`
+    /// slots change. Safe to call from the JNI bridge thread.
+    pub fn set_language(&mut self, lang: CanaryLanguage) {
+        log::info!("180M set_language: {:?} -> {:?}", self.current_lang, lang);
+        self.current_lang = lang;
+    }
+
+    /// Returns the language the next `transcribe_samples` call will ask
+    /// the decoder to use. Useful for diagnostics / logcat smoke-testing.
+    pub fn current_language(&self) -> CanaryLanguage {
+        self.current_lang
+    }
+
+    /// Build the 10-token decoder prefix for `lang`. Positions 4 + 5
+    /// (source/target) are derived from `lang`; all other positions are
+    /// the static Canary transcript tokens (space + delimiters +
+    /// emo + pnc/noitn/notimestamp/nodiarize). Pure function of `lang`
+    /// and the cached `lang_*_id` fields so it can be inlined into the
+    /// autoregressive loop without re-allocation per call.
+    fn build_prefix(&self, lang: CanaryLanguage) -> Vec<i64> {
+        let (src, tgt) = match lang {
+            CanaryLanguage::Auto => (self.lang_unksrc_id, self.lang_unksrc_id),
+            CanaryLanguage::En => (self.lang_en_id, self.lang_en_id),
+            CanaryLanguage::Es => (self.lang_es_id, self.lang_es_id),
+            CanaryLanguage::De => (self.lang_de_id, self.lang_de_id),
+            CanaryLanguage::Fr => (self.lang_fr_id, self.lang_fr_id),
+        };
+        vec![
+            self.pre_space_id,
+            self.pre_startofcontext_id,
+            self.pre_startoftranscript_id,
+            self.pre_emo_undefined_id,
+            src,
+            tgt,
+            self.pre_pnc_id,
+            self.pre_noitn_id,
+            self.pre_notimestamp_id,
+            self.pre_nodiarize_id,
+        ]
     }
 
     pub fn transcribe_samples(
@@ -198,12 +351,19 @@ impl Parakeet180mModel {
             num_frames
         );
 
-        let mut input_ids = self.transcribe_input.clone();
+        // Snapshot the language at the start of the call so a concurrent
+        // `set_language` from the JNI bridge mid-transcribe does not flip
+        // the prefix under our feet. The decode loop is short (a few
+        // hundred steps max for typical dictation) so this is more than
+        // accurate enough.
+        let lang = self.current_lang;
+        let mut input_ids = self.build_prefix(lang);
         let prefix_len = input_ids.len();
 
         log::info!(
-            "180M input_ids: len={}, values={:?}",
+            "180M input_ids: len={}, lang={:?}, values={:?}",
             input_ids.len(),
+            lang,
             input_ids.iter().map(|x| *x as i64).collect::<Vec<_>>()
         );
 

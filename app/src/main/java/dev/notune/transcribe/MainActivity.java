@@ -535,7 +535,7 @@ public class MainActivity extends AppCompatActivity {
         rbModelNone = findViewById(R.id.rb_model_none);
         String current = sm.getModelVariant();
         selectRadioButton(current);
-        
+
         updateModelStatus(modelStatus, current, sm);
         updateDeleteButtons(btnDeleteFast, btnDeleteModelFastest, sm);
 
@@ -548,52 +548,111 @@ public class MainActivity extends AppCompatActivity {
             startDownload(variant, sm);
         });
 
-        modelGroup.setOnCheckedChangeListener((group, checkedId) -> {
+        // Per-button OnCheckedChangeListener, NOT
+        // modelGroup.setOnCheckedChangeListener. RadioGroup's internal
+        // CheckedStateTracker is only wired to its DIRECT children (it
+        // uses addView() to find them); because each MaterialRadioButton
+        // sits inside its own horizontal LinearLayout row (so the
+        // per-row delete ImageButton can sit beside it), RadioGroup can
+        // neither see state changes from user taps nor propagate the
+        // "auto-uncheck sibling" behavior across the wrappers. The
+        // user-tap listener on the RadioGroup is therefore dead code
+        // (it never fires for taps on rb_model_fastest / rb_model_fast /
+        // rb_model_none) and even when invoked artificially via
+        // setChecked, the previously-checked radio stays visually
+        // selected. We bypass RadioGroup entirely: each radio carries
+        // its own checked-change listener routed through
+        // onVariantSelectedByUser, which calls selectRadioButton() to
+        // enforce "exactly one radio visually checked" before dispatch.
+        attachModelRadioListener(rbModelFastest, "180m");
+        attachModelRadioListener(rbModelFast,    "0.6b");
+        attachModelRadioListener(rbModelNone,    "none");
+    }
+
+    /**
+     * Wire a single {@link RadioButton} (one of the three model-selection
+     * radios) such that a user tap on it routes through
+     * {@link #onVariantSelectedByUser}. Two early-returns keep the
+     * listener quiet during the {@code setChecked} cascade invoked by
+     * {@link #selectRadioButton}: {@code !isChecked} drops sibling
+     * clears (only the user-driven tap that turns a radio from
+     * unchecked to checked should propagate) and
+     * {@code modelSelectionChanging} drops the programmatic sync
+     * windows (initial setup, onResume rehydrate, post-download
+     * completion, confirm-delete auto-fallback, welcome-dialog
+     * buttons). Without the flag the listener would re-enter the
+     * dispatch on every programmatic clear and we'd double-fire
+     * switchModel + startDownload for a single user action.
+     */
+    private void attachModelRadioListener(RadioButton rb, String variant) {
+        if (rb == null) return;
+        rb.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (!isChecked) return;
             if (modelSelectionChanging) return;
-            if (checkedId == -1) return;
-
-            String variant;
-            if (checkedId == R.id.rb_model_fastest) {
-                variant = "180m";
-            } else if (checkedId == R.id.rb_model_fast) {
-                variant = "0.6b";
-            } else {
-                variant = "none";
-            }
-            sm.setModelVariant(variant);
-            btnRetry.setVisibility(View.GONE);
-
-            if ("none".equals(variant)) {
-                updateModelStatus(modelStatus, variant, sm);
-                updateDeleteButtons(btnDeleteFast, btnDeleteModelFastest, sm);
-                statusText.setText(getString(R.string.model_switch_restart));
-                WeakReference<MainActivity> switchRef = new WeakReference<>(this);
-                new Thread(() -> {
-                    MainActivity a = switchRef.get();
-                    if (a != null && !a.isFinishing() && !a.isDestroyed()) {
-                        a.switchModel(a, variant);
-                    }
-                }).start();
-            } else if (sm.isModelDownloaded(variant)) {
-                updateModelStatus(modelStatus, variant, sm);
-                statusText.setText(getString(R.string.model_switch_restart));
-                WeakReference<MainActivity> switchRef = new WeakReference<>(this);
-                new Thread(() -> {
-                    MainActivity a = switchRef.get();
-                    if (a != null && !a.isFinishing() && !a.isDestroyed()) {
-                        a.switchModel(a, variant);
-                    }
-                }).start();
-                String switchMsg = getString(R.string.model_switch_restart);
-                mainHandler.postDelayed(() -> {
-                    if (switchMsg.equals(statusText.getText().toString())) {
-                        statusText.setText(getString(R.string.model_switch_timeout));
-                    }
-                }, 30000);
-            } else {
-                startDownload(variant, sm);
-            }
+            onVariantSelectedByUser(variant);
         });
+    }
+
+    /**
+     * Dispatch a user-driven request to switch the active model variant:
+     * persist the prefs, force the radio visual state to converge on
+     * the chosen button (closes the "two radios appear selected"
+     * regression — see {@link #selectRadioButton}), then either
+     * kick off a download if the variant isn't present on disk, fire
+     * a switch to a downloaded variant, or signal that the engine
+     * will be unloaded. Replaces the inline dispatch logic that
+     * used to live in a {@code modelGroup.setOnCheckedChangeListener}
+     * callback — that callback never fired because RadioGroup only
+     * tracks its direct children. Per-button listeners are the
+     * actual fix; this helper centralizes the dispatch so every
+     * entry point (user tap, future programmatic caller) goes
+     * through exactly one code path.
+     */
+    private void onVariantSelectedByUser(String variant) {
+        SettingsManager sm = settingsManager;
+        if (sm == null) return;
+        sm.setModelVariant(variant);
+        if (btnRetry != null) btnRetry.setVisibility(View.GONE);
+
+        // Force "exactly one radio visually checked" — see comment on
+        // selectRadioButton(). Without this re-sync a user tap on a
+        // different radio leaves the previously-checked one visually
+        // selected (RadioGroup's direct-child auto-uncheck cannot see
+        // across the LinearLayout wrappers). Safe to call synchronously
+        // from inside a dispatch because selectRadioButton() sets
+        // modelSelectionChanging=true across its setChecked cascade,
+        // and every sibling listener re-entry is filtered by that flag
+        // — see the javadoc on selectRadioButton for the full chain.
+        selectRadioButton(variant);
+
+        if ("none".equals(variant)) {
+            updateModelStatus(modelStatus, variant, sm);
+            updateDeleteButtons(btnDeleteFast, btnDeleteModelFastest, sm);
+            statusText.setText(getString(R.string.model_switch_restart));
+            switchModelAsync(variant);
+        } else if (sm.isModelDownloaded(variant)) {
+            updateModelStatus(modelStatus, variant, sm);
+            statusText.setText(getString(R.string.model_switch_restart));
+            switchModelAsync(variant);
+            String switchMsg = getString(R.string.model_switch_restart);
+            mainHandler.postDelayed(() -> {
+                if (switchMsg.equals(statusText.getText().toString())) {
+                    statusText.setText(getString(R.string.model_switch_timeout));
+                }
+            }, 30000);
+        } else {
+            startDownload(variant, sm);
+        }
+    }
+
+    private void switchModelAsync(String variant) {
+        WeakReference<MainActivity> switchRef = new WeakReference<>(this);
+        new Thread(() -> {
+            MainActivity a = switchRef.get();
+            if (a != null && !a.isFinishing() && !a.isDestroyed()) {
+                a.switchModel(a, variant);
+            }
+        }).start();
     }
 
     /**

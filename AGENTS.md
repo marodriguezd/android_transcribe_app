@@ -813,3 +813,49 @@ Two user-reported defects addressed in commit `a31a77f` on `develop` (push to `o
 - GitHub Releases: 0 (cut of `v0.9.1` deferred per § Branches — requires local JDK + NDK + `release.keystore` + `KEY_ALIAS` / `KEY_PASS` / `STORE_PASS`; the CI workflow produces debug APKs as artifacts only, does not sign release APKs).
 
 
+
+## Session history (post-v0.9.0 Canary Auto removal + 0.6B picker + provider chip wiring) — 2026-07-22
+
+Three user-reported UX gaps addressed in a single cycle on `develop`. Builds on the prior Canary multilingual feature (hotfix #3) and the parallel IME broadcaster (hotfix #4). No local gradle run on this Linux host (consistent with every prior cycle); the Build Debug APK workflow will validate on push.
+
+### User reports
+
+1. **Canary 180M "Auto" still produces English output** — per hotfix #3 the prefix for Auto maps to `(unklang-src, en-target)` = deterministic English. User said: *"El auto del canary, ahora va en inglés, dentro de lo que cabe hace algo, pero no detecta automáticamente el idioma. Si no funciona, deberíamos quitarlo y simplemente que se selecciona el idioma a mano."* (Auto doesn't truly auto-detect; remove it and force manual selection.)
+2. **Parakeet 0.6B should also surface the picker** — user said *"del otro modelo, también debería poder elegirse el idioma opcionalmente o dejarlo automático"* so both Auto + manual options should be available even though the Rust engine ignores the selection for 0.6B (UX parity).
+3. **Provider preset chips were inert** — `chip_group_providers` (OpenAI / Groq / Ollama / LM Studio) had no listener in `PostProcessSettingsActivity`. User said *"si escoges uno de los que te salen arriba, deberían ser los endpoints correctos y sobrecribirte lo abajo en la parte de ponerla URL"*.
+
+### What was done
+
+- **`MainActivity.updateLanguagePickerVisibility`** rewritten:
+  - Container visible for both `180m` AND `0.6b` (was 180m-only); hidden for `"none"`.
+  - **Auto chip** visibility gated per variant: hidden for `180m` (Auto is misleading UX there because it deterministically outputs English), visible for `0.6b`.
+  - When switching to `180m` and the saved language is `"auto"`, the pref is promoted to `"en"` (and the ChipGroup clearChecked → en-checked programmatically) so the `selectionRequired` ChipGroup always has a valid visible chip. Save-restore pattern around `languageSelectionChanging` so the listener does not bounce after we wrote the pref ourselves.
+- **`MainActivity.setupLanguagePicker`** initial restore applies the same auto→en promotion at cold start so the chip group stays consistent with the displayed variant from the first frame.
+- **`PostProcessSettingsActivity`**:
+  - `chipGroupProviders.setOnCheckedStateChangeListener` added: tapping any chip overwrites `edit_api_url` with the corresponding preset URL (strings already in `R.string` as `pref_openai_url` / `pref_groq_url` / `pref_ollama_url` / `pref_lmstudio_url`). Caret parked at end.
+  - `preselectProviderChip()` reflects the persisted URL back into the chip state on activity open (trailing-slash-aware via `normalizeUrlForCompare`).
+  - `urlForProviderChip(int)` helper maps int chip id → preset URL string.
+  - `providerSelectionChanging` flag (mirrors the `modelSelectionChanging` / `languageSelectionChanging` patterns) prevents the listener from echoing the URL back into the field during preselect.
+- **`strings.xml`**: `desc_language_section` updated from `"Language (Canary 180M only)"` to `"Language"` since the picker now applies to both models.
+
+### Verification
+
+- `code-reviewer-minimax-m3`: APPROVED with one medium-priority nit (dead `chipOpenai` / `chipGroq` / `chipOllama` / `chipLmstudio` field declarations in `PostProcessSettingsActivity`). Fixed by removing the four unused fields + their `findViewById` lookups; the listener uses `R.id.chip_*` int ids via `urlForProviderChip(int)` directly. Two low-priority cosmetic nits not applied (DRY the auto→en promotion between `setupLanguagePicker` and `updateLanguagePickerVisibility`; drop a defensive `chipGroupLanguage.clearCheck()` that `singleSelection=true` already handles).
+- Local gradle deferred to CI Build Debug APK (no JDK/NDK on this host per AGENTS.md Common pitfalls); CI will trigger automatically on `git push origin develop`.
+
+### Files changed
+
+| File | Purpose |
+|------|---------|
+| `app/src/main/java/dev/notune/transcribe/MainActivity.java` | Variant-aware language picker visibility + auto→en promotion on 180m switch |
+| `app/src/main/java/dev/notune/transcribe/PostProcessSettingsActivity.java` | Provider chip listener + `preselectProviderChip()` + `normalizeUrlForCompare()` + `urlForProviderChip(int)` |
+| `app/src/main/res/values/strings.xml` | `desc_language_section` language tag dropped (now just "Language") |
+
+### Limits / follow-ups
+
+- Typecheck gated by CI Build Debug APK; on-device verification by user on A059 (`192.168.1.45:37601`) post-push:
+  - Tap **Fastest** radio while on Parakeet 180M language picker hidden, only en/es/de/fr visible. Verify switching from 0.6B with Auto selected promotes to en and saves the pref.
+  - Open Post-Processing Settings, tap each provider chip, confirm the URL field below updates to the matching preset endpoint. Reopen the activity and confirm the matching chip lights up if the URL matches a preset (e.g. default OpenAI).
+- Canary 180M Auto behaviour is now consistent and honest: the only in-distribution path remains `(unklang-src, en-target)`. Users transcribing Spanish/German/French output from 180M must pick the explicit chip — no functional regression vs prior behaviour, just clearer UX.
+- Parakeet 0.6B language picker is documentation-only: the Rust engine ignores the selection (`EngineWrapper::V0_6b.set_language` returns `false`); the picker exists for UX parity with the Canary path.
+- Deferred cosmetic nits: factor the auto→en promotion into a single private helper; drop the redundant `clearCheck()` downstream of `setChecked(true)` on a `singleSelection` chip group.

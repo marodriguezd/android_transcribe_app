@@ -375,10 +375,15 @@ impl Parakeet180mModel {
         // loop below; no re-tokenisation needed.
         let prefix_len = input_ids.len();
 
+        // Access self.current_lang directly — CanaryLanguage is Copy
+        // so reading the field does not hold a borrow on self, which is
+        // important here because we are mid-function with the encoder
+        // borrow (produced by self.encoder.run earlier) potentially
+        // still tracked by NLL.
         log::info!(
             "180M input_ids: len={}, lang={:?}, values={:?}",
             input_ids.len(),
-            lang,
+            self.current_lang,
             input_ids.iter().map(|x| *x as i64).collect::<Vec<_>>()
         );
 

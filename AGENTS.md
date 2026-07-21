@@ -462,15 +462,13 @@ Added `pub enum CanaryLanguage { Auto, En, Es, De, Fr }` (Default = Auto, Copy +
 
 ### 4. JNI export `Java_dev_notune_transcribe_MainActivity_nativeSetLanguage`
 
-New JNI entry point in `src/main_activity.rs`. Body:
+New JNI entry point in `src/main_activity.rs`. Pseudocode flow (see file for the verbatim `env.with_local_frame(16, ...)` wrapper that satisfies AGENTS' "guard local refs" rule):
 
-```rust
-let lang_s: String = env.get_string(&lang_str)?;        // canaryLanguage::from_pref(&lang_s)
-let lang = CanaryLanguage::from_pref(&lang_s);
-engine::set_language(lang)                             // returns Err silently if no engine loaded
-```
+1. Read the input `lang_str: JString` into a `String lang_s` — wrapped in `env.with_local_frame(16, ...)` for local-ref hygiene.
+2. Convert via `CanaryLanguage::from_pref(&lang_s)` — arbitrary / malformed values coerce to `Auto`.
+3. Call `engine::set_language(lang)` which locks `GLOBAL_ENGINE`, mutably borrows `EngineWrapper`, calls `V180m(m).set_language(lang)` (no-op for `V0_6b`), and logs the change. Returns `Err("No engine loaded")` on a cold start where the model is still loading — harmlessly dropped on the Java side, since `do_load_180m` re-reads the same pref on construction and applies it.
 
-Called from the `OnCheckedStateChangeListener` of the ChipGroup in `MainActivity.setupLanguagePicker`. Activity reference included in the signature for future status-callback symmetry even though current Rust impl does not touch it.
+Called from the `OnCheckedStateChangeListener` of the ChipGroup in `MainActivity.setupLanguagePicker`. The unused `activity: JObject` parameter stays in the JNI signature for future status-callback symmetry even though the current Rust impl does not touch it.
 
 ### 5. Java UI
 
@@ -544,27 +542,47 @@ log::info!(
 
 ### 11. Fix commit 56d4469 — replace `lang` with `self.current_lang` in the log
 
-`CanaryLanguage` is a `Copy` enum so reading the field directly does not hold a borrow on `self`, which is the same NLL-safe pattern we used at the top of `transcribe_samples`. Three-line diff; the surrounding `input_ids.len()` and `.iter().map(...).collect::<Vec<_>>()` are unaffected.
+`CanaryLanguage` is a `Copy` enum so reading the field directly does not hold a borrow on `self`, which is the same NLL-safe pattern we used at the top of `transcribe_samples`. Diff:
+
+```diff
++        // Access self.current_lang directly — CanaryLanguage is Copy
++        // so reading the field does not hold a borrow on self, which is
++        // important here because we are mid-function with the encoder
++        // borrow (produced by self.encoder.run earlier) potentially
++        // still tracked by NLL.
+         log::info!(
+             "180M input_ids: len={}, lang={:?}, values={:?}",
+             input_ids.len(),
+-            lang,
++            self.current_lang,
+             input_ids.iter().map(|x| *x as i64).collect::<Vec<_>>()
+         );
+```
+
+The surrounding `input_ids.len()` and `.iter().map(...).collect::<Vec<_>>()` are unaffected. Compiler went from E0423 to clean; CI Build Debug APK on commit 56d4469 is run 29814411572 (re-validation triggered by the push).
 
 ### Files changed across the three commits
 
-| File | Commits | Net |
-|------|---------|-----|
-| `transcribe-rs/src/engines/parakeet/model_180m.rs` | 1c4ae35 + 7171a6b + 56d4469 | +197 / -33 |
+Per-file counts verified via `git diff-tree --no-commit-id --numstat -r 1c4ae35` for the feature commit and `git show --stat` for the two fix commits:
+
+| File | Commits | Adds / Removes |
+|------|---------|-----------------|
+| `transcribe-rs/src/engines/parakeet/model_180m.rs` | 1c4ae35 + 7171a6b + 56d4469 | +206 / -30 (186/26 + 17/2 + 3/2) |
 | `transcribe-rs/src/engines/parakeet/mod.rs` | 1c4ae35 | +1 / -1 |
-| `src/engine.rs` | 1c4ae35 | +107 / -16 |
-| `src/main_activity.rs` | 1c4ae35 | +71 / -5 |
-| `app/src/main/java/dev/notune/transcribe/SettingsManager.java` | 1c4ae35 | +27 / 0 |
-| `app/src/main/java/dev/notune/transcribe/MainActivity.java` | 1c4ae35 | +171 / -2 |
-| `app/src/main/res/layout/activity_main.xml` | 1c4ae35 | +103 / 0 |
-| `app/src/main/res/values/strings.xml` | 1c4ae35 | +28 / -2 |
+| `src/engine.rs` | 1c4ae35 | +111 / -2 |
+| `src/main_activity.rs` | 1c4ae35 | +37 / -0 |
+| `app/src/main/java/dev/notune/transcribe/SettingsManager.java` | 1c4ae35 | +31 / -0 |
+| `app/src/main/java/dev/notune/transcribe/MainActivity.java` | 1c4ae35 | +169 / -0 |
+| `app/src/main/res/layout/activity_main.xml` | 1c4ae35 | +89 / -0 |
+| `app/src/main/res/values/strings.xml` | 1c4ae35 | +26 / -2 |
+| **Cumulative** | 3 commits, 8 distinct files | **+670 / -35** |
 
 ### Verification
 
 - **`Event Router Test`** workflow: passed at 1c4ae35, 7171a6b, in progress at 56d4469 (run 29814411572 at time of writing).
 - **`Build Debug APK`** workflow: failed at E0502 on 1c4ae35, failed at E0423 on 7171a6b, **in progress** at 56d4469 — user is watching for green before flashing the A059.
 - **Code-reviewer-minimax-m3** — APPROVED across three passes (initial approve + two follow-up approves for the E0502 / E0423 fixes). Snackbar displays readable chip label (Spanish, not raw ES); updateLanguagePickerVisibility double-call eliminated; languageSelectionChanging flag usage simplified.
-- **Rust checker consistency**: AGENTS.md invariant "All `Mutex::lock()` calls use `unwrap_or_else(|poisoned| { log::error!; poisoned.into_inner() })`" preserved in `engine::set_language` even after the signature simplification (the env / _context args were dropped but the `&mut GLOBAL_ENGINE` mutex recovery is unchanged). No new JNI entry point violated "All `extern "system"` JNI functions use `JObject` (not `JClass`) for instance-method `this` parameter" or "All `.expect()` / `.unwrap()` in JNI FFI functions replaced with error handling + early return" — `nativeSetLanguage` uses `match env.get_string(...)` for error handling.
+- **Rust consistency** (AGENTS.md "Common pitfalls / Rust conventions"): the new `engine::set_language(lang)` mutex recovery on `&GLOBAL_ENGINE` follows AGENTS' "use `unwrap_or_else(|poisoned| { log::error!; poisoned.into_inner() })`" pattern, and the JNI entry uses `match env.get_string(&lang_str).map(|s| s.into())` rather than `.expect() /.unwrap()`. The new JNI entry point uses `JObject` (not `JClass`) for the activity parameter per AGENTS' JNI signature rule.
 
 ### Next steps (planned)
 

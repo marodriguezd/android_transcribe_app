@@ -69,10 +69,16 @@ public class MainActivity extends AppCompatActivity {
     private RadioButton rbModelNone;
     private ImageButton btnDeleteModelFastest;
     private Button btnRetry;
-    // Language picker UI. Visible only when the 180M Canary variant is
-    // the selected model — Parakeet 0.6B v3 auto-detects via CTC so the
-    // picker would be a misleading no-op there, and "Use without model"
-    // has no engine to apply the setting to. See updateLanguagePickerVisibility.
+    // Language picker UI. Visible for both Canary 180M and Parakeet 0.6B
+    // v3; the engine is loaded for both variants and the picker is the
+    // primary way the user selects the source/target language. The Auto
+    // chip within the picker is gated per variant: visible for 0.6B (CTC
+    // auto-detects natively), hidden for 180M because per hotfix #3 the
+    // (unklang-source, en-target) prefix path that "Auto" would map to
+    // is the only in-distribution output for Canary — making Auto a
+    // misleading UX option there. Hidden entirely for "Use without
+    // model" since there is no engine to apply the setting to. See
+    // updateLanguagePickerVisibility.
     private View containerLanguagePicker;
     private com.google.android.material.chip.ChipGroup chipGroupLanguage;
     private com.google.android.material.chip.Chip chipLanguageAuto;
@@ -738,15 +744,57 @@ public class MainActivity extends AppCompatActivity {
     }
 
     /**
-     * Show the language picker only when the variant is the Canary 180M
-     * model. The picker is meaningless for 0.6B Parakeet (it auto-detects
-     * via CTC) and for "none" (no engine loaded). Defensive against null
-     * views in case setupLanguagePicker never ran (e.g. early crash path).
+     * Show the language picker for both Canary 180M and Parakeet 0.6B v3
+     * (and hide it for "none"). The native set_language call is a no-op
+     * on 0.6B but the UI picker is still surfaced so the user has a
+     * consistent place to record their intent — the picker state is
+     * preserved across a 180m ↔ 0.6b round-trip on the same session.
+     *
+     * <p>Auto-chip gating per variant: visible for 0.6B (CTC auto-detects
+     * natively), hidden for 180M because per hotfix #3 the
+     * (unklang-source, en-target) decoder-prefix path — the only thing
+     * "Auto" could map to — produces English output regardless of the
+     * audio language. Forcing the user to pick a real language keeps
+     * the pref honest.
+     *
+     * <p>Side effect: when switching TO 180m and the user's last saved
+     * language was "auto", promote the preference to "en" so the
+     * ChipGroup (selectionRequired=true) always has at least one valid
+     * visible chip checked. The chip-group mutation is wrapped in
+     * languageSelectionChanging so the OnCheckedStateChangeListener
+     * does not bounce through another pref write + nativeSetLanguage
+     * round-trip — the Rust engine will read the now-stored "en" from
+     * SharedPreferences on the next 180m load.
      */
     private void updateLanguagePickerVisibility(String variant) {
         if (containerLanguagePicker == null) return;
-        boolean visible = "180m".equals(variant);
-        containerLanguagePicker.setVisibility(visible ? View.VISIBLE : View.GONE);
+
+        boolean showPicker = !"none".equals(variant);
+        containerLanguagePicker.setVisibility(showPicker ? View.VISIBLE : View.GONE);
+
+        // Hide Auto only for 180m. All five chips remain visible for 0.6b
+        // (Auto is the actual model default for CTC auto-detection).
+        if (chipLanguageAuto != null) {
+            chipLanguageAuto.setVisibility("180m".equals(variant) ? View.GONE : View.VISIBLE);
+        }
+
+        if (showPicker && "180m".equals(variant) && settingsManager != null
+                && chipGroupLanguage != null && chipLanguageEn != null) {
+            String saved = settingsManager.getTranscriptionLanguage();
+            if (saved == null) saved = "auto";
+            if ("auto".equals(saved)) {
+                settingsManager.setTranscriptionLanguage("en");
+                // Wrap selection so the listener does not re-fire after
+                // we just wrote the pref ourselves (would otherwise
+                // produce an extra nativeSetLanguage round-trip and a
+                // redundant Snackbar).
+                boolean prev = languageSelectionChanging;
+                languageSelectionChanging = true;
+                chipGroupLanguage.clearCheck();
+                chipLanguageEn.setChecked(true);
+                languageSelectionChanging = prev;
+            }
+        }
     }
 
     private void startDownload(String variant, SettingsManager sm) {
@@ -980,6 +1028,20 @@ public class MainActivity extends AppCompatActivity {
         // to fire it during cold-start repopulation.
         String saved = sm.getTranscriptionLanguage();
         if (saved == null) saved = "auto";
+        // If the user landed here on the 180m variant with a stale
+        // "auto" preference (carry-over from a previous install, from a
+        // prior 0.6b session, or default on a fresh install where the
+        // pref was never changed), promote it to "en" before checking
+        // the chip. The Auto chip is hidden in 180m mode and the
+        // ChipGroup has selectionRequired=true, so an unchecked state
+        // would render as a broken row. updateLanguagePickerVisibility
+        // applies the same promotion during onResume re-snapshots so
+        // hot variant switches after cold start also stay consistent.
+        String currentVariant = sm.getModelVariant();
+        if ("180m".equals(currentVariant) && "auto".equals(saved)) {
+            saved = "en";
+            sm.setTranscriptionLanguage("en");
+        }
         // No listener is attached yet during this restore (it is wired
         // immediately below), so the programmatic setChecked calls here
         // cannot bounce through the chip listener. No flag needed.

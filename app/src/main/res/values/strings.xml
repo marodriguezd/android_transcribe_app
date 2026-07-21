@@ -299,12 +299,15 @@ ${output}"</string>
     <string name="model_card_languages_caption">Languages: %1$s</string>
     <string name="model_card_action_download">Download</string>
 
-    <!-- Transcription language picker (only relevant for Canary 180M; 0.6B
-         Parakeet TDT auto-detects, so the picker is hidden for that variant).
-         Auto maps to `&lt;|unklang|&gt;` on both source/target slots — Canary's
-         decoder then language-detects from the audio itself. The other four
-         force the matching &lt;|lang|&gt; token on both slots. -->
-    <string name="desc_language_section">Language (Canary 180M only)</string>
+    <!-- Transcription language picker. Visible for both Canary 180M and
+         Parakeet 0.6B. The Auto chip is hidden on 180M (its (unklang-source,
+         en-target) prefix always emits English regardless of input
+         language per hotfix #3 — so Auto is misleading UX there) and
+         visible on 0.6B (CTC auto-detects natively). The other four
+         chips force the matching &lt;|lang|&gt; token on both slots for
+         Canary, and are documentation-only for 0.6B (the engine ignores
+         the language there). -->
+    <string name="desc_language_section">Language</string>
     <string name="language_auto">Auto</string>
     <string name="language_english">English</string>
     <string name="language_spanish">Spanish</string>

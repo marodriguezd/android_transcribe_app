@@ -506,6 +506,18 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void onStatusUpdate(String status) {
+        // Publish to the cross-component broadcaster FIRST so the IME
+        // listener can react instantly (its callback is marshalled onto
+        // the main thread by EngineStateBroadcaster.setState via a
+        // CopyOnWriteArrayList of registered listeners). The Rust engine
+        // only fires this onStatusUpdate on the MainActivity JObject — so
+        // without this relay, the IME has no way to know when the engine
+        // is warming up or has just become ready. Preferring the broadcast
+        // over a direct IPC keeps the Rust-side toy simple (single JObject
+        // target per notify_status call) and gives us a clean place to
+        // centralise the loading/transcribing predicate heuristics
+        // (see EngineStateBroadcaster.isLoading et al.).
+        EngineStateBroadcaster.setState(status);
         runOnUiThread(() -> {
             statusText.setText("Status: " + status);
             if ("Ready".equals(status)) {
@@ -646,6 +658,14 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void switchModelAsync(String variant) {
+        // Fire an immediate "Switching model…" on the broadcaster so the
+        // IME listener reacts without waiting for Rust's first
+        // notify_status("Loading fast/fastest model...") — that is fired
+        // asynchronously on a JNI worker thread and may not reach the
+        // bridge-to-broadcaster hop for a few hundred ms after we
+        // dispatch the JNI switchModel call. With this pre-fire the IME
+        // status view + record-button-disabled state appear instantly.
+        EngineStateBroadcaster.setState("Switching model\u2026");
         WeakReference<MainActivity> switchRef = new WeakReference<>(this);
         new Thread(() -> {
             MainActivity a = switchRef.get();

@@ -75,6 +75,13 @@ public class RustInputMethodService extends InputMethodService {
         Log.d(TAG, "Service onCreate");
         settingsManager = new SettingsManager(this);
         postProcessor = new PostProcessor(settingsManager);
+        // Subscribe to cross-component engine-state events. The Rust engine
+        // only fires notify_status on the activity passed to its JNI entry,
+        // so emit paths from MainActivity (e.g. switching model) never reach
+        // the IME without this relay. Registration BEFORE initNative is
+        // launched so the listener catches the very first Loading… state
+        // when the engine reload happens.
+        EngineStateBroadcaster.addListener(this::onEngineStateChanged);
         new Thread(() -> {
             try {
                 if (!destroyed) initNative(RustInputMethodService.this);
@@ -245,7 +252,7 @@ public class RustInputMethodService extends InputMethodService {
                 }
             });
 
-            updateUiState(lastStatus.contains("Loading") || lastStatus.contains("Initializing"));
+            updateUiState();
             return view;
         } catch (Exception e) {
             Log.e(TAG, "Error in onCreateInputView", e);
@@ -333,6 +340,11 @@ public class RustInputMethodService extends InputMethodService {
     public void onDestroy() {
         destroyed = true;
         super.onDestroy();
+        // Unsubscribe so a queued mainHandler.post from a recent
+        // EngineStateBroadcaster.setState doesn't bounce through a
+        // destroyed service (CopyOnWriteArrayList iteration is safe but
+        // accessing destroyed views would touch a null inputView etc.).
+        EngineStateBroadcaster.removeListener(this::onEngineStateChanged);
         if (mainHandler != null) {
             mainHandler.removeCallbacks(backspaceRepeatRunnable);
             mainHandler.removeCallbacks(spaceRepeatRunnable);
@@ -357,47 +369,74 @@ public class RustInputMethodService extends InputMethodService {
         // They are instead processed in PostProcessor.java as dictionary replacements and LLM hints.
     }
 
-    // Called from Rust
+    // Called from Rust (e.g. IME's own initNative path, future direct
+    // transcription status pushes). Publishes to the cross-component
+    // broadcaster which fires our local listener AND any other
+    // subscriber. The local listener is the single source of truth for
+    // updating UI / lastStatus / pendingSwitchBack / pauseAudioActive.
     public void onStatusUpdate(String status) {
-        mainHandler.post(() -> {
-            Log.d(TAG, "Status: " + status);
-            lastStatus = status;
-            updateUiState(lastStatus.contains("Loading") || lastStatus.contains("Initializing"));
-            if (pendingSwitchBack && isErrorStatus(status)) {
-                pendingSwitchBack = false;
-                switchToPreviousInputMethod();
-            }
-            if (pauseAudioActive && isErrorStatus(status)) {
-                audioPauser.abandon(this);
-                pauseAudioActive = false;
-            }
-        });
+        EngineStateBroadcaster.setState(status);
     }
 
-    private void updateUiState(boolean isLoading) {
-        boolean isWaiting = lastStatus.contains("Waiting");
-        boolean isTranscribing = lastStatus.contains("Transcribing") || lastStatus.contains("Processing");
-        boolean isError = isErrorStatus(lastStatus);
-        boolean isReady = lastStatus.equals("Ready");
+    /**
+     * Listener callback fired by {@link EngineStateBroadcaster}. Centralises
+     * the IME's reaction to engine-state changes (loading, transcribing,
+     * error, ready). Called on the main thread (the broadcaster marshals
+     * via its internal Handler on the main looper).
+     */
+    private void onEngineStateChanged(String status) {
+        Log.d(TAG, "engine state: " + status);
+        lastStatus = status;
+        updateUiState();
+        if (pendingSwitchBack && EngineStateBroadcaster.isError(status)) {
+            pendingSwitchBack = false;
+            switchToPreviousInputMethod();
+        }
+        if (pauseAudioActive && EngineStateBroadcaster.isError(status)) {
+            audioPauser.abandon(this);
+            pauseAudioActive = false;
+        }
+    }
 
-        // Don't show internal loading states to the user
+    private void updateUiState() {
+        if (lastStatus == null) lastStatus = "";
+        boolean isLoading = EngineStateBroadcaster.isLoading(lastStatus);
+        boolean isTranscribing = EngineStateBroadcaster.isTranscribing(lastStatus);
+        boolean isError = EngineStateBroadcaster.isError(lastStatus);
+        boolean isReady = EngineStateBroadcaster.isReady(lastStatus);
+
+        // Don't show internal loading states to the user as-is. When we
+        // are loading, surface the raw engine status (e.g. "Initializing
+        // fastest engine..." or the pre-fire "Switching model…") with the
+        // "Status: " prefix MainActivity adds stripped away so the IME
+        // text is identical to the engine message.
+        String displayStatus = EngineStateBroadcaster.stripStatusPrefix(lastStatus);
         if (statusView != null && !isRecording) {
             if (isError) {
                 statusView.setText(lastStatus);
-            } else if (isTranscribing || isWaiting) {
+            } else if (isLoading) {
+                statusView.setText(displayStatus);
+            } else if (isTranscribing) {
                 statusView.setText(getString(R.string.ime_processing));
             } else {
                 statusView.setText(getString(R.string.ime_tap_to_record));
             }
         }
 
+        // Progress spinner is visible during any transitional state
+        // (loading/init/switch/restart/wait) so the user has an at-a-glance
+        // cue that the engine is warming up.
         if (progressBar != null) {
             progressBar.setVisibility(isLoading ? View.VISIBLE : View.GONE);
         }
 
-        // Disable button only during transcription/processing/waiting or fatal errors
+        // Disable the record button for ANY non-tappable state — including
+        // loading — so the user can't queue audio samples while the engine
+        // is mid-switch and produce a transcription that drops on the
+        // floor after the model finishes (or worse, against a half-loaded
+        // model).
         if (recordContainer != null) {
-            boolean disable = isTranscribing || isWaiting || isError;
+            boolean disable = isLoading || isTranscribing || isError;
             recordContainer.setEnabled(!disable);
             recordContainer.setAlpha(disable ? 0.5f : 1.0f);
         }
@@ -492,10 +531,5 @@ public class RustInputMethodService extends InputMethodService {
     private boolean isPauseAudioEnabled() {
         return settingsManager.isPauseAudio();
     }
-
-    private static boolean isErrorStatus(String status) {
-        if (status == null) return false;
-        String lower = status.toLowerCase(java.util.Locale.ROOT);
-        return lower.startsWith("error") || lower.contains("fail");
-    }
 }
+

@@ -435,9 +435,10 @@ fn do_load_with_variant(env: &mut JNIEnv, context: &JObject, variant: ModelVaria
 }
 
 /// Read the `transcription_language` preference from Java SharedPreferences.
-/// Defaults to `"auto"` (so Canary's decoder gets `<|unklang|>` on both sides
-/// — no language forced, model detects from audio). Unknown / missing values
-/// are coerced to `Auto` by [`CanaryLanguage::from_pref`].
+/// Defaults to `"auto"` (so the Canary decoder gets `<|unklang|>` on the
+/// source slot + `<|en|>` on the target slot — encoder auto-detects input
+/// language, decoder outputs a deterministic English transcript). Unknown /
+/// missing values are coerced to `Auto` by [`CanaryLanguage::from_pref`].
 fn read_transcription_language(env: &mut JNIEnv, context: &JObject) -> CanaryLanguage {
     let prefs_name = match env.new_string("transcribe_settings") {
         Ok(s) => s,
@@ -479,7 +480,10 @@ fn read_transcription_language(env: &mut JNIEnv, context: &JObject) -> CanaryLan
         Err(_) => "auto".to_string(),
     };
     let parsed = CanaryLanguage::from_pref(&lang_str);
-    log::info!("read_transcription_language: pref={} -> {:?}", lang_str, parsed);
+    log::info!(
+        "read_transcription_language: pref={} (auto => unklang_src + en_target)",
+        lang_str
+    );
     parsed
 }
 

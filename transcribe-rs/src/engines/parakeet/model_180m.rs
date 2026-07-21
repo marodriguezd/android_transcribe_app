@@ -18,20 +18,36 @@ pub struct TimestampedResult {
     pub tokens: Vec<String>,
 }
 
-/// Language selection for the Canary 180M AED model. Canary's decoder is fed a
-/// 10-token prefix where positions 4 + 5 are source/target language — to make
-/// Spanish/German/French transcription work, those positions must NOT always
-/// be `<|en|>`. `Auto` uses `<|unklang|>` on both sides so the model itself
-/// detects the language from the audio (Canary-180m-flash supports
-/// English, Spanish, German, French; anything else will fall back to one of
-/// these four or to English).
+/// Language selection for the Canary 180M AED model. Canary's decoder is fed
+/// a 10-token prefix where positions 4 (source) and 5 (target) are the
+/// per-call language conditioning.
+///
+/// The original implementation set both positions to `<|unklang|>` for the
+/// `Auto` variant so the model could auto-detect both source AND target
+/// language from the audio. Empirically (debug builds on A059) that path
+/// produced empty transcripts every time: the decoder loop hit EOS
+/// immediately, leaving a zero-byte `<|endoftext|>` autoplay with no
+/// generated tokens in between. Canary-180m-flash was never conditioned
+/// on `(unklang_source, unksrc_target)` in its training distribution, so
+/// the runtime diverges on the very first decode step.
+///
+/// The fix is to keep `<|unklang|>` on the **source** slot (so the audio's
+/// language can still be auto-detected by the encoder) and pin the
+/// **target** to `<|en|>` (English) — the dominant output in the model's
+/// training mix and a deterministic, well-defined output language.
+/// Trade-off: Auto mode always OUTPUTS English; users transcribing
+/// Spanish/German/French whose target language is not English must pick
+/// the matching explicit chip from the picker. A later iteration could
+/// bolt on a runtime language ID pass to set source + target before the
+/// autoregressive loop, but that requires an extra model and is out of
+/// scope for this hotfix.
 ///
 /// Mapping to vocab tokens (loaded from `canary-180m-flash-int8/vocab.txt`):
 ///   en     -> <|en|>      (id 62)
 ///   es     -> <|es|>      (id 169)
 ///   de     -> <|de|>      (id 76)
 ///   fr     -> <|fr|>      (id 69)
-///   auto   -> <|unklang|> (id 21) on both source/target sides
+///   auto   -> <|unklang|> (id 21) on source, <|en|> on target
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum CanaryLanguage {
     #[default]
@@ -164,10 +180,13 @@ impl Parakeet180mModel {
         // Language tokens for source/target positions (4 + 5). Canary's
         // decoder treats these as a tag-and-generate pair: <|en|> <|es|>
         // means "transcribe English audio, output Spanish text", which is
-        // how cross-lingual translation works in the Canary family. We
-        // always set source == target (pure ASR, no translation) and let
-        // the user pick from {en, es, de, fr} or fall through to
-        // <|unklang|> on both sides for auto-detection.
+        // how cross-lingual translation works in the Canary family. For
+        // pure ASR we keep source == target from {en, es, de, fr}; for
+        // the Auto chip we use <|unklang|> source + <|en|> target so the
+        // encoder auto-detects the audio language while the decoder
+        // emits a deterministic output (English, the dominant training
+        // pair — the (unklang-source, unksrc-target) pair is out of
+        // distribution on Canary-180m-flash and produces empty output).
         let lang_en_id = *token_map
             .get("<|en|>")
             .ok_or_else(|| Parakeet180mError::MissingToken("<|en|>".into()))?;
@@ -268,8 +287,14 @@ impl Parakeet180mModel {
     /// and the cached `lang_*_id` fields so it can be inlined into the
     /// autoregressive loop without re-allocation per call.
     fn build_prefix(&self, lang: CanaryLanguage) -> Vec<i64> {
+        // Auto keeps <|unklang|> on the source slot so the encoder can
+        // auto-detect the input language; the target is pinned to <|en|>
+        // so the decoder emits a deterministic, in-distribution output
+        // (Canary-180m-flash has empty output if BOTH slots are
+        // <|unklang|> — the (un,un) pair is out of training distribution
+        // and the decoder converges to EOS at step 1).
         let (src, tgt) = match lang {
-            CanaryLanguage::Auto => (self.lang_unksrc_id, self.lang_unksrc_id),
+            CanaryLanguage::Auto => (self.lang_unksrc_id, self.lang_en_id),
             CanaryLanguage::En => (self.lang_en_id, self.lang_en_id),
             CanaryLanguage::Es => (self.lang_es_id, self.lang_es_id),
             CanaryLanguage::De => (self.lang_de_id, self.lang_de_id),

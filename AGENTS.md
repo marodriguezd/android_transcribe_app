@@ -208,6 +208,37 @@ This fork (`marodriguezd/android_transcribe_app`) diverges from `notune/android_
 - **Multi-prompt system**: `PromptsRepository` with `AtomicFile` persistence, legacy migration, double-checked locking lazy init. `SettingsManager.getActivePromptBody()` is the hot-path API. Active prompt tracked via `active_prompt_id` SharedPreference key; auto-fallbacks to builtin on deletion.
 - Bundled debug assets: `src/debug/assets/` ships ONNX files inside debug APK; `ModelDownloadManager.tryCopyAsset()` extracts on first launch. Release builds use Play Asset Delivery (`model_assets/`).
 - `ensure_loaded` / `ensure_loaded_from_thread` return `Result<Option<...>>` — `None` result means no engine loaded (valid for "Use without model")
+
+## Session history (post-v0.9.0 hotfix #2 — RadioGroup user-tap dispatch fix) — 2026-07-21
+
+User reported, on the **running debug APK from commit `a31a77f`**, that tapping "Fastest" while Fast was the active variant left BOTH `rb_model_fastest` and `rb_model_fast` visually selected, and that deleting a model left the UI half-refreshed until the Activity was closed and reopened.
+
+### Root cause
+`modelGroup.setOnCheckedChangeListener(...)` in `setupModelSelection` is **dead code** in this layout. `RadioGroup`'s internal `CheckedStateTracker` is wired via `addView()` so it sees direct children only — but each `MaterialRadioButton` lives inside a horizontal `LinearLayout` row wrapper (the per-row delete `ImageButton` sits beside the radio). The group listener therefore never fires from a user tap, AND `RadioGroup.clearCheck()` cannot traverse into the wrappers to clear the previously-checked sibling. Result on user tap: the tapped radio flips visually (because `CompoundButton.setChecked` updates the button internally) but no state-change propagates up AND the previously-checked sibling stays selected. This is what the user sees as *"both stay selected"*. The *"needs close/reopen"* complaint stems from the same root cause: the only code path inside the Activity that re-syncs the radio visual state is `onResume` → `selectRadioButton(current)` (commit `a31a77f`'s programmatic helper). Anyone who corrupted the visual state via a user tap had to background-and-foreground the app to recover.
+
+Commit `a31a77f` addressed only the **programmatic** sync side (initial setup, `onResume`, post-download, post-delete, welcome-dialog callbacks). The user-tap path was the gap. This commit closes it.
+
+### What was done
+- `<c>(d)</c>` **Removed `modelGroup.setOnCheckedChangeListener(...)` from `setupModelSelection`** entirely. Replaced with three per-button `attachModelRadioListener(rb, variant)` calls — one each for `rb_model_fastest` ("180m"), `rb_model_fast` ("0.6b"), and `rb_model_none` ("none"). Each per-button listener attaches a `CompoundButton.OnCheckedChangeListener` whose only two early-returns are `!isChecked` (sibling-clear filter; fires when a button transitions from checked to unchecked) and `modelSelectionChanging` (synchronous-sync window filter; `selectRadioButton` raises the flag across its three `setChecked` calls so the cascade during a single user-tap → `selectRadioButton` → 1-dispatch completes without recursion).
+- `<c>(d)</c>` **Extracted the dispatch logic** from the deleted group listener into a single `onVariantSelectedByUser(String variant)` method. It persists the prefs (`sm.setModelVariant(variant)`), forces a `selectRadioButton(variant)` re-sync to guarantee "exactly one radio visually checked" on every dispatch path (user tap OR programmatic), then runs the existing branches unchanged: `"none"` → unload + status; `isModelDownloaded` → `switchModelAsync` + 30s status-timeout (`model_switch_restart` → `model_switch_timeout` via `mainHandler.postDelayed`); else → `startDownload`.
+- `<c>(d)</c>` **Extracted the `new Thread(() -> switchModel(...))` wrapper** from the old dispatch into a single `switchModelAsync(String variant)` helper using `WeakReference<MainActivity>` + `isFinishing()/isDestroyed()` gates (preserves AGENTS' bg-thread idiom; same as `initNative`/`switchModel` paths elsewhere in the file).
+
+### Verification
+- `./gradlew` compile + R8 validation deferred to CI Build Debug APK (no local JDK/NDK on this host per AGENTS.md § Common pitfalls).
+- `thinker-with-files-gemini`: APPROVED — synchronous `CompoundButton.setChecked` + the `modelSelectionChanging` flag is sufficient to prevent double-dispatch when one user tap causes three cascading `setChecked` calls (two sibling clears, one self-restore) inside the synchronous dispatch window. Re-entrant calls all see the flag and early-return.
+- `code-reviewer-minimax-m3`: APPROVED with one medium-priority nit F about test-file impact (`modelGroup.setOnCheckedChangeListener` removal could break tests asserting on the group's listener). Verified via grep on `OfflineVoiceInputE2ETest.java` + `CoreJavaLogicIntegrationTest.java` for `modelGroup`, `rg_model`, `rb_model_*`, `selectRadioButton`: the only "MainActivity" hit in `CoreJavaLogicIntegrationTest` is a comment about cold-start paths, not an assertion on the group-level listener. Nit F is clean.
+- Two non-blocking nits (G-a: rapid double-tap on the same radio could fire two `switchModelAsync` threads — original had no debounce either so no regression; G-b: cross-reference comment in `onVariantSelectedByUser`). Applied G-b in source; deferring G-a unless observed.
+
+### Files changed
+| File | Purpose |
+|------|---------|
+| `app/src/main/java/dev/notune/transcribe/MainActivity.java` | Per-button listener wiring (3 `attachModelRadioListener` calls) + extracted `onVariantSelectedByUser` dispatch + extracted `switchModelAsync` helper + cross-reference comment in `onVariantSelectedByUser` |
+
+### Limits / next steps
+- Typecheck still gated by CI (no local JDK/NDK); the API surface change (removing the group's group-level listener) is verified by grep on test sources.
+- User must `pm clear dev.notune.transcribe` (or fresh-install the rebuilt debug APK from CI) and tap **Fastest** while Fast is selected to confirm only one radio stays checked; the prior close-reopen workaround should not be needed.
+- Future defensive improvement (not in this commit): a `dispatchingUserSwitch` boolean + `mainHandler.post(() -> flag=false)` to debounce rapid double-taps — only add if observed in the wild.
+
 ## Common pitfalls
 
 - `rbModelFast`, `rbModelFastest`, and `rbModelNone` may be null if `setupModelSelection` hasn't run

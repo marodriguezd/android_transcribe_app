@@ -209,6 +209,43 @@ This fork (`marodriguezd/android_transcribe_app`) diverges from `notune/android_
 - Bundled debug assets: `src/debug/assets/` ships ONNX files inside debug APK; `ModelDownloadManager.tryCopyAsset()` extracts on first launch. Release builds use Play Asset Delivery (`model_assets/`).
 - `ensure_loaded` / `ensure_loaded_from_thread` return `Result<Option<...>>` — `None` result means no engine loaded (valid for "Use without model")
 
+## Session history (post-v0.9.0 hotfix #3 — Canary 180M Auto mode + IME cross-component state broadcaster) — 2026-07-21
+
+Two user-reported defects addressed in commits `26ecd32` + `1c0d7aa` on `develop`. Both merged to `origin/develop`, Build Debug APK run `29822573287` → `completed / success` (cargo-ndk + Javac + R8 + ONNX bundled extract, 4m 51s wall-clock on the cold Linux worker).
+
+### Hotfix #3 — Canary 180M "Auto" language mode produced empty transcripts
+
+**Root cause**: `transcribe-rs/src/engines/parakeet/model_180m.rs :: build_prefix(Auto)` set **BOTH** decoder-prefix positions 4 + 5 (source + target) to `<|unklang|>`. Canary-180m-flash was never conditioned on a `(unklang_source, unksrc_target)` pair in its training distribution, so the decoder converged to EOS at step 1 every time, producing no output tokens between prefix and endoftext. User-reported: *"El modo automático del Canary no funciona. Ahora, cuando os coges el idioma, sí que funciona bien."* (Auto fails; explicit EN/ES/DE/FR works fine — confirmed by picking a chip and re-running the same audio.)
+
+**Fix** (`26ecd32`): `build_prefix(Auto)` now resolves to `(self.lang_unksrc_id, self.lang_en_id)` — `<|unklang|>` on source (encoder auto-detects input language from audio) and `<|en|>` on target (deterministic-decoder-output language, the dominant training pair). **Trade-off**: Auto output is now always English; users transcribing Spanish / German / French whose target language is not English must pick the matching explicit chip from the language picker. A future iteration could add a runtime language ID pass and set source + target before the autoregressive loop. Doc-comment updates propagated at all three sites:
+- `transcribe-rs/src/engines/parakeet/model_180m.rs` — `CanaryLanguage` enum block (table row + free-form comment) + `build_prefix` inline doc
+- `src/engine.rs` — `read_transcription_language` doc + log line
+### Hotfix #4 — No visual cue in the IME when the engine is mid-switch
+
+**Root cause**: Rust's `engine::notify_status(...)` only fires `onStatusUpdate` on the activity passed to the JNI entry point. Model-switch UI triggered from `MainActivity` (`switchModelAsync(variant)` → Rust `engine::switch_model` → `do_load_*`) only fires status updates on the MainActivity, which the `RustInputMethodService` never sees. The IME had no path to know when the engine was warming up, so its record button stayed tappable during a half-loaded model — user-reported: *"como que le cuesta un poco, debería marcar que se esté inicializando [...] alguna forma de aviso visual en el IME."*
+
+**Fix** (`1c0d7aa`):
+
+1. New `EngineStateBroadcaster.java` — static utility with `volatile String currentState` + `CopyOnWriteArrayList<StateListener>` (per AGENTS.md's established callback pattern) + `Handler(Looper.getMainLooper())` marshalling + predicates `isLoading`/`isTranscribing`/`isError`/`isReady` + `stripStatusPrefix` helper. Listeners fire on the main thread; remove-on-destroy is race-safe via CopyOnWriteArrayList snapshot semantics.
+2. `MainActivity.onStatusUpdate` publishes to the broadcaster as its FIRST action (before `runOnUiThread` status text update). `switchModelAsync(variant)` pre-fires `"Switching model…"` immediately so the IME shows a spinner the instant the user taps a different radio — Rust's first `notify_status` fires on a JNI worker thread ~100ms later and would otherwise leave the IME visually idle in that gap.
+3. `RustInputMethodService.subscribe()` on `onCreate` (before the `initNative` thread is spawned so the very first Loading… state is captured), `unsubscribe()` on `onDestroy`. New listener callback `onEngineStateChanged(String status)` is the single source of truth for UI updates. `updateUiState()` is now parameterless — derives all four predicates from `lastStatus` via broadcaster predicates. `recordContainer` disabled union expanded to `loading || transcribing || error` (was `transcribing || waiting || error` — `waiting` is folded into `loading` via substring match). Status text surfaces the raw engine status (e.g. "Initializing fastest engine…" / "Switching model…") with `stripStatusPrefix` cutting the redundant `"Status: "` prefix `MainActivity` prepends.
+4. `isLoading` substring coverage extended to `"reading"` / `"decoding"` / `"extracting"` (Rust's `notify_status("Reading vocabulary…")` lacks `"loading"` — without the substring it would leave the IME visually idle during a model load; the others are preemptive for future Rust emits).
+5. Deleted dead `private static boolean isErrorStatus(String)` helper from `RustInputMethodService` — zero callers remained after the broadcaster refactor (all error predicates funnel through `EngineStateBroadcaster.isError` now). Matches the project's "no dead code" invariant.
+
+### Verification
+- Rust fix (`26ecd32`) and IME feat (`1c0d7aa`) by code-reviewer-minimax-m3 in two passes (architecture + applied nits) — APPROVED.
+- CI Build Debug APK run `29822573287` for `1c0d7aa` → `completed / success` (4m 51s wall clock; cargo-ndk + Javac + R8 + AGP + ONNX bundled extract all green). On-device smoke test deferred to user (A059 at `192.168.1.45:37601`): confirm Canary Auto mode now produces English output for Spanish audio (instead of empty / garbled); confirm IME shows progress bar + "Switching model…" status text + disabled mic button during a MainActivity-driven 180M ↔ 0.6B switch.
+- Bug fix scope explicitly per user: "soluciona única y exclusivamente eso". Other open items (main → develop FF housekeeping, v0.9.1 release cut, manual RIFF/WAVE reader v0.8.8 fix, unit tests for `attachModelRadioListener` / `onVariantSelectedByUser` from hotfix #2) deliberately deferred.
+
+### Files changed across hotfix #3 + #4
+| File | Purpose |
+|------|---------|
+| `transcribe-rs/src/engines/parakeet/model_180m.rs` | Canary 180M `build_prefix(Auto)` — `(unklang_src, en_target)`. Doc comments updated at three sites that describe the prefix semantics (`CanaryLanguage` enum block, `build_prefix` inline, log line). |
+| `src/engine.rs` | `read_transcription_language` doc comment + log line rewording to match the new `Auto` semantics. |
+| `app/src/main/java/dev/notune/transcribe/EngineStateBroadcaster.java` | **NEW** static singleton with `volatile currentState` + `CopyOnWriteArrayList<StateListener>` + main-thread `Handler`. Listeners fire on the main thread. |
+| `app/src/main/java/dev/notune/transcribe/MainActivity.java` | `onStatusUpdate` now publishes to broadcaster. `switchModelAsync(variant)` pre-fires `"Switching model…"` before the JNI call. |
+| `app/src/main/java/dev/notune/transcribe/RustInputMethodService.java` | Subscribe on `onCreate`, unsubscribe on `onDestroy`. New `onEngineStateChanged` listener callback. `updateUiState()` becomes parameterless + uses broadcaster predicates. Dead `isErrorStatus` helper deleted. |
+
 ## Session history (post-v0.9.0 hotfix #2 — RadioGroup user-tap dispatch fix) — 2026-07-21
 
 User reported, on the **running debug APK from commit `a31a77f`**, that tapping "Fastest" while Fast was the active variant left BOTH `rb_model_fastest` and `rb_model_fast` visually selected, and that deleting a model left the UI half-refreshed until the Activity was closed and reopened.
@@ -758,13 +795,13 @@ Two user-reported defects addressed in commit `a31a77f` on `develop` (push to `o
 - Verify the post-process settings toast reads `Settings saved` (English), not `Configuración guardada`.
 - (Pre-v0.9.1 release prep) bump `versionCode` 32 → 33 and `versionName` 0.9.0 → 0.9.1 in `app/build.gradle.kts`; author `fastlane/metadata/android/en-US/changelogs/33.txt` covering both fixes; sign the release APK locally (requires `release.keystore` at project root + `KEY_ALIAS` / `KEY_PASS` / `STORE_PASS` exported, otherwise the v0.8.6 defensive build asserts fail-fast); `gh release create v0.9.1 --target main --notes-file changelogs/33.txt` with the signed APK.
 
-### End-of-session invariants (post hotfix #2 fix+docs, 2026-07-21)
+### End-of-session invariants (post hotfix #3 + #4 closure, 2026-07-21)
 
 | Ref | SHA | Notes |
 |---|---|---|
 | `main` (local + origin) | `af79a89` | Default branch on GitHub. Tip: `docs(AGENTS): add Session history (post-v0.9.0 housekeeping) - close the audit trail` (direct-pushed at the v0.9.0 housekeeping cycle, NOT FF'd into `develop`). |
-| `develop` (local + origin) | `7ff296a` | **9 commits ahead of `main`** (`main` has nothing `develop` doesn't). The 9 commits are: hotfix #1 `a31a77f`+`4f52d4c`, Canary multilingual `1c4ae35`+`7171a6b`+`56d4469`+`7f03045`+`cfe84f3`, and hotfix #2 `fb17897`+`7ff296a`. The "develop mirrors main" baseline from § Branches is currently broken — next housekeeping-style coordinated move should FF `main` to `develop`'s tip (`7ff296a`). |
-| `v0.9.0` (tag, local + origin) | `a6b574a` | Points at code-merge commit. Unchanged across hotfix #1 and hotfix #2 — both shipped as `develop`-only single-fix commits per the post-v0.9.0 housekeeping agreement. |
+| `develop` (local + origin) | `1c0d7aa` | **11 commits ahead of `main`** (`main` has nothing `develop` doesn't). The 11 commits are: hotfix #1 `a31a77f`+`4f52d4c`, Canary multilingual `1c4ae35`+`7171a6b`+`56d4469`+`7f03045`+`cfe84f3`, hotfix #2 `fb17897`+`7ff296a`, hotfix #3 (Canary Auto mode `26ecd32`), and hotfix #4 (IME cross-component state broadcaster `1c0d7aa`). The "develop mirrors main" baseline from § Branches is currently broken — next housekeeping-style coordinated move should FF `main` to `develop`'s tip (`1c0d7aa`). Suffix `1c0d7aa` references the JNI broadcaster Java feat; the actual code-merge SHA for the v0.9.x release line is `1c4ae35`. |
+| `v0.9.0` (tag, local + origin) | `a6b574a` | Points at code-merge commit. Unchanged across hotfix #1..#4 — all four shipped as `develop`-only single-fix commits per the post-v0.9.0 housekeeping agreement. |
 
 - Working tree: clean on `develop`. `git fsck`: 0 errors.
 - Hotfix #2 commits on `develop` (this session):

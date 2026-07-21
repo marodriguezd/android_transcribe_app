@@ -758,18 +758,21 @@ Two user-reported defects addressed in commit `a31a77f` on `develop` (push to `o
 - Verify the post-process settings toast reads `Settings saved` (English), not `Configuración guardada`.
 - (Pre-v0.9.1 release prep) bump `versionCode` 32 → 33 and `versionName` 0.9.0 → 0.9.1 in `app/build.gradle.kts`; author `fastlane/metadata/android/en-US/changelogs/33.txt` covering both fixes; sign the release APK locally (requires `release.keystore` at project root + `KEY_ALIAS` / `KEY_PASS` / `STORE_PASS` exported, otherwise the v0.8.6 defensive build asserts fail-fast); `gh release create v0.9.1 --target main --notes-file changelogs/33.txt` with the signed APK.
 
-### End-of-session invariants
+### End-of-session invariants (post hotfix #2 fix+docs, 2026-07-21)
 
 | Ref | SHA | Notes |
 |---|---|---|
-| `main` (local + origin) | `9834358` | Default branch on GitHub |
-| `develop` (local + origin) | `9834358` | Mirrors `main` |
-| `v0.9.0` (tag, local + origin) | `a6b574a` | Points at code-merge commit; unchanged across the two doc commits above |
+| `main` (local + origin) | `af79a89` | Default branch on GitHub. Tip: `docs(AGENTS): add Session history (post-v0.9.0 housekeeping) - close the audit trail` (direct-pushed at the v0.9.0 housekeeping cycle, NOT FF'd into `develop`). |
+| `develop` (local + origin) | `7ff296a` | **9 commits ahead of `main`** (`main` has nothing `develop` doesn't). The 9 commits are: hotfix #1 `a31a77f`+`4f52d4c`, Canary multilingual `1c4ae35`+`7171a6b`+`56d4469`+`7f03045`+`cfe84f3`, and hotfix #2 `fb17897`+`7ff296a`. The "develop mirrors main" baseline from § Branches is currently broken — next housekeeping-style coordinated move should FF `main` to `develop`'s tip (`7ff296a`). |
+| `v0.9.0` (tag, local + origin) | `a6b574a` | Points at code-merge commit. Unchanged across hotfix #1 and hotfix #2 — both shipped as `develop`-only single-fix commits per the post-v0.9.0 housekeeping agreement. |
 
-- Working tree: clean. `git fsck`: 0 errors. Dangling objects: 0.
-- Local tags: 8. Origin tags: 8. Identical inventory.
-- Badge SVGs: both `passing`.
-- GitHub Releases: 0 (1 deferred, see §11).
-- `.git/` size post-gc: ~16.5 MB.
+- Working tree: clean on `develop`. `git fsck`: 0 errors.
+- Hotfix #2 commits on `develop` (this session):
+  - `fb17897` — `fix(MainActivity): route user-tap model-radio selection through per-button CompoundButton listeners` (closes the "both radios appear selected" regression + the "needs close-and-reopen to refresh UI after delete" regression; replaces dead `modelGroup.setOnCheckedChangeListener` with `attachModelRadioListener` per-button listeners + `onVariantSelectedByUser` dispatch helper + `switchModelAsync` helper).
+  - `7ff296a` — `docs(AGENTS): session history block for post-v0.9.0 RadioGroup user-tap fix`.
+- Hotfix #2 CI validation (for `7ff296a`): Build Debug APK run `29820968886` → `completed / success`; Event Router Test run `29820969008` → `completed / success`. Java compile + R8 + cargo-ndk + ONNX bundled extract all green. APK artifact: `gh run download 29820968886 --name app-debug-apk`. On-device smoke test deferred to user (A059 at `192.168.1.45:37601`).
+- Local tags: 8. Origin tags: 8. Identical inventory: `v0.6.0`, `v0.7.0`, `v0.8.0`, `v0.8.4`, `v0.8.5`, `v0.8.7`, `v0.8.8`, `v0.9.0`.
+- Badge SVGs: both `passing` on `develop`.
+- GitHub Releases: 0 (cut of `v0.9.1` deferred per § Branches — requires local JDK + NDK + `release.keystore` + `KEY_ALIAS` / `KEY_PASS` / `STORE_PASS`; the CI workflow produces debug APKs as artifacts only, does not sign release APKs).
 
 

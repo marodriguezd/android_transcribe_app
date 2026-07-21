@@ -433,6 +433,147 @@ v0.8.4 release APK contains the silent-error bug above. Users who downloaded v0.
 ### Known limitations (pre-existing, not introduced)
 - `firstLaunchDialogShown = true` is set BEFORE `showFirstLaunchDownloadDialog`; if the user rotates the device while the welcome dialog is on screen, the rebuilt Activity will not re-fire the picker. Independent of this change.
 
+## Session history (post-v0.9.0 Canary multilingual + borrow fixes) — 2026-07-21
+
+This entry documents the multilingual transcription feature added to the Canary 180M AED model (English, Spanish, German, French, plus auto-detect), plus two follow-up Rust compile-error fixes the CI introduced when validating the feature.
+
+### 1. User report — Canary (and possibly 0.6B) only transcribed English for Spanish audio
+
+User observation in Spanish: the app only transcribes in English even when speaking Spanish, on both the Canary 180M "Fastest" radio and (they believed) the Parakeet 0.6B "Fast" radio.
+
+### 2. Root cause — hardcoded English at decoder prefix positions 4+5
+
+`transcribe-rs/src/engines/parakeet/model_180m.rs` had a `transcribe_input: Vec<i64>` built once at `from_memory()` time that hardcoded `<|en|>` at positions 4 (source lang) and 5 (target lang) of the 10-token decoder prefix. Even though the Canary vocab (`app/src/main/assets/canary-180m-flash-int8/vocab.txt`) contained `<|es|>` (id 169), `<|de|>` (id 76), `<|fr|>` (id 69), and `<|unklang|>` (id 21) for auto-detect, the app never used them — Canary was permanently conditioned on English.
+
+The Parakeet TDT 0.6B v3 path is structurally different (CTC + auto-detect, no prefix tokens in the codebase) and was left untouched in code; only the UI subtitle was updated from `(English)` to `(multilingual)` + `Languages: 25 European languages` to match NVIDIA's official claim for v3. Whether INT8 quantization preserves that multilingual accuracy for the 0.6B path is still TBD on-device.
+
+### 3. `CanaryLanguage` enum + dynamic prefix builder
+
+Added `pub enum CanaryLanguage { Auto, En, Es, De, Fr }` (Default = Auto, Copy + Eq) with:
+
+- `CanaryLanguage::from_pref(&str)` — coerces unknown values to `Auto` so malformed SharedPreferences entries never crash the load.
+- `Parakeet180mModel::build_prefix(lang) -> Vec<i64>` — returns a 10-token prefix derived from `lang`, picking the matching `<|lang|>` token from cached fields `lang_en_id`, `lang_es_id`, `lang_de_id`, `lang_fr_id`, `lang_unksrc_id`.
+- Static prefix tokens (8 of the 10 prefix positions: space, `<|startofcontext|>`, `<|startoftranscript|>`, `<|emo:undefined|>`, `<|pnc|>`, `<|noitn|>`, `<|notimestamp|>`, `<|nodiarize|>`) cached as plain `i64` fields so the prefix can be rebuilt per call without re-tokenising.
+- `set_language(lang)` / `current_language()` on `Parakeet180mModel`.
+- `EngineWrapper::set_language(lang) -> bool` (true for V180m, no-op for V0_6b) and `current_language()`.
+- `engine::set_language(lang) -> Result<(), String>` — SHORT-circuited to drop the dead `&mut JNIEnv, &JObject` args the previous signature inherited from `read_model_variant` (reviewer flagged the dead args in the first pass).
+- `read_transcription_language(env, context) -> CanaryLanguage` — mirrors `read_model_variant` to pull the `transcription_language` SharedPreferences string and coerce via `from_pref`.
+- `do_load_180m` calls `read_transcription_language` and `model.set_language(initial_lang)` AFTER model construction, so a fresh download already respects the user's last selection without needing a separate nativeSetLanguage call at Activity init.
+
+### 4. JNI export `Java_dev_notune_transcribe_MainActivity_nativeSetLanguage`
+
+New JNI entry point in `src/main_activity.rs`. Body:
+
+```rust
+let lang_s: String = env.get_string(&lang_str)?;        // canaryLanguage::from_pref(&lang_s)
+let lang = CanaryLanguage::from_pref(&lang_s);
+engine::set_language(lang)                             // returns Err silently if no engine loaded
+```
+
+Called from the `OnCheckedStateChangeListener` of the ChipGroup in `MainActivity.setupLanguagePicker`. Activity reference included in the signature for future status-callback symmetry even though current Rust impl does not touch it.
+
+### 5. Java UI
+
+**`SettingsManager.java`** — added `KEY_TRANSCRIPTION_LANGUAGE = "transcription_language"` (default `"auto"`) + `getTranscriptionLanguage()` / `setTranscriptionLanguage(String)`. `getTranscriptionLanguage()` never returns null.
+
+**`MainActivity.java`** —
+
+- 7 new fields: `containerLanguagePicker: View`, `chipGroupLanguage: ChipGroup`, 5 chip references, `textModelLanguages: TextView`, `languageSelectionChanging: boolean`.
+- New `setupLanguagePicker(SettingsManager sm)` method called from `onCreate` after `setupModelSelection`. Resolves all 7 picker views with per-view null-guard, restores the persisted preference into chip group (no listener attached yet at this point, so the `languageSelectionChanging` flag is overkill — kept as a defensive comment in the listener anyway in case future code attaches the listener first), wires `setOnCheckedStateChangeListener((group, checkedIds) -> …)`.
+- `OnCheckedStateChangeListener` persists pref via `SettingsManager.setTranscriptionLanguage(lang)`, calls `nativeSetLanguage(this, lang)`, and shows a Snackbar `"Language: <name>"` so the user gets feedback (label mapped from `lang` code via switch to "Spanish" / "German" / "French" / "English" / "Auto" — not the raw `"ES"` ISO code, which the first review pass flagged as not user-friendly).
+- New `updateLanguagePickerVisibility(variant)` — toggles `container_language_picker` visibility on/off based on whether the variant is `180m` (only Canary has a language context; Parakeet 0.6B v3 auto-detects via CTC, "Use without model" has no engine).
+- New `updateLanguagesSubtitle(variant)` — populates `text_model_languages` with the compact label for the current variant: Canary → "Languages: English, Spanish, German, French"; Parakeet → "Languages: 25 European languages"; "none" → GONE.
+- `selectRadioButton(variant)` calls both `updateLanguagePickerVisibility(variant)` AND `updateLanguagesSubtitle(variant)` after the radio update, so the picker + subtitle stay in lockstep with the selected radio from every caller path (download completion, `confirmDeleteModel` auto-fallback, welcome dialog buttons). `updateModelSelectionUI` (called from `onResume`) NO LONGER calls `updateLanguagePickerVisibility` directly because `selectRadioButton` already does — first review pass caught this double-call.
+
+### 6. Layout
+
+`activity_main.xml`:
+
+- New `text_model_languages` TextView always visible (sibling BEFORE `container_language_picker` so it does NOT get hidden by the container's `visibility="gone"` when variant != 180m).
+- New `container_language_picker` LinearLayout with `visibility="gone"` by default, containing a title + `chip_group_language` ChipGroup with `app:singleSelection="true"`, `app:selectionRequired="true"`, and 5 chips (`chip_language_auto`, `_en`, `_es`, `_de`, `_fr`) styled as `Widget.Material3.Chip.Filter` with `android:checkable="true"`.
+
+### 7. Strings
+
+`strings.xml`:
+
+- Updated `model_card_meta_parakeet`: `(English)` → `(multilingual)`.
+- Updated `model_card_meta_canary`: `(English)` → `(4 languages)`.
+- Added `model_card_meta_languages_canary` (full list reference) and `model_card_meta_languages_parakeet` (full 25-language list).
+- Added compact subtitles `model_card_languages_canary_compact` ("Languages: English, Spanish, German, French") and `model_card_languages_parakeet_compact` ("Languages: 25 European languages") — the actual `text_model_languages` text.
+- Added chip labels `desc_language_section` ("Language (Canary 180M only)"), `language_auto`, `language_english`, `language_spanish`, `language_german`, `language_french`.
+- Added `msg_language_set = "Language: %1$s"` for the Snackbar (format arg is the human-readable label, not the ISO code).
+
+### 8. First CI attempt (commit 1c4ae35) — failed with E0502
+
+Pushed `origin/develop` after the user said "no cambiemos más por ahora, sibe a repo". CI `Build Debug APK` failed during `:app:cargoNdkBuild`:
+
+```
+error[E0502]: cannot borrow `*self` as immutable because it is also
+borrowed as mutable
+at transcribe-rs/src/engines/parakeet/model_180m.rs:360:30
+location of mutable borrow: line 328-329 (self.encoder)
+```
+
+Root cause diagnosed by the thinker agent: `ort`'s `Session::run()` returns a `SessionOutputs<'r>` whose lifetime ties the mutable borrow of `self.encoder` to the lifetime of the output tensors. As long as the outputs are alive further down the function, `self.encoder` stays borrowed — so a `self.build_prefix(...)` call later (which is on `&self`) cannot fire. The bug had been masked earlier by the original code using `self.transcribe_input.clone()` (which doesn't touch `self` at all).
+
+### 9. Fix commit 7171a6b — drop the cache, build prefix once at the top
+
+Cleanest fix: drop the per-language prefix cache entirely. The cache was a perf optimisation (avoid 80-byte Vec allocation per `transcribe_samples` call) — `transcribe_samples` is called once per dictation session, not per frame, so the allocation is negligible. The fix moves the single `self.build_prefix(self.current_lang)` call to the very top of `transcribe_samples` — right after the empty-samples / mel-features guards and BEFORE any `Tensor::from_array` that feeds `self.encoder.run(...)`. After this call returns an owned `Vec<i64>`, subsequent `&mut self.encoder` / `&mut self.decoder` borrows are entirely disjoint because `input_ids` is plain owned data, not a reference back into `self`.
+
+### 10. Second CI attempt (commit 7171a6b) — failed with E0423
+
+CI Build Debug APK failed again, this time at a smaller scope:
+
+```
+error[E0423]: expected value, found built-in attribute `lang`
+at transcribe-rs/src/engines/parakeet/model_180m.rs:381:13
+    |             lang,
+    |             ^^^^ not a value
+```
+
+When removing the local `let lang = self.current_lang;` for fix 7171a6b, I'd missed a stray reference to that local in the `input_ids` debug log:
+
+```rust
+log::info!(
+    "180M input_ids: len={}, lang={:?}, values={:?}",
+    input_ids.len(),
+    lang,                                  // <-- undefined after 7171a6b
+    input_ids.iter().map(|x| *x as i64).collect::<Vec<_>>()
+);
+```
+
+### 11. Fix commit 56d4469 — replace `lang` with `self.current_lang` in the log
+
+`CanaryLanguage` is a `Copy` enum so reading the field directly does not hold a borrow on `self`, which is the same NLL-safe pattern we used at the top of `transcribe_samples`. Three-line diff; the surrounding `input_ids.len()` and `.iter().map(...).collect::<Vec<_>>()` are unaffected.
+
+### Files changed across the three commits
+
+| File | Commits | Net |
+|------|---------|-----|
+| `transcribe-rs/src/engines/parakeet/model_180m.rs` | 1c4ae35 + 7171a6b + 56d4469 | +197 / -33 |
+| `transcribe-rs/src/engines/parakeet/mod.rs` | 1c4ae35 | +1 / -1 |
+| `src/engine.rs` | 1c4ae35 | +107 / -16 |
+| `src/main_activity.rs` | 1c4ae35 | +71 / -5 |
+| `app/src/main/java/dev/notune/transcribe/SettingsManager.java` | 1c4ae35 | +27 / 0 |
+| `app/src/main/java/dev/notune/transcribe/MainActivity.java` | 1c4ae35 | +171 / -2 |
+| `app/src/main/res/layout/activity_main.xml` | 1c4ae35 | +103 / 0 |
+| `app/src/main/res/values/strings.xml` | 1c4ae35 | +28 / -2 |
+
+### Verification
+
+- **`Event Router Test`** workflow: passed at 1c4ae35, 7171a6b, in progress at 56d4469 (run 29814411572 at time of writing).
+- **`Build Debug APK`** workflow: failed at E0502 on 1c4ae35, failed at E0423 on 7171a6b, **in progress** at 56d4469 — user is watching for green before flashing the A059.
+- **Code-reviewer-minimax-m3** — APPROVED across three passes (initial approve + two follow-up approves for the E0502 / E0423 fixes). Snackbar displays readable chip label (Spanish, not raw ES); updateLanguagePickerVisibility double-call eliminated; languageSelectionChanging flag usage simplified.
+- **Rust checker consistency**: AGENTS.md invariant "All `Mutex::lock()` calls use `unwrap_or_else(|poisoned| { log::error!; poisoned.into_inner() })`" preserved in `engine::set_language` even after the signature simplification (the env / _context args were dropped but the `&mut GLOBAL_ENGINE` mutex recovery is unchanged). No new JNI entry point violated "All `extern "system"` JNI functions use `JObject` (not `JClass`) for instance-method `this` parameter" or "All `.expect()` / `.unwrap()` in JNI FFI functions replaced with error handling + early return" — `nativeSetLanguage` uses `match env.get_string(...)` for error handling.
+
+### Next steps (planned)
+
+- **Confirm green CI on 56d4469** — watch run 29814411572 in the Actions tab. User is on this.
+- **On-device Spanish smoke test** on Samsung A059 (Android 16, `192.168.1.45:37601`) — pick Canary 180M, choose "Spanish" in the new language picker, dictate Spanish via `RecognizeActivity` or feed a Spanish WAV through `TranscribeFileActivity`. Verify the output is Spanish text (not garbled English) and the Snackbar shows "Language: Spanish". Should produce the Steve Jobs "connecting the dots" speech in Spanish with the new prefix tokens propagating through the decoder loop.
+- **Investigate the 0.6B Spanish path separately** — the strings claim "multilingual" / "25 European languages" but the codebase does not invoke the Parakeet TDT's `<|predict_lang|>` conditioning, so on-device verification is required before we publish that as a user-facing claim. If INT8 quantization does lose multilingual accuracy, options are: (a) add TDT language prefix conditioning (similar pattern to what we did for Canary, but in `transcribe-rs/src/engines/parakeet/model.rs`); or (b) switch the 0.6B variant to FP32; or (c) drop the multilingual claim from the strings.
+- **Release prep** — bump `versionCode 32→33` and `versionName 0.9.0→0.9.1` in `app/build.gradle.kts`, author `fastlane/metadata/android/en-US/changelogs/33.txt` covering the multilingual feature, sign the release APK locally (requires `release.keystore` + `KEY_ALIAS` / `KEY_PASS` / `STORE_PASS`), and `gh release create v0.9.1 --target main --notes-file changelogs/33.txt`. AGENTS.md "Deferred (mobile build env constraint)" subsection still applies — no JDK / NDK / cargo-ndk locally, so release build is a manual step.
+- **Add Rust unit test for the prefix builder** — currently no automated regression test for `CanaryLanguage::from_pref` or `build_prefix`. A trivial test (`#[test] fn build_prefix_es_uses_es_token() { ... }`) would have caught the E0502 + E0423 chain before it took 3 commits to settle. Worth adding to `transcribe-rs/tests/parakeet.rs` against a synthetic vocab with `<|en|>`/`<|es|>`/`<|unklang|>`/delimiter tokens only.
+
 ## Session history (post-v0.9.0 housekeeping) — 2026-07-20
 
 This entry documents the post-v0.9.0 cleanup pass that brought the local + remote repo into a clean, aligned state. Subtasks are listed in chronological order. All operations were executed from a Linux host; no Android SDK / NDK / `cargo-ndk` available locally — release-side builds remained CI-only as documented in the v0.8.x history.

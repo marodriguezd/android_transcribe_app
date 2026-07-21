@@ -311,6 +311,18 @@ impl Parakeet180mModel {
             });
         }
 
+        // Build the 10-token decoder prefix at the TOP of
+        // transcribe_samples — before any self.encoder / self.decoder
+        // borrow opens. Doing it here avoids the E0502 that would fire
+        // if we called self.build_prefix later (after self.encoder.run),
+        // because ort's Session::run keeps a mutable borrow of
+        // self.encoder tied to the lifetime of the returned outputs
+        // reference. The Vec<i64> returned from build_prefix is owned
+        // and does not borrow self anywhere, so it stays disjoint from
+        // the decoder-loop borrows below.
+        let mut input_ids = self.build_prefix(self.current_lang);
+        let prefix_len = input_ids.len();
+
         let features_t = features.t();
         let audio_signal_data: Vec<f32> = features_t.iter().copied().collect();
         let audio_signal = Tensor::from_array((
@@ -356,8 +368,11 @@ impl Parakeet180mModel {
         // the prefix under our feet. The decode loop is short (a few
         // hundred steps max for typical dictation) so this is more than
         // accurate enough.
-        let lang = self.current_lang;
-        let mut input_ids = self.build_prefix(lang);
+        // input_ids was already built at the top of transcribe_samples
+        // before any encoder borrow opened (see the comment around
+        // `let mut input_ids = self.build_prefix(...)` near features_t).
+        // We just re-read the slice length here for use in the prefix
+        // loop below; no re-tokenisation needed.
         let prefix_len = input_ids.len();
 
         log::info!(

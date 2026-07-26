@@ -1,3 +1,21 @@
+# v0.1.20
+
+Fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app), built on top of upstream **v0.1.18** (inherits everything from the v0.1.19 layer). This release fixes the language-handling behavior and ships a new default post-processing prompt.
+
+## What's new vs v0.1.19
+
+### 🌍 Default transcription language = device language
+- On first run (and whenever no language has been chosen) the app now defaults the transcription language to the **device's current language** (e.g. `es-ES`, `en-US`, `fr-FR`) instead of leaving it empty.
+- Previously an empty language left the bundled Canary 180M Flash model with no hint, so it defaulted to **English for every input language** regardless of what was spoken. Now speech is transcribed in the phone's system language by default.
+- The language is resolved at app start (`App.onCreate`, in every process including the `:ime` keyboard) and written to `model_language`; the engine's existing per-run locale degradation (`es-ES` → `es`) still applies.
+- The language dropdown's "Automatic" option is now labeled **"Auto (device language)"** and, when picked, writes the device language as the hint. Users can still override it explicitly with any supported language.
+
+### 🤖 New default AI post-processing prompt
+- Replaced the bundled default system prompt with a Wispr-Flow-style dictation engine prompt: zero-loss cleanup, thematic blocking into paragraphs, stutter/filler removal (including `o sea`, `bueno`, `vaya`…), spoken-correction handling, smart numbers/currency/percent formatting, and enumeration lists.
+- The prompt uses a `${output}` marker where the raw transcript is injected before the LLM call, so the cleaned text is returned in the same language as the input.
+
+---
+
 # v0.1.19
 
 Fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app), built on top of upstream **v0.1.18**. Everything from upstream still works the same — this release only adds a layer on top and changes the bundled model. Below is what differs from the original.

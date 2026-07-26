@@ -58,6 +58,12 @@ public class PostProcessor {
         String apiKey = settings.getApiKey();
         String model = settings.getModelName();
         String systemInstruction = settings.getActivePromptBody();
+        // Inject the transcript where the prompt template marks ${output}
+        // (e.g. the bundled Wispr-style prompt). Without the marker the prompt
+        // is used as-is and the text travels in the user message below.
+        if (systemInstruction != null && systemInstruction.contains("${output}")) {
+            systemInstruction = systemInstruction.replace("${output}", rawText);
+        }
 
         try {
             JSONObject json = new JSONObject();

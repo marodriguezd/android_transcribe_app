@@ -183,7 +183,10 @@ public class ModelsActivity extends AppCompatActivity {
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 String tag = tags.get(position);
                 if (tag.equals(readConfig("model_language"))) return;
-                writeConfig("model_language", tag);
+                // "Auto" resolves to the device's current language so the model
+                // transcribes in the user's system language by default.
+                String value = tag.isEmpty() ? deviceLanguageTag() : tag;
+                writeConfig("model_language", value);
                 snackbar(getString(R.string.models_language_saved));
                 statusText.setText(getString(R.string.models_loading));
                 reloadModelNative(ModelsActivity.this);
@@ -193,6 +196,13 @@ public class ModelsActivity extends AppCompatActivity {
             public void onNothingSelected(AdapterView<?> parent) {
             }
         });
+    }
+
+    /// The device's current language as a BCP-47 tag (e.g. "es-ES", "en-US",
+    /// "fr-FR"). Used when the user picks "Auto" so the model transcribes in
+    /// the phone's system language.
+    private static String deviceLanguageTag() {
+        return Locale.getDefault().toLanguageTag();
     }
 
     // --- Inference threads --------------------------------------------------

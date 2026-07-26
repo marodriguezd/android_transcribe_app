@@ -83,6 +83,12 @@ dependencies {
     // Material Components (Material 3 / Material You). Pulls in AppCompat.
     implementation("com.google.android.material:material:1.12.0")
 
+    // AI post-processing layer (fork addition): HTTP client for the
+    // OpenAI-compatible /chat/completions endpoint, and encrypted storage
+    // for the API key.
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
     // Material/AppCompat transitively pull the legacy kotlin-stdlib-jdk7/jdk8:1.6.21
     // (via kotlinx-coroutines-android), whose classes were folded into
     // kotlin-stdlib in Kotlin 1.8 — causing duplicate-class build failures.

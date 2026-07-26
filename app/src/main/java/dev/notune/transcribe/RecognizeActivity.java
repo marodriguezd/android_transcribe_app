@@ -158,6 +158,35 @@ public class RecognizeActivity extends AppCompatActivity {
                 return;
             }
 
+            SettingsManager settings = new SettingsManager(this);
+            if (settings.isPostProcessEnabled()) {
+                status.setText("Refining...");
+                new PostProcessor(settings).process(text, new PostProcessor.PostProcessCallback() {
+                    @Override
+                    public void onSuccess(String refinedText) {
+                        deliverResult(refinedText != null && !refinedText.trim().isEmpty()
+                                ? refinedText : text);
+                    }
+
+                    @Override
+                    public void onError(String error) {
+                        Log.w(TAG, "Post-process failed, delivering raw text: " + error);
+                        deliverResult(text);
+                    }
+                });
+            } else {
+                deliverResult(text);
+            }
+        });
+    }
+
+    private void deliverResult(String text) {
+        runOnUiThread(() -> {
+            if (text == null || text.trim().isEmpty()) {
+                setResult(Activity.RESULT_CANCELED);
+                finish();
+                return;
+            }
             ArrayList<String> results = new ArrayList<>();
             results.add(text);
 

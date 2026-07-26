@@ -470,28 +470,53 @@ public class RustInputMethodService extends InputMethodService {
                 }
                 return;
             }
-            String committed = text + " ";
-            InputConnection ic = getCurrentInputConnection();
-            if (inputActive && ic != null) {
-                commitTranscribedText(ic, committed);
+
+            SettingsManager settings = new SettingsManager(this);
+            if (settings.isPostProcessEnabled()) {
+                if (statusView != null) statusView.setText("Refining...");
+                new PostProcessor(settings).process(text, new PostProcessor.PostProcessCallback() {
+                    @Override
+                    public void onSuccess(String refinedText) {
+                        String out = (refinedText != null && !refinedText.trim().isEmpty())
+                                ? refinedText : text;
+                        mainHandler.post(() -> commitFinalText(out));
+                    }
+
+                    @Override
+                    public void onError(String error) {
+                        Log.w(TAG, "Post-process failed, committing raw text: " + error);
+                        mainHandler.post(() -> commitFinalText(text));
+                    }
+                });
             } else {
-                // No editor is focused right now (common on long transcribes where
-                // a web field in Firefox/Gemini dropped focus while we processed
-                // audio). Committing now would be silently dropped, so defer the
-                // text until a field is focused again instead of losing it.
-                pendingCommitText = committed;
-            }
-            if (pauseAudioActive) {
-                audioPauser.abandon(this);
-                pauseAudioActive = false;
-            }
-            updateRecordButtonUI(false);
-            if (statusView != null) statusView.setText("Tap to Record");
-            if (pendingSwitchBack) {
-                pendingSwitchBack = false;
-                switchToPreviousInputMethod();
+                commitFinalText(text);
             }
         });
+    }
+
+    // Commits (or defers) the final transcribed/refined text and resets UI.
+    private void commitFinalText(String text) {
+        String committed = text + " ";
+        InputConnection ic = getCurrentInputConnection();
+        if (inputActive && ic != null) {
+            commitTranscribedText(ic, committed);
+        } else {
+            // No editor is focused right now (common on long transcribes where
+            // a web field in Firefox/Gemini dropped focus while we processed
+            // audio). Committing now would be silently dropped, so defer the
+            // text until a field is focused again instead of losing it.
+            pendingCommitText = committed;
+        }
+        if (pauseAudioActive) {
+            audioPauser.abandon(this);
+            pauseAudioActive = false;
+        }
+        updateRecordButtonUI(false);
+        if (statusView != null) statusView.setText("Tap to Record");
+        if (pendingSwitchBack) {
+            pendingSwitchBack = false;
+            switchToPreviousInputMethod();
+        }
     }
 
     // Commits transcribed text into the active input connection, optionally

@@ -46,12 +46,12 @@
     <string name="models_title">Modelos de voz</string>
     <string name="models_section">Modelo de voz</string>
     <string name="models_active_section">Modelo activo</string>
-    <string name="models_builtin_sub">Incluido en la app · 25 idiomas europeos</string>
+    <string name="models_builtin_sub">Incluido en la app · inglés, español, alemán, francés</string>
     <string name="model_desc_parakeet110m">Solo inglés, pequeño y rápido</string>
     <string name="model_desc_sensevoice">Inglés, chino, cantonés, japonés, coreano; rápido</string>
     <string name="model_desc_whisper_small">99 idiomas, compacto; traduce al inglés</string>
     <string name="model_desc_nemotron">40 idiomas incl. chino, japonés, coreano, árabe, hindi; con puntuación</string>
-    <string name="model_desc_parakeet_v3_q8">Como el modelo integrado, mayor precisión</string>
+    <string name="model_desc_parakeet_v3_q8">25 idiomas europeos, alta precisión</string>
     <string name="model_desc_whisper_turbo">99 idiomas, el más preciso de esta lista; no traduce</string>
     <string name="model_desc_browse">Explorar todos los modelos de transcribe.cpp</string>
     <string name="models_desc">El modelo integrado funciona al instante. También puedes importar cualquier modelo GGUF de transcribe.cpp que hayas descargado. La app permanece totalmente sin conexión; las descargas se hacen en tu navegador. El teclado de voz aplica un cambio de modelo tras reiniciarse.</string>
@@ -105,4 +105,18 @@
 
     <string name="voice_help_title">Configuración de la entrada de voz</string>
     <string name="voice_help_body">Cómo usarlo\n• Abre cualquier app y toca el micrófono de un teclado/una app compatible. Aparece un panel pequeño, hablas, tocas para detener y el texto se inserta. (Activa «Parada automática tras silencio» en los ajustes para que se detenga solo.)\n\nQué teclados abren el panel de voz\n• Microsoft SwiftKey (no es de código abierto) y la búsqueda por voz de los sitios web abren el panel directamente.\n• AnySoftKeyboard es la vía de código abierto al panel: su tecla de micrófono lo abre mientras no haya ningún teclado de voz activado en tu sistema.\n\nOtros teclados de código abierto\n• HeliBoard, FlorisBoard, OpenBoard, Fossify Keyboard y Unexpected Keyboard no abren el panel: su tecla de micrófono cambia al teclado «Offline Voice Input». Actívalo una vez (mira «Alternativa: teclado de voz»), habla allí y vuelve con su tecla de cambio de teclado. FUTO Keyboard trae su propia entrada de voz.\n• Gboard solo usa la entrada de voz de Google y no puede usar esta app en absoluto.\n\nSi se abre la entrada de voz propia de SwiftKey\n• Ajustes → Entrada enriquecida → desactiva «Entrada de voz multimodal».\n• Luego toca de nuevo el micrófono y elige «Offline Voice Input».\n\nSi Android pregunta qué app usar\n• Elige «Offline Voice Input» y toca «Siempre».\n\nSi siempre se abre otra app\n• Abre Ajustes → Aplicaciones → esa app → «Abrir de forma predeterminada» → Borrar valores predeterminados, e inténtalo de nuevo.</string>
+    <string name="pp_card_title">Posprocesado con IA</string>
+    <string name="pp_card_subtitle">Refina las transcripciones con un LLM compatible con OpenAI.</string>
+    <string name="pp_card_button">Ajustes de posprocesado</string>
+    <string name="pp_enable">Activar posprocesado con IA</string>
+    <string name="pp_provider">Proveedor</string>
+    <string name="pp_api_url">URL base (compatible con OpenAI)</string>
+    <string name="pp_api_key">Clave API</string>
+    <string name="pp_model">Nombre del modelo</string>
+    <string name="pp_refresh_models">Obtener modelos disponibles</string>
+    <string name="pp_models_loaded">Modelos cargados — toca el campo para elegir uno</string>
+    <string name="pp_models_error">No se pudieron obtener los modelos</string>
+    <string name="pp_prompt">Prompt de sistema</string>
+    <string name="pp_save">Guardar</string>
+    <string name="pp_saved">Ajustes guardados</string>
 </resources>

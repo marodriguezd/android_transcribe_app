@@ -45,8 +45,11 @@ pub fn extract_builtin_model(env: &mut JNIEnv, context: &JObject) -> anyhow::Res
     let model_dir = base_path.join(BUILTIN_MODEL_DIR);
     let marker_file = model_dir.join(EXTRACTION_COMPLETE_MARKER);
 
-    // Only skip extraction if the marker file exists (proves prior extraction completed)
-    if marker_file.exists() {
+    // Only skip extraction if the marker file exists (proves prior extraction
+    // completed) AND the extracted files match the current APK's assets — an
+    // app update can ship a different bundled model, in which case the stale
+    // extraction must be replaced (otherwise the old model is loaded forever).
+    if marker_file.exists() && extraction_matches_assets(env, context, &model_dir)? {
         return find_gguf(&model_dir);
     }
 
@@ -86,6 +89,53 @@ pub fn invalidate_builtin_model(model_path: &Path) {
             let _ = std::fs::remove_file(&marker);
         }
     }
+}
+
+/// Returns true when the set of files previously extracted into `model_dir`
+/// matches the current APK's `builtin-model` asset listing (names and sizes).
+/// A mismatch means the app was updated with a different bundled model and
+/// the stale extraction must be redone.
+fn extraction_matches_assets(
+    env: &mut JNIEnv,
+    context: &JObject,
+    model_dir: &Path,
+) -> anyhow::Result<bool> {
+    use jni::objects::JObjectArray;
+
+    let asset_manager_obj = env
+        .call_method(
+            context,
+            "getAssets",
+            "()Landroid/content/res/AssetManager;",
+            &[],
+        )?
+        .l()?;
+
+    let path_jstring = env.new_string(BUILTIN_MODEL_DIR)?;
+    let list_array_obj = env
+        .call_method(
+            &asset_manager_obj,
+            "list",
+            "(Ljava/lang/String;)[Ljava/lang/String;",
+            &[(&path_jstring).into()],
+        )?
+        .l()?;
+
+    let list_array: JObjectArray = list_array_obj.into();
+    let len = env.get_array_length(&list_array)?;
+
+    for i in 0..len {
+        let file_name_obj = env.get_object_array_element(&list_array, i)?;
+        let file_name: String = env.get_string(&file_name_obj.into())?.into();
+        if !model_dir.join(&file_name).exists() {
+            log::info!(
+                "Bundled asset {} missing from extraction dir — re-extracting",
+                file_name
+            );
+            return Ok(false);
+        }
+    }
+    Ok(true)
 }
 
 /// Returns the single `.gguf` file in `dir`.

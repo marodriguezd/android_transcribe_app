@@ -46,12 +46,12 @@
     <string name="models_title">Sprachmodelle</string>
     <string name="models_section">Sprachmodell</string>
     <string name="models_active_section">Aktives Modell</string>
-    <string name="models_builtin_sub">In der App enthalten · 25 europäische Sprachen</string>
+    <string name="models_builtin_sub">In der App enthalten · Englisch, Spanisch, Deutsch, Französisch</string>
     <string name="model_desc_parakeet110m">Nur Englisch, klein und schnell</string>
     <string name="model_desc_sensevoice">Englisch, Chinesisch, Kantonesisch, Japanisch, Koreanisch; schnell</string>
     <string name="model_desc_whisper_small">99 Sprachen, kompakt; übersetzt ins Englische</string>
     <string name="model_desc_nemotron">40 Sprachen inkl. Chinesisch, Japanisch, Koreanisch, Arabisch, Hindi; mit Interpunktion</string>
-    <string name="model_desc_parakeet_v3_q8">Wie das integrierte Modell, höhere Präzision</string>
+    <string name="model_desc_parakeet_v3_q8">25 europäische Sprachen, hohe Präzision</string>
     <string name="model_desc_whisper_turbo">99 Sprachen, am genauesten in dieser Liste; kann nicht übersetzen</string>
     <string name="model_desc_browse">Alle transcribe.cpp-Modelle durchstöbern</string>
     <string name="models_desc">Das integrierte Modell funktioniert sofort. Du kannst auch jedes heruntergeladene transcribe.cpp-GGUF-Modell importieren. Die App bleibt vollständig offline; Downloads laufen über deinen Browser. Die Sprach-Tastatur übernimmt einen Modellwechsel nach ihrem Neustart.</string>
@@ -105,4 +105,18 @@
 
     <string name="voice_help_title">Einrichtung der Spracheingabe</string>
     <string name="voice_help_body">So funktioniert es\n• Öffne eine beliebige App und tippe auf das Mikrofon einer unterstützten Tastatur/App. Ein kleines Panel erscheint, du sprichst, tippst zum Stoppen, und der Text wird eingefügt. (Aktiviere „Auto-Stopp bei Stille“ in den Einstellungen, damit es von selbst stoppt.)\n\nWelche Tastaturen öffnen das Sprach-Panel\n• Microsoft SwiftKey (nicht Open Source) und die Sprachsuche auf Websites öffnen das Panel direkt.\n• AnySoftKeyboard ist der Open-Source-Weg zum Panel: Seine Mikrofontaste öffnet es, solange auf deinem System keine Sprach-Tastatur aktiviert ist.\n\nAndere Open-Source-Tastaturen\n• HeliBoard, FlorisBoard, OpenBoard, Fossify Keyboard und Unexpected Keyboard öffnen das Panel nicht: Ihre Mikrofontaste wechselt stattdessen zur „Offline Voice Input“-Tastatur. Aktiviere sie einmal (siehe „Alternative: Sprach-Tastatur“), sprich dort und kehre über deren Tastaturwechsel-Taste zurück. FUTO Keyboard bringt eine eigene Spracheingabe mit.\n• Gboard nutzt nur Googles eigene Spracheingabe und kann diese App gar nicht verwenden.\n\nFalls SwiftKeys eigene Spracheingabe öffnet\n• Einstellungen → Rich-Eingabe → „Multimodale Spracheingabe“ deaktivieren.\n• Tippe dann erneut auf das Mikrofon und wähle „Offline Voice Input“.\n\nFalls Android fragt, welche App verwendet werden soll\n• Wähle „Offline Voice Input“ und tippe auf „Immer“.\n\nFalls immer eine andere App öffnet\n• Öffne Einstellungen → Apps → diese App → „Standardmäßig öffnen“ → Standardeinstellungen löschen, und versuche es erneut.</string>
+    <string name="pp_card_title">KI-Nachbearbeitung</string>
+    <string name="pp_card_subtitle">Transkriptionen mit einem OpenAI-kompatiblen LLM verfeinern.</string>
+    <string name="pp_card_button">Einstellungen zur Nachbearbeitung</string>
+    <string name="pp_enable">KI-Nachbearbeitung aktivieren</string>
+    <string name="pp_provider">Anbieter</string>
+    <string name="pp_api_url">Basis-URL (OpenAI-kompatibel)</string>
+    <string name="pp_api_key">API-Schlüssel</string>
+    <string name="pp_model">Modellname</string>
+    <string name="pp_refresh_models">Verfügbare Modelle abrufen</string>
+    <string name="pp_models_loaded">Modelle geladen — tippe auf das Feld, um eines zu wählen</string>
+    <string name="pp_models_error">Modelle konnten nicht abgerufen werden</string>
+    <string name="pp_prompt">System-Prompt</string>
+    <string name="pp_save">Speichern</string>
+    <string name="pp_saved">Einstellungen gespeichert</string>
 </resources>

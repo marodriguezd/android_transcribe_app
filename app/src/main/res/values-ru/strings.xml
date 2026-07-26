@@ -46,12 +46,12 @@
     <string name="models_title">Речевые модели</string>
     <string name="models_section">Речевая модель</string>
     <string name="models_active_section">Активная модель</string>
-    <string name="models_builtin_sub">Встроена в приложение · 25 европейских языков</string>
+    <string name="models_builtin_sub">Встроена в приложение · английский, испанский, немецкий, французский</string>
     <string name="model_desc_parakeet110m">Только английский, маленькая и быстрая</string>
     <string name="model_desc_sensevoice">Английский, китайский, кантонский, японский, корейский; быстрая</string>
     <string name="model_desc_whisper_small">99 языков, компактная; переводит на английский</string>
     <string name="model_desc_nemotron">40 языков, вкл. китайский, японский, корейский, арабский, хинди; с пунктуацией</string>
-    <string name="model_desc_parakeet_v3_q8">Как встроенная модель, но точнее</string>
+    <string name="model_desc_parakeet_v3_q8">25 европейских языков, высокая точность</string>
     <string name="model_desc_whisper_turbo">99 языков, самая точная в этом списке; не переводит</string>
     <string name="model_desc_browse">Все модели transcribe.cpp</string>
     <string name="models_desc">Встроенная модель работает сразу. Вы также можете импортировать любую скачанную модель GGUF для transcribe.cpp. Приложение остаётся полностью офлайн; загрузки выполняются в браузере. Голосовая клавиатура применяет смену модели после перезапуска.</string>
@@ -105,4 +105,18 @@
 
     <string name="voice_help_title">Настройка голосового ввода</string>
     <string name="voice_help_body">Как использовать\n• Откройте любое приложение и нажмите микрофон на поддерживаемой клавиатуре/в приложении. Появится небольшая панель, вы говорите, нажимаете для остановки, и текст вставляется. (Включите «Автостоп при тишине» в настройках, чтобы она останавливалась сама.)\n\nКакие клавиатуры открывают голосовую панель\n• Microsoft SwiftKey (не с открытым кодом) и голосовой поиск на сайтах открывают панель напрямую.\n• AnySoftKeyboard — путь к панели с открытым кодом: его клавиша микрофона открывает её, пока в системе не включена ни одна голосовая клавиатура.\n\nДругие клавиатуры с открытым кодом\n• HeliBoard, FlorisBoard, OpenBoard, Fossify Keyboard и Unexpected Keyboard панель не открывают: их клавиша микрофона переключает на клавиатуру «Offline Voice Input». Включите её один раз (см. «Альтернатива: голосовая клавиатура»), говорите там и возвращайтесь клавишей переключения клавиатур. FUTO Keyboard содержит собственный голосовой ввод.\n• Gboard использует только голосовой ввод Google и вообще не может использовать это приложение.\n\nЕсли открывается собственный голосовой ввод SwiftKey\n• Настройки → Расширенный ввод → отключите «Мультимодальный голосовой ввод».\n• Затем снова нажмите микрофон и выберите «Offline Voice Input».\n\nЕсли Android спрашивает, какое приложение использовать\n• Выберите «Offline Voice Input» и нажмите «Всегда».\n\nЕсли всегда открывается другое приложение\n• Откройте Настройки → Приложения → это приложение → «Открывать по умолчанию» → Очистить настройки по умолчанию, и попробуйте снова.</string>
+    <string name="pp_card_title">ИИ-постобработка</string>
+    <string name="pp_card_subtitle">Улучшайте транскрипции с помощью LLM, совместимой с OpenAI.</string>
+    <string name="pp_card_button">Настройки постобработки</string>
+    <string name="pp_enable">Включить ИИ-постобработку</string>
+    <string name="pp_provider">Провайдер</string>
+    <string name="pp_api_url">Базовый URL (совместимый с OpenAI)</string>
+    <string name="pp_api_key">Ключ API</string>
+    <string name="pp_model">Название модели</string>
+    <string name="pp_refresh_models">Получить доступные модели</string>
+    <string name="pp_models_loaded">Модели загружены — коснитесь поля, чтобы выбрать</string>
+    <string name="pp_models_error">Не удалось получить модели</string>
+    <string name="pp_prompt">Системный промпт</string>
+    <string name="pp_save">Сохранить</string>
+    <string name="pp_saved">Настройки сохранены</string>
 </resources>

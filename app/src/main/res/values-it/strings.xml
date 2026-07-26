@@ -46,12 +46,12 @@
     <string name="models_title">Modelli vocali</string>
     <string name="models_section">Modello vocale</string>
     <string name="models_active_section">Modello attivo</string>
-    <string name="models_builtin_sub">Incluso nell\'app · 25 lingue europee</string>
+    <string name="models_builtin_sub">Incluso nell\'app · inglese, spagnolo, tedesco, francese</string>
     <string name="model_desc_parakeet110m">Solo inglese, piccolo e veloce</string>
     <string name="model_desc_sensevoice">Inglese, cinese, cantonese, giapponese, coreano; veloce</string>
     <string name="model_desc_whisper_small">99 lingue, compatto; traduce in inglese</string>
     <string name="model_desc_nemotron">40 lingue incl. cinese, giapponese, coreano, arabo, hindi; con punteggiatura</string>
-    <string name="model_desc_parakeet_v3_q8">Come il modello integrato, maggiore precisione</string>
+    <string name="model_desc_parakeet_v3_q8">25 lingue europee, alta precisione</string>
     <string name="model_desc_whisper_turbo">99 lingue, il più accurato di questa lista; non traduce</string>
     <string name="model_desc_browse">Sfoglia tutti i modelli transcribe.cpp</string>
     <string name="models_desc">Il modello integrato funziona subito. Puoi anche importare qualsiasi modello GGUF di transcribe.cpp che hai scaricato. L\'app resta completamente offline; i download avvengono nel browser. La tastiera vocale applica un cambio di modello dopo il riavvio.</string>
@@ -105,4 +105,18 @@
 
     <string name="voice_help_title">Configurazione dell\'immissione vocale</string>
     <string name="voice_help_body">Come usarlo\n• Apri qualsiasi app e tocca il microfono di una tastiera/app supportata. Appare un piccolo pannello, parli, tocchi per fermare e il testo viene inserito. (Attiva «Arresto automatico dopo il silenzio» nelle impostazioni per farlo fermare da solo.)\n\nQuali tastiere aprono il pannello vocale\n• Microsoft SwiftKey (non open source) e la ricerca vocale dei siti web aprono il pannello direttamente.\n• AnySoftKeyboard è la via open source al pannello: il suo tasto microfono lo apre finché nessuna tastiera vocale è attivata sul sistema.\n\nAltre tastiere open source\n• HeliBoard, FlorisBoard, OpenBoard, Fossify Keyboard e Unexpected Keyboard non aprono il pannello: il loro tasto microfono passa alla tastiera «Offline Voice Input». Attivala una volta (vedi «Alternativa: tastiera vocale»), parla lì e torna indietro con il suo tasto di cambio tastiera. FUTO Keyboard include una propria immissione vocale.\n• Gboard usa solo l\'immissione vocale di Google e non può usare affatto questa app.\n\nSe si apre l\'immissione vocale di SwiftKey\n• Impostazioni → Immissione avanzata → disattiva «Immissione vocale multimodale».\n• Poi tocca di nuovo il microfono e scegli «Offline Voice Input».\n\nSe Android chiede quale app usare\n• Scegli «Offline Voice Input» e tocca «Sempre».\n\nSe si apre sempre un\'altra app\n• Apri Impostazioni → App → quell\'app → «Apri per impostazione predefinita» → Cancella impostazioni predefinite, e riprova.</string>
+    <string name="pp_card_title">Post-elaborazione con IA</string>
+    <string name="pp_card_subtitle">Perfeziona le trascrizioni con un LLM compatibile con OpenAI.</string>
+    <string name="pp_card_button">Impostazioni di post-elaborazione</string>
+    <string name="pp_enable">Attiva la post-elaborazione con IA</string>
+    <string name="pp_provider">Provider</string>
+    <string name="pp_api_url">URL di base (compatibile con OpenAI)</string>
+    <string name="pp_api_key">Chiave API</string>
+    <string name="pp_model">Nome del modello</string>
+    <string name="pp_refresh_models">Ottieni i modelli disponibili</string>
+    <string name="pp_models_loaded">Modelli caricati — tocca il campo per sceglierne uno</string>
+    <string name="pp_models_error">Impossibile ottenere i modelli</string>
+    <string name="pp_prompt">Prompt di sistema</string>
+    <string name="pp_save">Salva</string>
+    <string name="pp_saved">Impostazioni salvate</string>
 </resources>

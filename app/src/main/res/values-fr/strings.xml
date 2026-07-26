@@ -46,12 +46,12 @@
     <string name="models_title">Modèles vocaux</string>
     <string name="models_section">Modèle vocal</string>
     <string name="models_active_section">Modèle actif</string>
-    <string name="models_builtin_sub">Inclus dans l\'application · 25 langues européennes</string>
+    <string name="models_builtin_sub">Inclus dans l\'application · anglais, espagnol, allemand, français</string>
     <string name="model_desc_parakeet110m">Anglais uniquement, petit et rapide</string>
     <string name="model_desc_sensevoice">Anglais, chinois, cantonais, japonais, coréen ; rapide</string>
     <string name="model_desc_whisper_small">99 langues, compact ; traduit vers l\'anglais</string>
     <string name="model_desc_nemotron">40 langues dont chinois, japonais, coréen, arabe, hindi ; avec ponctuation</string>
-    <string name="model_desc_parakeet_v3_q8">Comme le modèle intégré, précision supérieure</string>
+    <string name="model_desc_parakeet_v3_q8">25 langues européennes, haute précision</string>
     <string name="model_desc_whisper_turbo">99 langues, le plus précis de cette liste ; ne traduit pas</string>
     <string name="model_desc_browse">Parcourir tous les modèles transcribe.cpp</string>
     <string name="models_desc">Le modèle intégré fonctionne immédiatement. Vous pouvez aussi importer n\'importe quel modèle GGUF transcribe.cpp téléchargé. L\'application reste entièrement hors ligne ; les téléchargements passent par votre navigateur. Le clavier vocal prend en compte un changement de modèle après son redémarrage.</string>
@@ -105,4 +105,18 @@
 
     <string name="voice_help_title">Configuration de la saisie vocale</string>
     <string name="voice_help_body">Comment l\'utiliser\n• Ouvrez n\'importe quelle app et touchez le micro d\'un clavier/d\'une app pris en charge. Un petit panneau apparaît, vous parlez, touchez pour arrêter, et le texte est inséré. (Activez « Arrêt automatique après un silence » dans les paramètres pour qu\'il s\'arrête tout seul.)\n\nQuels claviers ouvrent le panneau vocal\n• Microsoft SwiftKey (non open source) et la recherche vocale des sites web ouvrent le panneau directement.\n• AnySoftKeyboard est la voie open source vers le panneau : sa touche micro l\'ouvre tant qu\'aucun clavier vocal n\'est activé sur votre système.\n\nAutres claviers open source\n• HeliBoard, FlorisBoard, OpenBoard, Fossify Keyboard et Unexpected Keyboard n\'ouvrent pas le panneau : leur touche micro bascule vers le clavier « Offline Voice Input ». Activez-le une fois (voir « Alternative : clavier vocal »), parlez, puis revenez avec sa touche de changement de clavier. FUTO Keyboard embarque sa propre saisie vocale.\n• Gboard n\'utilise que la saisie vocale de Google et ne peut pas du tout utiliser cette app.\n\nSi la saisie vocale de SwiftKey s\'ouvre à la place\n• Paramètres → Saisie riche → désactivez « Saisie vocale multimodale ».\n• Touchez ensuite à nouveau le micro et choisissez « Offline Voice Input ».\n\nSi Android demande quelle app utiliser\n• Choisissez « Offline Voice Input » et touchez « Toujours ».\n\nSi une autre app s\'ouvre toujours\n• Ouvrez Paramètres → Applications → cette app → « Ouvrir par défaut » → Effacer les valeurs par défaut, puis réessayez.</string>
+    <string name="pp_card_title">Post-traitement par IA</string>
+    <string name="pp_card_subtitle">Affinez les transcriptions avec un LLM compatible OpenAI.</string>
+    <string name="pp_card_button">Paramètres de post-traitement</string>
+    <string name="pp_enable">Activer le post-traitement par IA</string>
+    <string name="pp_provider">Fournisseur</string>
+    <string name="pp_api_url">URL de base (compatible OpenAI)</string>
+    <string name="pp_api_key">Clé API</string>
+    <string name="pp_model">Nom du modèle</string>
+    <string name="pp_refresh_models">Récupérer les modèles disponibles</string>
+    <string name="pp_models_loaded">Modèles chargés — touchez le champ pour en choisir un</string>
+    <string name="pp_models_error">Impossible de récupérer les modèles</string>
+    <string name="pp_prompt">Invite système</string>
+    <string name="pp_save">Enregistrer</string>
+    <string name="pp_saved">Paramètres enregistrés</string>
 </resources>

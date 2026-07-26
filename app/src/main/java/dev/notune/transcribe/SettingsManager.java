@@ -70,10 +70,6 @@ public class SettingsManager {
         }
         return PROVIDERS[PROVIDERS.length - 1]; // custom
     }
-    private static final String DEFAULT_PROMPT =
-            "You are a transcription cleanup assistant. Fix punctuation, "
-            + "capitalization and obvious speech-to-text errors in the user's "
-            + "text. Return only the corrected text, with no commentary.";
 
     private final SharedPreferences prefs;
     private final Context appContext;
@@ -169,15 +165,19 @@ public class SettingsManager {
     }
 
     public String getActivePromptBody() {
-        String p = prefs.getString(KEY_SYSTEM_PROMPT, DEFAULT_PROMPT);
-        return (p == null || p.trim().isEmpty()) ? DEFAULT_PROMPT : p;
+        String p = prefs.getString(KEY_SYSTEM_PROMPT, null);
+        return (p == null || p.trim().isEmpty()) ? getDefaultPrompt() : p;
     }
 
     public void setActivePromptBody(String prompt) {
         prefs.edit().putString(KEY_SYSTEM_PROMPT, prompt).apply();
     }
 
+    /**
+     * Default system prompt. Single source of truth lives in
+     * res/values/strings.xml (pp_default_prompt, translatable=false).
+     */
     public String getDefaultPrompt() {
-        return DEFAULT_PROMPT;
+        return appContext.getString(R.string.pp_default_prompt);
     }
 }

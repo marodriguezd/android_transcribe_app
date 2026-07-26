@@ -4,18 +4,17 @@ An offline, privacy-focused speech-to-text tool for Android, built with Rust. Ta
 
 [<img src="https://i.ibb.co/q0mdc4Z/get-it-on-github.png"
 alt="Get it on GitHub"
-height="80">](https://github.com/notune/android_transcribe_app/releases/latest)
-[<img src="https://play.google.com/intl/en_us/badges/images/generic/en-play-badge.png"
-alt="Get it on Google Play"
-height="80">](https://play.google.com/store/apps/details?id=dev.notune.transcribe)
+height="80">](https://github.com/marodriguezd/android_transcribe_app/releases/latest)
+
+> This is a fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app). It defaults to the Canary 180M Flash model and adds an optional AI post-processing layer (clean up transcriptions with any OpenAI-compatible LLM). Get releases from [this repo's releases page](https://github.com/marodriguezd/android_transcribe_app/releases/latest).
 
 ## Features
 
 - **Voice input in any app:** Tap the microphone on the keyboard you already use (SwiftKey, etc.) or a website's voice search, and your speech is transcribed straight into the text field. The app registers as your device's speech-to-text provider.
-- **100% offline & private:** The Parakeet TDT model runs entirely on-device — no audio ever leaves your phone, and no network is required.
+- **100% offline & private:** The Canary 180M Flash model runs entirely on-device — no audio ever leaves your phone, and no network is required. (The optional AI post-processing layer is the only feature that talks to the network, and only if you enable it.)
 - **Live Subtitles:** Real-time captions for any audio/video playing on your device.
 - **Optional voice keyboard:** A built-in keyboard you can switch to for voice input wherever you prefer it.
-- **Supported Languages:** Bulgarian, Croatian, Czech, Danish, Dutch, English, Estonian, Finnish, French, German, Greek, Hungarian, Italian, Latvian, Lithuanian, Maltese, Polish, Portuguese, Romanian, Slovak, Slovenian, Spanish, Swedish, Russian, Ukrainian.
+- **Supported Languages (built-in model):** English, Spanish, German, French. Import a different GGUF model (see below) for other languages.
 - **Custom models:** Import any [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) GGUF model (Whisper, Nemotron streaming, Canary, more Parakeet variants, …) from a downloaded file — the app stays fully offline; downloads happen in your browser.
 - **Efficient native backend:** All models run through [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) (ggml), wrapped in a safe Rust core.
 
@@ -76,7 +75,7 @@ This relies on the undocumented `PROJECT_MEDIA` app-op; on some OEM builds it ma
 
 ### Custom speech models
 
-The built-in Parakeet model works out of the box. Under **Manage speech models** you can additionally import any [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) GGUF model: download a `.gguf` file in your browser (the in-app *Where to get models* dialog lists direct links, e.g. a tiny 135 MB English-only Parakeet, the multilingual Nemotron 3.5 streaming model with punctuation, or Whisper large-v3-turbo), then import it via the system file picker and select it. The app itself needs no internet permission — model files are simply copied into the app's private storage. An optional language hint (e.g. `en-US`, or `auto`) can be set for imported models.
+The built-in Canary 180M Flash model works out of the box. Under **Manage speech models** you can additionally import any [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) GGUF model: download a `.gguf` file in your browser (the in-app *Where to get models* dialog lists direct links, e.g. a tiny 135 MB English-only Parakeet, the multilingual Nemotron 3.5 streaming model with punctuation, or Whisper large-v3-turbo), then import it via the system file picker and select it. Importing model files needs no internet permission — files are simply copied into the app's private storage. An optional language hint (e.g. `en-US`, or `auto`) can be set for imported models.
 
 ## Prerequisites
 
@@ -119,7 +118,7 @@ org.gradle.java.home=/path/to/jdk17
 # Output: app/build/outputs/apk/release/app-release.apk
 ```
 
-### Release AAB (Google Play)
+### Release AAB (app bundle)
 ```bash
 ./gradlew bundleRelease
 # Output: app/build/outputs/bundle/release/app-release.aab
@@ -137,7 +136,7 @@ export STORE_PASS=yourpassword
 
 ### Model Assets
 
-The built-in Parakeet TDT GGUF model (~485 MB) is automatically downloaded from HuggingFace during the first build via a Gradle task. The checksum is verified with SHA-256. No manual download is needed.
+The built-in Canary 180M Flash GGUF model (~209 MB, Q8_0) is automatically downloaded from HuggingFace during the first build via a Gradle task. The checksum is verified with SHA-256. No manual download is needed.
 
 ## Project Structure
 
@@ -160,8 +159,9 @@ The built-in Parakeet TDT GGUF model (~485 MB) is automatically downloaded from 
 
 ## Acknowledgments
 
-- **Speech Model:** [Parakeet TDT 0.6b v3](https://huggingface.co/nvidia/parakeet-tdt-0.6b-v3) by NVIDIA.
-    - GGUF conversion by [handy-computer](https://huggingface.co/handy-computer/parakeet-tdt-0.6b-v3-gguf).
+- **Original project:** [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app) — this repo is a fork.
+- **Speech Model:** [Canary 180M Flash](https://huggingface.co/nvidia/canary-180m-flash) by NVIDIA.
+    - GGUF conversion by [handy-computer](https://huggingface.co/handy-computer/canary-180m-flash-gguf).
     - Licensed under [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 - **Inference Backend:** [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) by CJ Pais / Handy Computer.
 

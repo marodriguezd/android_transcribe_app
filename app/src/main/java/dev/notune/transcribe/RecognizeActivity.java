@@ -161,9 +161,15 @@ public class RecognizeActivity extends AppCompatActivity {
             SettingsManager settings = new SettingsManager(this);
             if (settings.isPostProcessEnabled()) {
                 status.setText("Refining...");
+                Log.i(TAG, "Post-processing enabled, sending " + text.length()
+                        + " chars to " + settings.getEffectiveApiUrl());
+                Log.i(TAG, "PP-RAW: " + text);
                 new PostProcessor(settings).process(text, new PostProcessor.PostProcessCallback() {
                     @Override
                     public void onSuccess(String refinedText) {
+                        Log.i(TAG, "Post-process OK: raw=" + text.length()
+                                + " chars -> refined=" + (refinedText != null ? refinedText.length() : 0) + " chars");
+                        Log.i(TAG, "PP-REFINED: " + refinedText);
                         deliverResult(refinedText != null && !refinedText.trim().isEmpty()
                                 ? refinedText : text);
                     }

@@ -116,9 +116,13 @@
     <string name="pp_card_subtitle">Refine transcriptions with an OpenAI-compatible LLM.</string>
     <string name="pp_card_button">Post-processing settings</string>
     <string name="pp_enable">Enable AI post-processing</string>
+    <string name="pp_provider">Provider</string>
     <string name="pp_api_url">Base URL (OpenAI-compatible)</string>
     <string name="pp_api_key">API key</string>
     <string name="pp_model">Model name</string>
+    <string name="pp_refresh_models">Fetch available models</string>
+    <string name="pp_models_loaded">Models loaded — tap the field to pick one</string>
+    <string name="pp_models_error">Could not fetch models</string>
     <string name="pp_prompt">System prompt</string>
     <string name="pp_save">Save</string>
     <string name="pp_saved">Settings saved</string>

@@ -25,6 +25,7 @@ public class SettingsManager {
     private static final String PREFS_NAME = "transcribe_settings";
 
     private static final String KEY_POST_PROCESS_ENABLED = "post_process_enabled";
+    private static final String KEY_PROVIDER = "pp_provider"; // groq/openai/cerebras/... or "custom"
     private static final String KEY_API_URL = "api_url";      // OpenAI-compatible base URL
     private static final String KEY_API_KEY = "api_key";      // stored encrypted
     private static final String KEY_MODEL_NAME = "model_name";
@@ -32,6 +33,43 @@ public class SettingsManager {
 
     private static final String DEFAULT_API_URL = "https://api.openai.com/v1";
     private static final String DEFAULT_MODEL = "gpt-4o-mini";
+
+    /**
+     * Provider presets: known OpenAI-compatible endpoints. The user picks a
+     * provider and only fills in the API key; "custom" exposes a free-form
+     * base-URL field.
+     */
+    public static final class Provider {
+        public final String id;
+        public final String label;
+        public final String baseUrl;      // null for custom (user-supplied)
+        public final String defaultModel;
+
+        Provider(String id, String label, String baseUrl, String defaultModel) {
+            this.id = id;
+            this.label = label;
+            this.baseUrl = baseUrl;
+            this.defaultModel = defaultModel;
+        }
+    }
+
+    public static final Provider[] PROVIDERS = new Provider[] {
+        new Provider("groq",      "Groq",       "https://api.groq.com/openai/v1",       "llama-3.3-70b-versatile"),
+        new Provider("openai",    "OpenAI",     "https://api.openai.com/v1",            "gpt-4o-mini"),
+        new Provider("cerebras",  "Cerebras",   "https://api.cerebras.ai/v1",           "llama-3.3-70b"),
+        new Provider("openrouter","OpenRouter", "https://openrouter.ai/api/v1",         "meta-llama/llama-3.3-70b-instruct"),
+        new Provider("mistral",   "Mistral",    "https://api.mistral.ai/v1",            "mistral-small-latest"),
+        new Provider("together",  "Together",   "https://api.together.xyz/v1",          "meta-llama/Llama-3.3-70B-Instruct-Turbo"),
+        new Provider("ollama",    "Ollama (local)", "http://localhost:11434/v1",        "llama3.2"),
+        new Provider("custom",    "Custom",     null,                                    ""),
+    };
+
+    public static Provider providerById(String id) {
+        for (Provider p : PROVIDERS) {
+            if (p.id.equals(id)) return p;
+        }
+        return PROVIDERS[PROVIDERS.length - 1]; // custom
+    }
     private static final String DEFAULT_PROMPT =
             "You are a transcription cleanup assistant. Fix punctuation, "
             + "capitalization and obvious speech-to-text errors in the user's "
@@ -63,6 +101,25 @@ public class SettingsManager {
 
     public void setApiUrl(String url) {
         prefs.edit().putString(KEY_API_URL, url).apply();
+    }
+
+    /** Selected provider preset id ("groq", "openai", ... or "custom"). */
+    public String getProviderId() {
+        return prefs.getString(KEY_PROVIDER, "custom");
+    }
+
+    public void setProviderId(String id) {
+        prefs.edit().putString(KEY_PROVIDER, id).apply();
+    }
+
+    /**
+     * Effective base URL for API calls: the provider preset's URL, or the
+     * user-supplied URL when the provider is "custom".
+     */
+    public String getEffectiveApiUrl() {
+        Provider p = providerById(getProviderId());
+        if (p.baseUrl != null) return p.baseUrl;
+        return getApiUrl();
     }
 
     public String getApiKey() {

@@ -46,7 +46,7 @@ public class PostProcessor {
             return;
         }
 
-        String apiUrl = settings.getApiUrl() != null ? settings.getApiUrl().trim() : "";
+        String apiUrl = settings.getEffectiveApiUrl() != null ? settings.getEffectiveApiUrl().trim() : "";
         while (apiUrl.endsWith("/")) {
             apiUrl = apiUrl.substring(0, apiUrl.length() - 1);
         }
@@ -123,7 +123,7 @@ public class PostProcessor {
     }
 
     public void fetchModels(final ModelsCallback callback) {
-        String baseUrl = settings.getApiUrl() != null ? settings.getApiUrl().trim() : "";
+        String baseUrl = settings.getEffectiveApiUrl() != null ? settings.getEffectiveApiUrl().trim() : "";
         while (baseUrl.endsWith("/")) {
             baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
         }

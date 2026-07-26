@@ -1,3 +1,13 @@
+# v0.1.22
+
+Fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app), built on top of upstream **v0.1.18** (inherits the v0.1.19/v0.1.20/v0.1.21 layers). This is the stable build that bundles the v0.1.21 fixes (device-language default + per-run language re-read so the IME honors the chosen language) with the AI post-processing layer working end to end.
+
+## What's in v0.1.22 (vs v0.1.21)
+- Same code as v0.1.21 (no functional changes). This tag republishes a clean, signed release build so the GitHub release asset matches the working debug many users already tested — language selection (Auto/English/French/…) applies in both the voice panel and the keyboard IME, and the AI post-processing prompt refines transcripts when configured with an OpenAI-compatible provider (e.g. Groq).
+- Reminder: AI post-processing needs its provider URL, API key, and model configured in the app (settings are stored encrypted and are wiped on uninstall, so re-enter them after a fresh install).
+
+---
+
 # v0.1.21
 
 Fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app), built on top of upstream **v0.1.18** (inherits the v0.1.19/v0.1.20 layers). This release fixes a language regression introduced in v0.1.20.

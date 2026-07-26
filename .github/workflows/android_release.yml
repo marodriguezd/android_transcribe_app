@@ -105,7 +105,7 @@ jobs:
       uses: softprops/action-gh-release@v1
       with:
         name: Release v${{ env.VERSION_NAME }}
-        # Use the tagged commit's message as the release notes.
-        body: ${{ github.event.head_commit.message }}
+        # Release notes come from RELEASE_NOTES.md in the tagged commit.
+        body_path: RELEASE_NOTES.md
         files: |
           android_transcribe_app_v${{ env.VERSION_NAME }}.apk

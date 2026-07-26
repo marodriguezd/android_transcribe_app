@@ -8,7 +8,7 @@
 //! imported one fails to load.
 
 use once_cell::sync::Lazy;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Condvar, Mutex};
 
 use jni::objects::{GlobalRef, JObject};
@@ -50,6 +50,10 @@ pub struct Engine {
     /// Status reported once loading succeeded; carries a warning when the
     /// translate setting can't do what the user expects with this model.
     ready_status: &'static str,
+    /// Path of the `model_language` hint file, re-read on every run so a
+    /// language change applies in any process (e.g. the `:ime` keyboard)
+    /// without a manual model reload.
+    lang_file: PathBuf,
 }
 
 impl Engine {
@@ -58,6 +62,7 @@ impl Engine {
         language: Option<String>,
         translate: bool,
         threads: i32,
+        lang_file: &Path,
     ) -> Result<Engine, String> {
         if !model_path.is_file() {
             return Err(format!("model file not found: {}", model_path.display()));
@@ -123,6 +128,7 @@ impl Engine {
             task,
             run_ext,
             ready_status,
+            lang_file: lang_file.to_path_buf(),
         })
     }
 
@@ -164,6 +170,21 @@ impl Engine {
     /// locales/short codes, English-only models take none). The degraded
     /// value is kept so later runs skip the rejected attempts.
     fn run(&mut self, samples: &[f32]) -> Result<String, String> {
+        // Re-read the language hint on every run so a language change applies
+        // immediately in any process (e.g. the `:ime` keyboard) without a
+        // manual model reload. The spinner writes `model_language`; the app's
+        // default writes the device locale. "auto"/empty = no hint.
+        if let Ok(raw) = std::fs::read_to_string(&self.lang_file) {
+            let s = raw.trim();
+            let new_lang = if s.is_empty() || s.eq_ignore_ascii_case("auto") {
+                None
+            } else {
+                Some(s.to_string())
+            };
+            if new_lang != self.language {
+                self.language = new_lang;
+            }
+        }
         loop {
             let opts = transcribe_cpp::RunOptions {
                 language: self.language.clone(),
@@ -461,7 +482,7 @@ fn do_load(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
     if let Some(name) = read_config(&files_dir.join(ACTIVE_MODEL_FILE)) {
         let path = files_dir.join("models").join(&name);
         notify_status(env, context, &format!("Loading model {}...", name));
-        match Engine::load(&path, language.clone(), translate, threads) {
+        match Engine::load(&path, language.clone(), translate, threads, &files_dir.join(MODEL_LANGUAGE_FILE)) {
             Ok(engine) => {
                 let status = engine.ready_status;
                 *GLOBAL_ENGINE.lock().unwrap() = Some(Arc::new(Mutex::new(engine)));
@@ -490,7 +511,7 @@ fn do_load(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
 
     notify_status(env, context, "Loading model...");
 
-    match Engine::load(&path, language, translate, threads) {
+    match Engine::load(&path, language, translate, threads, &files_dir.join(MODEL_LANGUAGE_FILE)) {
         Ok(engine) => {
             let status = engine.ready_status;
             *GLOBAL_ENGINE.lock().unwrap() = Some(Arc::new(Mutex::new(engine)));

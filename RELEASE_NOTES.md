@@ -1,3 +1,16 @@
+# v0.1.21
+
+Fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app), built on top of upstream **v0.1.18** (inherits the v0.1.19/v0.1.20 layers). This release fixes a language regression introduced in v0.1.20.
+
+## What's fixed vs v0.1.20
+
+### 🐛 Language selection now applies everywhere (IME included)
+- In v0.1.20 the engine cached the transcription language in memory and only re-read it on an explicit model reload from `ModelsActivity` (the main process). The voice-keyboard process (`:ime`) loaded the language once at startup and never re-read it — so picking "English" (or any non-default language) in the dropdown wrote `model_language=en-US` and reloaded the main engine, but **speaking through the keyboard still transcribed in the cached default language** (Spanish on a Spanish phone). Symptom: "I set English but it always writes Spanish."
+- Fix: the engine now re-reads `model_language` from disk on **every** transcription run (`Engine::run` in `src/engine.rs`), so a language change applies in any process — main or `:ime` — with no manual reload.
+- Behavior is unchanged by design: "Auto (device language)" transcribes in the phone's system language; any explicit language (English, French, …) is honored even when the device locale differs. Verified on-device speaking EN/ES/FR.
+
+---
+
 # v0.1.20
 
 Fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app), built on top of upstream **v0.1.18** (inherits everything from the v0.1.19 layer). This release fixes the language-handling behavior and ships a new default post-processing prompt.

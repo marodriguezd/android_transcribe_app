@@ -118,12 +118,6 @@ org.gradle.java.home=/path/to/jdk17
 # Output: app/build/outputs/apk/release/app-release.apk
 ```
 
-### Release AAB (app bundle)
-```bash
-./gradlew bundleRelease
-# Output: app/build/outputs/bundle/release/app-release.aab
-```
-
 ### Signing
 
 For release builds, place a `release.keystore` in the project root and set these environment variables:

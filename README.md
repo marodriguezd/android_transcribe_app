@@ -8,6 +8,8 @@ height="80">](https://github.com/marodriguezd/android_transcribe_app/releases/la
 
 > This is a fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app). It defaults to the Canary 180M Flash model and adds an optional AI post-processing layer (clean up transcriptions with any OpenAI-compatible LLM). Get releases from [this repo's releases page](https://github.com/marodriguezd/android_transcribe_app/releases/latest).
 
+> **For AI assistants:** if you are an automated coding agent about to modify code in this repo, **read [`AGENTS.md`](AGENTS.md) first**. It defines the JNI contract, marker-file settings convention, build wiring rules (cargo-ndk, ABI filter, `outputs.upToDateWhen`), and a strict do/don't list. This README is the human-facing project page (features, prerequisites, screenshots, acknowledgments); implementation rules live next door.
+
 ## Features
 
 - **Voice input in any app:** Tap the microphone on the keyboard you already use (SwiftKey, etc.) or a website's voice search, and your speech is transcribed straight into the text field. The app registers as your device's speech-to-text provider.

@@ -6,6 +6,13 @@
 > **Tipo:** App Android de transcripción de voz *offline* con opción de post-procesado con IA.
 > **Última versión publicada:** 0.1.22 (`versionCode 23`, ver `app/build.gradle.kts`).
 
+> **Scope:** este archivo documenta el **contrato de implementación** (versiones
+> pinneadas, handshake JNI, reglas críticas, plantillas de nuevos componentes).
+> La cara humana del proyecto — instalación paso a paso, prerequisitos, lista de
+> features en prosa, capturas, agradecimientos, licencia — vive en [`README.md`](README.md).
+> Si dudas de dónde poner algo: si cambia **la cara** → README; si cambia
+> **cómo está hecho** → AGENTS.md.
+
 ---
 
 ## 1. Resumen del Proyecto
@@ -40,10 +47,8 @@ Post-procesado IA (fork addition): opcional, *off-line-by-default*, refina texto
 | Lenguaje UI | **Java** (sin Kotlin) | Java 8 source/target |
 | Android Gradle Plugin | `com.android.application` | **8.7.3** |
 | Build tool | Gradle wrapper | ver `gradle/wrapper/gradle-wrapper.properties` |
-| JDK requerido | **JDK 17** | ruta override en `gradle.properties` (`org.gradle.java.home`) |
-| NDK | Android NDK | **28.0.13004108** |
+| Toolchain humano | JDK 17 · Android NDK 28.0.13004108 · Rust `aarch64-linux-android` · [`cargo-ndk`](https://github.com/bbqsrc/cargo-ndk) | instalación paso a paso → [`README.md` §Prerequisites](README.md#prerequisites) |
 | Target NDK ABIs | **`arm64-v8a` únicamente** (`abiFilters += "arm64-v8a"`) | excluidas x86 / armeabi-v7a |
-| Cross-compile Rust | [`cargo-ndk`](https://github.com/bbqsrc/cargo-ndk) | invocado por Gradle |
 | `compileSdk` / `targetSdk` / `minSdk` | `35 / 35 / 26` | namespace y applicationId: `dev.notune.transcribe` |
 | Material | Material Components for Android | `1.12.0` (Material 3 + Material You) |
 | HTTP (post-procesado) | OkHttp | `4.12.0` |
@@ -58,67 +63,48 @@ Post-procesado IA (fork addition): opcional, *off-line-by-default*, refina texto
 
 ---
 
-## 3. Comandos Frecuentes
+## 3. Comandos y wiring
 
-> Todo se ejecuta desde la raíz del proyecto. **Requiere JDK 17 + NDK 28.0.13004108 + Rust toolchain (`aarch64-linux-android`) + `cargo-ndk`.** Documentación detallada en el README.
+> Comandos user-facing y prerequisitos viven en [`README.md` §Building](README.md#building)
+> y [`README.md` §Prerequisites](README.md#prerequisites). Esta sección sólo
+> lista las **decisiones de wiring** que un agente debe respetar y los puntos
+> donde divergen de la regla general.
 
-### Instalación de dependencias (una vez)
+### Wiring Gradle ↔ cargo-ndk (AGENT-ONLY)
 
-```bash
-# Toolchain
-rustup target add aarch64-linux-android
-cargo install cargo-ndk
+- `cargoNdkBuild` está registrada como `preBuild` dependiente y **siempre re-corre**
+  (`outputs.upToDateWhen { false }`): el incremental de Cargo es fiable, el
+  matching inputs/outputs de Gradle no. Sin este override, Gradle salta rebuilds
+  cuando sólo cambian fuentes Rust.
+- `app/build.gradle.kts` fuerza `GGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16` vía
+  env en `cargoNdkBuild`. **No bajar** este flag: ggml cross-compila con kernels
+  baseline y la inferencia cuantizada cae a ≥4× más lenta. `check_cpu_features`
+  en `engine.rs` aborta al cargar si la CPU no tiene dotprod+fp16 (ARMv8.2 ~2018+).
+- `libc++_shared.so` se copia tras cada build desde el NDK a
+  `app/src/main/jniLibs/<abi>/` (Bionic no la trae integrada y `transcribe-cpp`
+  la enlaza dinámicamente).
+- **APK-only**: cuando `taskNames` contiene `"bundle"`, el bloque `if (!isBundle)`
+  en `app/build.gradle.kts` **NO** añade `model_assets/src/main/assets/builtin-model/`
+  a `assets.srcDirs` — añadirlo ahí causa duplicate-resource errors con el asset
+  pack. Para bundle usa el asset pack `:model_assets` con
+  `dynamicDelivery = "install-time"`.
 
-# Android SDK / NDK vía sdkmanager
-sdkmanager "ndk;28.0.13004108"
-```
+### Signing (AGENT-ONLY)
 
-Crear `local.properties` (gitignored):
+- Si `release.keystore` existe en la raíz **y** las 3 env vars (`KEY_ALIAS`,
+  `KEY_PASS`, `STORE_PASS`) están exportadas, AGP firma el release con
+  `signingConfigs.release`. Sin keystore/env = release sin firmar (debug-only).
+- En CI la keystore es base64-decoded desde un repo secret; ver
+  `.github/workflows/android_release.yml` §Decode Keystore.
 
-```properties
-sdk.dir=/path/to/Android/Sdk
-```
+### Validación y estilo
 
-### Build
-
-```bash
-# Debug APK
-./gradlew assembleDebug        # salida: app/build/outputs/apk/debug/app-debug.apk
-
-# Release APK (firmado si release.keystore + env vars presentes)
-./gradlew assembleRelease      # salida: app/build/outputs/apk/release/app-release.apk
-
-# El modelo GGUF (~209 MB) se descarga automáticamente al primer build
-# (task `downloadModels`) con verificación SHA-256.
-
-# Limpiar
-./gradlew clean
-./cargo clean   # si quieres purgar también target/
-```
-
-### Variables de entorno para release firmado
-
-```bash
-export KEY_ALIAS=release
-export KEY_PASS=yourpassword
-export STORE_PASS=yourpassword
-# release.keystore en la raíz (gitignored)
-```
-
-### CMake args de la C++ core (no cambiar)
-
-`app/build.gradle.kts` fuerza `GGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16` para no perder los kernels cuantizados en cross-compile. Más detalles en comentarios del `cargoNdkBuild` task.
-
-### Pruebas
-
-**No hay suite de tests automatizados** en este repo. La validación principal es:
-- Compilación limpia: `./gradlew assembleDebug`.
-- Smoke test manual: instalar APK en dispositivo arm64 y usar **Try voice input** desde `MainActivity` (carga micrófono → model load → transcripción en menos de 2× tiempo real en CPUs modernas).
-
-### Linter / formato
-
-- **Java:** no hay Checkstyle/PMD/Spotless configurado; seguir las convenciones existentes (ver §4).
-- **Rust:** no hay `rustfmt.toml` ni `clippy.toml` en el repo; sigue el estilo inline (4 espacios, `rustfmt` por defecto).
+- No hay suite de tests automatizados. Validación = `./gradlew assembleDebug`
+  limpio (sin nuevos warnings) + smoke test en dispositivo arm64 (micrófono →
+  transcripción ≤ 2× tiempo real en CPUs modernas).
+- **Java:** no hay Checkstyle/PMD/Spotless configurado. Sigue las convenciones de §4.
+- **Rust:** no hay `rustfmt.toml` ni `clippy.toml` en el repo. Sigue el estilo
+  inline existente (4 espacios, `rustfmt` por defecto).
 
 ---
 
@@ -189,38 +175,31 @@ Bindings típicos (ver `MainActivity.bindMarkerSwitch`): un `CompoundButton` cuj
 
 La **clave de API del post-procesado** sí usa `EncryptedSharedPreferences` (es la única excepción).
 
-### 4.6 Estructura de carpetas
+### 4.6 Mapping Rust ↔ Java (mapping de módulos para agentes)
 
-```
-android_transcribe_app/
-├── app/
-│   ├── build.gradle.kts                          # Build config app module (AGP 8.7.3, ABI filters, cargo-ndk wiring, model download)
-│   └── src/main/
-│       ├── AndroidManifest.xml                   # Permisos, 4 activities, 3 services (uno en :ime)
-│       ├── assets/bench.wav                      # Clip corto para benchmark
-│       ├── java/dev/notune/transcribe/           # UI, Activities, Services, PostProcessor, Settings, *Prefs
-│       ├── res/                                  # Layouts, drawables, strings (7 locales), styles, themes
-│       └── jniLibs/                              # .so generado por cargo-ndk (gitignored)
-├── src/                                          # Rust core (cdylib): 11 módulos
-│   ├── lib.rs                                    # Declara todos los `pub mod`
-│   ├── engine.rs                                 # Singleton Engine + loading coordination
-│   ├── audio.rs                                  # find_quietest_split (corte de audio limpio)
-│   ├── voice_session.rs                          # Estado compartido IME + recog popup (cpal + JNI)
-│   ├── subtitle.rs                               # Pipeline de subtítulos (partial/final + worker + gap detect)
-│   ├── recog_service.rs                          # RecognitionService (otra keyboard como STT provider)
-│   ├── ime.rs / recognize.rs                     # Bridges JNI por surface
-│   ├── main_activity.rs / transcribe_file.rs / models.rs / assets.rs
-├── model_assets/                                 # Asset pack (install-time) para GGUF > 200 MB Play limit
-│   ├── build.gradle.kts                          # assetPack { dynamicDelivery; deliveryType = "install-time" }
-│   └── src/main/assets/builtin-model/            # Aquí descarga Canary 180M Flash el task `downloadModels`
-├── Cargo.toml / build.rs                         # Crate type cdylib, deps, shim libpthread + libc++_shared
-├── build.gradle.kts                              # Plugin AGP root (apply false)
-├── settings.gradle.kts                           # :app + :model_assets, FAIL_ON_PROJECT_REPOS
-├── gradle.properties                             # JVM args 4 GB, useAndroidX, kotlin-stdlib alignment, JDK 17 home
-├── fastlane/metadata/android/                    # Metadatos F-Droid (textos localizadas, changelogs por versión)
-├── .github/workflows/android_release.yml         # CI: jdk17 + NDK + Rust + cmake + ninja + cargo-ndk + caches
-└── RELEASE_NOTES.md                              # Notas por versión (usadas por `softprops/action-gh-release`)
-```
+El árbol de carpetas está en [`README.md` §Project Structure](README.md#project-structure).
+Esta tabla mapea **qué módulo Rust ↔ qué componente Java ↔ dónde se invoca al
+engine compartido** — la información que un agente necesita pero el README no
+cubre.
+
+| Módulo Rust (`src/<mod>.rs`) | Componente Java | Llama al engine desde | Particularidades (AGENT-ONLY) |
+|---|---|---|---|
+| `lib.rs` | — | — | `pub mod` raíz. Cualquier módulo nuevo debe declararse aquí. |
+| `engine.rs` | (singleton global) | `voice_session.rs`, `subtitle.rs` (worker), `recog_service.rs` (audio callback), `main_activity.rs` (benchmark) | `ensure_loaded_from_thread` coordina con `Condvar`; **idioma se re-lee en cada `run`** (no cachear). |
+| `audio.rs` | — | `engine.rs` (`find_quietest_split`) | Utilidad pura, sin JNI. |
+| `voice_session.rs` | `RecognizeActivity`, `RustInputMethodService` | vía JNI callback `onTextTranscribed(text)` | Comparte `cpal::Stream` entre las dos surfaces; auto-stop propio. |
+| `subtitle.rs` | `LiveSubtitleService` | vía JNI callback `onSubtitleText(text, isFinal)` | Pipeline partial/final con merging; lag-policies calibradas (ver §4.8). |
+| `recog_service.rs` | `VoiceRecognitionService` | síncrono en `audio_callback` | Endpointing con VAD silencioso; sin auto-stop (lo gestiona el monitor). |
+| `ime.rs` | `RustInputMethodService` | thin bridge → `voice_session` | Llamadas JNI: `init/cleanup` + `start/stop/cancel` Recording. |
+| `recognize.rs` | `RecognizeActivity` | thin bridge → `voice_session` | Idéntico a `ime.rs` pero con `jboolean auto_stop` en `startRecording`. |
+| `main_activity.rs` | `MainActivity` | benchmark + status notifier | `initNative`, `benchmarkNative`; cachea samples en `Vec<f32>` desde `bench.wav`. |
+| `models.rs` | `ModelsActivity` | reload engine vía `engine::reset()` | Importa GGUF a `filesDir/models/<nombre>`. |
+| `transcribe_file.rs` | `TranscribeFileActivity` | una sola `transcribe_shared` | Comparte audio desde `Intent.ACTION_SEND/VIEW` (`audio/*`). |
+| `assets.rs` | (interno) | `engine.rs` (`do_load`) | Extrae el modelo bundled desde assets al primer arranque; `invalidate_builtin_model` borra extraídos corruptos. |
+
+**Regla modular:** mover lógica entre módulos exige actualizar también
+`AndroidManifest.xml` (registro de activities/services) y `lib.rs` (`pub mod`).
+No renombrar archivos Rust/Java sin actualizar la entrada JNI (§4.3).
 
 ### 4.7 Rust: contratos del singleton Engine (no romper)
 

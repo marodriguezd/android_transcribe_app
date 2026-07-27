@@ -66,7 +66,7 @@ _Ninguno._
 
 - `fa36345 docs: add AGENTS.md with stack, conventions, and rules for AI assistants`
 - `c0073b4 docs: trim duplication between AGENTS.md and README`
-- `<próximo>` (este commit) — `docs: agents: bootstrap .agents/ registry hierarchy`
+- `9f5026e` (este commit) — `docs: agents: bootstrap .agents/ registry hierarchy`
 
 ## Pendientes / seguimiento
 

@@ -1,0 +1,152 @@
+# Arquitectura — Offline Voice Input (Android)
+
+Describe el **CÓMO** del proyecto. **Para QUÉ es el producto ver
+[`spec.md`](./spec.md).** Para reglas que aplican a agentes IA al modificar
+código, ver [`../AGENTS.md`](../AGENTS.md).
+
+## Visión general
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│ Proceso PRINCIPAL (MainActivity, lib Rust en proceso Java)   │
+│ ┌───────────────────┐    ┌────────────────────────────────┐ │
+│ │ ModelsActivity    │───►│ Rust Engine (singleton)         │ │
+│ │ VoiceRecognition  │    │  • transcribe-cpp 0.1.3        │ │
+│ │ Service           │    │  • cpal 0.15                    │ │
+│ │ LiveSubtitle      │◄──►│  • jni 0.21                     │ │
+│ │ Service           │    │  • crossbeam-channel 0.5        │ │
+│ │ RecognizerActivity│    │  • once_cell 1.19, anyhow 1.0   │ │
+│ └───────────────────┘    └────────────────────────────────┘ │
+│           │               ▲                                  │
+│           ▼               │ JNI callbacks                    │
+│   filesDir/ marker files: model_language, active_model,       │
+│   auto_record, pause_audio, … (sincroniza con :ime)           │
+└──────────────────────────────────────────────────────────────┘
+                          │
+                          │ marker files (cross-process)
+                          ▼
+┌──────────────────────────────────────────────────────────────┐
+│ Proceso AISLADO `:ime` (RustInputMethodService)              │
+│  • Compose teclado (backspace / space / enter / switch)      │
+│  • Captura audio → transcribe → JNI onTextTranscribed        │
+│  • commitText al InputConnection activo                       │
+└──────────────────────────────────────────────────────────────┘
+```
+
+## Stack por capa
+
+| Capa | Tecnología | Por qué |
+|---|---|---|
+| **Core ASR** | Rust `cdylib` + `transcribe-cpp` (ggml) | ggml corre modelos Whisper/Canary/Parakeet con matmul quantizado on-device. |
+| **Audio capture** | `cpal` 0.15 | Único crate de audio Rust portable a Android sin ALSA/JACK. |
+| **Bridge Java↔Rust** | `jni` 0.21 con símbolos `Java_dev_notune_transcribe_*` | Naming convention estable (ver AGENTS.md §4.3). Verificar que la firma del lado Java matchea antes de renombrar. |
+| **UI principal** | Java (sin Kotlin) + Material 3 + AppCompat | Legado upstream; evita KSP/codegen overhead. |
+| **IME (Keyboard)** | `InputMethodService` + proceso `:ime` | Aísla crashes del IME del proceso principal. |
+| **Cross-process sync** | Marker files en `filesDir()` | Sin `ContentProvider` ni `SharedPreferences` (justificación y nombres en AGENTS.md §4.5). |
+| **Worker subtítulos** | `crossbeam-channel::unbounded` + `Arc<Atomic*>` | Latest-wins partial/final, drop con gap en lag-policy. |
+
+## Flujos clave
+
+### 1. Captura → ASR → Output (superficies 1 / 2 / 3)
+
+```
+Mic (16 kHz mono f32)
+  → cpal Stream (audio callback, lock-free buffer)
+  → Vec<f32> en VoiceSessionState
+  → engine::transcribe_shared (engine singleton, Arc<Mutex>)
+     • re-lee `model_language` en cada run (no cache)
+     • degrada `de-DE` → `de` → `None` si la hint es rechazada
+  → JNI callback `onTextTranscribed(string)`
+  → Java: aplica PostProcessor si está ON (con safe-fallback)
+  → commitText al InputConnection (IME)
+  → setResult EXTRA_RESULTS (popup)
+```
+
+### 2. Subtítulos (superficie 4)
+
+```
+Audio del sistema vía MediaProjection
+  → AudioRecord (16 kHz mono PCM 16)
+  → pushAudio → LiveSubtitleState (segment + preroll + silencio)
+  → crossbeam_channel::Sender<Job> → worker thread
+  → engine::transcribe_shared
+  → onSubtitleText(text, isFinal)
+     • partial (replacea hipótesis en ventana visible)
+     • final (appendea a transcript)
+     • lag > 8 s → drop + "…" gap marker
+     • parciales paradas si RTF > 2 s/segundo (predict-cost)
+```
+
+### 3. Cambio de modelo o idioma (cross-process)
+
+```
+ModelsActivity (Java)
+  → escribe `model_language` / `active_model` / `model_threads` en filesDir
+  → engine::reset() (singleton main, espera carga en vuelo)
+  → proceso `:ime` ve el cambio SIN recarga propia
+  → ✅ idioma aplica en TODAS las surfaces en el siguiente run
+```
+
+## Invariantes (a NO romper)
+
+1. **`engine::run` re-lee `model_language` en CADA llamada.** Histórico:
+   bug v0.1.20 → 21 donde el engine cacheaba el idioma en memoria y el
+   proceso `:ime` no veía el cambio. Las firmas `Java_dev_notune_transcribe_*`
+   no deben asumir idioma cacheado en absoluto. Ver AGENTS.md §4.7 y §5.1.
+2. **`panic::catch_unwind` envuelve `transcribe_shared`.** Si el modelo
+   panic'a por allocation o memoria, queremos un `Err("transcription failed
+   unexpectedly, please try again")` limpio, no un IME colgado.
+3. **`Mutex` poisoned recovery:** `unwrap_or_else(|p| p.into_inner())` —
+   cualquier panic previo en el engine no debe envenenar el mutex para
+   siempre.
+4. **`outputs.upToDateWhen { false }` en `cargoNdkBuild`.** El incremental
+   de Cargo es fiable; el matching inputs/outputs de Gradle no lo es.
+   Sin este override, Gradle salta rebuilds cuando cambian sólo fuentes
+   Rust. Ver AGENTS.md §3.
+5. **`assets.srcDirs(...)` sólo si NO es bundle build.** Bundle dupli-
+   caría assets con el asset pack `:model_assets`. Ver AGENTS.md §3 y §4.11.
+6. **Carga orden: `c++_shared` antes de `android_transcribe_app`.** Saltarse
+   esto o el `try/catch UnsatisfiedLinkError` deja la app con errores de
+   linking silenciosos en ABIs mal.
+7. **Re-lectura de `model_language` también tras un `engine::reset()`.** El
+   marker file es la única verdad; nada se cachea en memoria engine-side.
+
+## Boundaries (qué expone qué a qué)
+
+| Expone ↔ suscribe | Vía | Riesgo si se rompe |
+|---|---|---|
+| Engine Rust ↔ Java service | JNI callbacks (ver AGENTS.md §4.4) | Crash en `commit` / texto perdido |
+| Main process ↔ `:ime` process | Marker files en `filesDir()` | Idioma / modelo no se propaga |
+| Rust audio callback ↔ `audio_buffer` | `Arc<Mutex<Vec<f32>>>` | Latencia / jitter UI |
+| Worker subtitles ↔ `LiveSubtitleService` | `crossbeam_channel::unbounded` | Race en finals/partials |
+| MainActivity ↔ ModelsActivity ↔ Rust | `engine::reset()` (condvar-coordinated) | Doble carga de modelo |
+
+## Historia de decisiones
+
+- **Rust + cdylib + JNI** porque un stack 100 % Java tendría que emular
+  dotprod/fp16 en ARM64 — ggml aprovecha las SIMD nativas y baja los
+  tiempos de inferencia a un orden de magnitud compatible con uso
+  interactivo. La capa Java queda como UI/services.
+- **arm64-only** porque ggml exige dotprod+fp16 (ARMv8.2 ~2018+). CPUs
+  más viejas dan error explícito en load (no crash mid-inference).
+- **proceso `:ime` aislado** (main + `:ime`) para aislar crashes del IME
+  del proceso principal — un segfault en el teclado no debe tumbar
+  el popup de voz ni `RecognizeActivity`.
+- **`model_language` re-read por run** (issue v0.1.20-21). Originalmente
+  se cacheaba para evitar I/O al disco (era un hot path); el trade-off se
+  rompió cuando los usuarios esperaban que cambiar de idioma fuera
+  inmediato. Se eligió correctness sobre 1 syscall/run.
+- **Cargo + JNI bridge directo** (no C wrapper intermedio) para evitar
+  dependencias innecesarias y simplificar ABI a una sola `.so`.
+
+## Cambios esperados
+
+Este fichero **cambia con frecuencia media** (días/semanas). Cualquier
+refactor importante toca aquí. Cambios de alcance → [`spec.md`](./spec.md);
+cambios de reglas para IAs → [`../AGENTS.md`](../AGENTS.md);cambios de estado de trabajo → [`progress.md`](./progress.md).
+
+> **Mapping módulo ↔ clase:** la tabla canónica Rust ↔ Java (12 módulos
+> Rust ↔ sus componentes Java ↔ cómo llaman al engine compartido) vive
+> en [`../AGENTS.md` §4.6](../AGENTS.md) — no se duplica aquí para evitar
+> drift entre ambos docs. Este doc describe los flujos y las invariantes;
+> AGENTS.md §4.6 enumera qué symbol exporta cada módulo JNI.

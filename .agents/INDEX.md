@@ -1,0 +1,53 @@
+# INDEX — Índice cruzado entre documentos de especificación
+
+**Propósito:** un único punto de entrada para **toda** la documentación
+de especificación de este proyecto. Útil cuando necesitas "¿dónde está
+escrito X?" sin navegar a ciegas.
+
+## Documentos canónicos (cada uno es single-source-of-truth en su dominio)
+
+| Doc | Cubre | Editarlo cuando… |
+|---|---|---|
+| [`spec.md`](./spec.md) | **QUÉ** es el proyecto (objetivo, usuarios, restricciones, no-objetivos, superficies funcionales) | Cambia el **alcance del producto** (semanas/meses) |
+| [`architecture.md`](./architecture.md) | **CÓMO** está construido (stack, módulos, flujos, invariantes, boundaries) | Refactors de módulos, nuevas dependencies, cambios de flujo (días/semanas) |
+| [`memory/<topic>-YYYY-MM-DD.md`](./memory) | **DECISIONES** tomadas en sesiones de trabajo concretas, con fecha y rationale | Cada vez que se cierra una tarea no-trivial o se observa un trade-off |
+| [`progress.md`](./progress.md) | **ESTADO** actual: en-curso, recién completado, bloqueos, próximos pasos | Tras cada commit relevante al trabajo IA |
+| [`../AGENTS.md`](../AGENTS.md) | **REGLAS** para IAs: JNI contract, marker files, anti-patterns críticos, plantillas | Cambios de **convenciones para agentes** |
+| [`../README.md`](../README.md) | **CARA** del proyecto para humanos: features, prerequisitos, screenshots, license | Cambios de cara/UI (semanas) |
+| [`../RELEASE_NOTES.md`](../RELEASE_NOTES.md) | **HISTORIAL** versionado de releases, una sección por `vX.Y.Z` | Por cada release (cada tag) |
+
+## Reglas de oro
+
+1. **No dupliques contenido.** Si dos pueden decirlo, uno apunta al otro.
+   Las versiones pinnadas viven en `app/build.gradle.kts`; `spec.md` y
+   `architecture.md` enlazan, no reproducen.
+2. **Una sola fuente de verdad por dato.** Si la versión del modelo cambia
+   en el `build.gradle.kts`, ningún otro doc debe llevar ese dato: agregan
+   un enlace a ese sitio.
+3. **Edita el doc MÁS ESPECÍFICO.** Reglas de IA → `AGENTS.md`. Razones
+   de scope → `spec.md`. Detalles de implementación → `architecture.md`.
+   Estado actual → `progress.md`. Historia → `memory/`.
+4. **No añadas docs sin editar `INDEX.md`.** Si entra un doc, este índice
+   tiene que reflejarlo; si no, el índice se pudre.
+
+## Cuándo crear un nuevo documento
+
+- **Sí** cuando hay un dominio con info densa que no encaja en ninguno
+  existente (e.g. un futuro modelo de seguridad de LLM post-procesador
+  — sería un doc independiente, no un apéndice de architecture).
+- **No** cuando es sólo un párrafo largo (mejor sección de un doc
+  existente).
+- **Casi siempre no** cuando es spec temporal para una decisión — va a
+  `memory/<topic>-<fecha>.md`.
+
+## Memoria por tema
+
+Se rellena conforme se acumulen sesiones de trabajo. Listado en orden
+cronológico inverso (lo más reciente primero):
+
+- [`memory/dedup-round-2026-07-27.md`](./memory/dedup-round-2026-07-27.md) —
+  creación del `AGENTS.md` raíz + dedup con `README.md` + bootstrap de
+  esta carpeta.
+
+_(Vacío por ahora salvo la entrada de arriba; nuevos ficheros de `memory/`
+se referencian aquí conforme se crean.)_

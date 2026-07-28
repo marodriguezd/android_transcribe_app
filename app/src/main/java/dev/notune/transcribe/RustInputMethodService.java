@@ -84,11 +84,9 @@ public class RustInputMethodService extends InputMethodService {
     // process audio. Flushed from onStartInputView once a field is focused
     // again so the text is never lost.
     private String pendingCommitText = null;
-    // Tracks whether the encrypted API key store has been pre-warmed in this
-    // process so we don't spawn a thread on every onStartInputView once it's
-    // already initialized. MasterKey init is the only expensive part and it
-    // is cached in SettingsManager.cachedEncryptedPrefs afterwards.
-    private static volatile boolean prewarmedInThisProcess = false;
+    // Tracks the last-known post-processing state so we can detect off→on
+    // transitions and re-warm the encrypted API key store eagerly.
+    private boolean ppEnabledLastSeen = false;
     // Set to true in onDestroy() so late post-processing callbacks can drop
     // their work instead of touching detached/destroyed views.
     private boolean isDestroyed = false;
@@ -101,6 +99,24 @@ public class RustInputMethodService extends InputMethodService {
         public void onReceive(Context context, Intent intent) {
             Log.d(TAG, "Received cross-process cancel, aborting in-flight PP calls");
             PostProcessor.cancelAll();
+            // Reset the IME UI if it was stuck showing a post-processing state
+            // ("Refining...", "Processing...") because the user disabled PP
+            // while a transcription was being refined. Without this, the IME
+            // stays in a blocked state until the cancelled HTTP call's error
+            // callback fires, which can take up to the OkHttp timeout.
+            mainHandler.post(() -> {
+                if (!isRecording && statusView != null) {
+                    String current = statusView.getText().toString();
+                    if ("Refining...".equals(current) || "Processing...".equals(current)) {
+                        statusView.setText("Tap to Record");
+                        if (hintView != null) hintView.setText("Tap to Record");
+                        if (recordContainer != null) {
+                            recordContainer.setEnabled(true);
+                            recordContainer.setAlpha(1.0f);
+                        }
+                    }
+                }
+            });
         }
     };
 
@@ -372,14 +388,16 @@ public class RustInputMethodService extends InputMethodService {
         // A field is focused and the input connection is live again — commit any
         // text that finished transcribing while nothing was focused.
         flushPendingText();
-        // Pre-warm the encrypted API key store now that the keyboard is visible
-        // and post-processing is enabled, so the first transcription does not
-        // stall on MasterKey/Keystore initialization. Only run once per process
-        // — subsequent calls hit the cached EncryptedSharedPreferences.
-        if (!prewarmedInThisProcess && SettingsManager.isPostProcessEnabled(this)) {
-            prewarmedInThisProcess = true;
+        // Re-warm the encrypted API key store every time post-processing
+        // transitions from off → on (not just once per process lifetime), so
+        // toggling PP in settings and immediately using the keyboard does not
+        // stall on Keystore init. Once warmed, the cached
+        // EncryptedSharedPreferences makes subsequent calls free.
+        boolean ppNow = SettingsManager.isPostProcessEnabled(this);
+        if (ppNow && !ppEnabledLastSeen) {
             new Thread(() -> SettingsManager.prewarmApiKey(this)).start();
         }
+        ppEnabledLastSeen = ppNow;
     }
 
     @Override
@@ -517,6 +535,7 @@ public class RustInputMethodService extends InputMethodService {
             SettingsManager settings = new SettingsManager(this);
             if (settings.isPostProcessEnabled()) {
                 if (statusView != null) statusView.setText("Refining...");
+                if (hintView != null) hintView.setText("");
                 new PostProcessor(settings, mainHandler,
                         () -> !isDestroyed).process(text, new PostProcessor.PostProcessCallback() {
                     @Override
@@ -529,6 +548,12 @@ public class RustInputMethodService extends InputMethodService {
                     @Override
                     public void onError(String error) {
                         Log.w(TAG, "Post-process failed, committing raw text: " + error);
+                        // If the error is due to cancellation (user disabled PP),
+                        // commitFinalText resets the UI. Log clearly so it's not
+                        // confused with a real API failure.
+                        if (error != null && error.contains("Canceled")) {
+                            Log.d(TAG, "PP call was cancelled (user toggled off?)");
+                        }
                         commitFinalText(text);
                     }
                 });

@@ -9,6 +9,8 @@ import android.media.MediaExtractor;
 import android.media.MediaFormat;
 import android.net.Uri;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -84,6 +86,9 @@ public class TranscribeFileActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        // Cancel any in-flight post-processing call when the activity is
+        // destroyed, so a late callback cannot update a finishing UI.
+        PostProcessor.cancelAll();
         super.onDestroy();
         try { cleanupNative(); } catch (Throwable t) { /* ignore */ }
     }
@@ -119,20 +124,44 @@ public class TranscribeFileActivity extends AppCompatActivity {
     // Called from Rust with transcription result
     public void onTextTranscribed(String text) {
         runOnUiThread(() -> {
-            // Hide progress, show result
-            progressArea.setVisibility(View.GONE);
-            resultArea.setVisibility(View.VISIBLE);
-            copyButton.setVisibility(View.VISIBLE);
+            SettingsManager settings = new SettingsManager(this);
+            if (settings.isPostProcessEnabled()) {
+                statusText.setText("Refining...");
+                new PostProcessor(settings, new Handler(Looper.getMainLooper()),
+                        () -> !isFinishing() && !isDestroyed()).process(text, new PostProcessor.PostProcessCallback() {
+                    @Override
+                    public void onSuccess(String refinedText) {
+                        String out = (refinedText != null && !refinedText.trim().isEmpty())
+                                ? refinedText : text;
+                        showResult(out);
+                    }
 
-            resultText.setText(text);
-
-            // Auto-copy to clipboard
-            ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-            ClipData clip = ClipData.newPlainText("Transcription", text);
-            clipboard.setPrimaryClip(clip);
-
-            Toast.makeText(this, "Transcription copied to clipboard", Toast.LENGTH_LONG).show();
+                    @Override
+                    public void onError(String error) {
+                        Log.w(TAG, "Post-process failed, showing raw text: " + error);
+                        showResult(text);
+                    }
+                });
+            } else {
+                showResult(text);
+            }
         });
+    }
+
+    private void showResult(String text) {
+        // Hide progress, show result
+        progressArea.setVisibility(View.GONE);
+        resultArea.setVisibility(View.VISIBLE);
+        copyButton.setVisibility(View.VISIBLE);
+
+        resultText.setText(text);
+
+        // Auto-copy to clipboard
+        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+        ClipData clip = ClipData.newPlainText("Transcription", text);
+        clipboard.setPrimaryClip(clip);
+
+        Toast.makeText(this, "Transcription copied to clipboard", Toast.LENGTH_LONG).show();
     }
 
     private void startDecodeAndTranscribe() {

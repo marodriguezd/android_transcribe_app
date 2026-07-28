@@ -9,10 +9,14 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.widget.ProgressBar;
+import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.view.MotionEvent;
 import android.view.inputmethod.EditorInfo;
@@ -80,6 +84,25 @@ public class RustInputMethodService extends InputMethodService {
     // process audio. Flushed from onStartInputView once a field is focused
     // again so the text is never lost.
     private String pendingCommitText = null;
+    // Tracks whether the encrypted API key store has been pre-warmed in this
+    // process so we don't spawn a thread on every onStartInputView once it's
+    // already initialized. MasterKey init is the only expensive part and it
+    // is cached in SettingsManager.cachedEncryptedPrefs afterwards.
+    private static volatile boolean prewarmedInThisProcess = false;
+    // Set to true in onDestroy() so late post-processing callbacks can drop
+    // their work instead of touching detached/destroyed views.
+    private boolean isDestroyed = false;
+    // Receives cross-process cancellation signals from the main process when
+    // the user toggles post-processing off in Settings, so this IME process
+    // can cancel its own in-flight OkHttp calls without waiting for them to
+    // time out.
+    private final BroadcastReceiver cancelReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            Log.d(TAG, "Received cross-process cancel, aborting in-flight PP calls");
+            PostProcessor.cancelAll();
+        }
+    };
 
     @Override
     public void onCreate() {
@@ -91,6 +114,14 @@ public class RustInputMethodService extends InputMethodService {
         } catch (Throwable t) {
             // Native may be unavailable (e.g. wrong-ABI emulator); don't crash the IME.
             Log.e(TAG, "Error in initNative", t);
+        }
+        // Listen for cross-process post-processing cancellation from the main
+        // process so we can abort in-flight OkHttp calls immediately.
+        IntentFilter cancelFilter = new IntentFilter(PostProcessor.CANCEL_ACTION);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(cancelReceiver, cancelFilter, Context.RECEIVER_NOT_EXPORTED);
+        } else {
+            registerReceiver(cancelReceiver, cancelFilter);
         }
     }
 
@@ -341,6 +372,14 @@ public class RustInputMethodService extends InputMethodService {
         // A field is focused and the input connection is live again — commit any
         // text that finished transcribing while nothing was focused.
         flushPendingText();
+        // Pre-warm the encrypted API key store now that the keyboard is visible
+        // and post-processing is enabled, so the first transcription does not
+        // stall on MasterKey/Keystore initialization. Only run once per process
+        // — subsequent calls hit the cached EncryptedSharedPreferences.
+        if (!prewarmedInThisProcess && SettingsManager.isPostProcessEnabled(this)) {
+            prewarmedInThisProcess = true;
+            new Thread(() -> SettingsManager.prewarmApiKey(this)).start();
+        }
     }
 
     @Override
@@ -387,6 +426,7 @@ public class RustInputMethodService extends InputMethodService {
     @Override
     public void onDestroy() {
         super.onDestroy();
+        isDestroyed = true;
         cleanupNative();
         if (pauseAudioActive) {
             audioPauser.abandon(this);
@@ -394,6 +434,7 @@ public class RustInputMethodService extends InputMethodService {
         }
         // Cancel any in-flight post-processing call when the IME service dies.
         PostProcessor.cancelAll();
+        unregisterReceiver(cancelReceiver);
     }
 
     // Native methods
@@ -476,18 +517,19 @@ public class RustInputMethodService extends InputMethodService {
             SettingsManager settings = new SettingsManager(this);
             if (settings.isPostProcessEnabled()) {
                 if (statusView != null) statusView.setText("Refining...");
-                new PostProcessor(settings).process(text, new PostProcessor.PostProcessCallback() {
+                new PostProcessor(settings, mainHandler,
+                        () -> !isDestroyed).process(text, new PostProcessor.PostProcessCallback() {
                     @Override
                     public void onSuccess(String refinedText) {
                         String out = (refinedText != null && !refinedText.trim().isEmpty())
                                 ? refinedText : text;
-                        mainHandler.post(() -> commitFinalText(out));
+                        commitFinalText(out);
                     }
 
                     @Override
                     public void onError(String error) {
                         Log.w(TAG, "Post-process failed, committing raw text: " + error);
-                        mainHandler.post(() -> commitFinalText(text));
+                        commitFinalText(text);
                     }
                 });
             } else {

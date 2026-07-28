@@ -42,6 +42,10 @@ public class VoiceRecognitionService extends RecognitionService {
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
     private Callback mCallback;
+    // Incremented whenever a recognition session starts, is cancelled, or the
+    // service is destroyed. Late post-processing callbacks compare against the
+    // captured id so they cannot deliver results to a stale or new session.
+    private int currentSessionId = 0;
 
     @Override
     public void onCreate() {
@@ -55,6 +59,7 @@ public class VoiceRecognitionService extends RecognitionService {
 
     @Override
     protected void onStartListening(Intent recognizerIntent, Callback callback) {
+        currentSessionId++;
         mCallback = callback;
 
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
@@ -83,6 +88,12 @@ public class VoiceRecognitionService extends RecognitionService {
 
     @Override
     protected void onCancel(Callback callback) {
+        // Cancel any in-flight post-processing call when the recognition
+        // session is cancelled by the caller.
+        PostProcessor.cancelAll();
+        // Invalidate any post-processor callback that is still pending for
+        // this session so it cannot deliver results after cancellation.
+        currentSessionId++;
         try {
             cancelNative();
         } catch (Throwable t) {
@@ -92,6 +103,12 @@ public class VoiceRecognitionService extends RecognitionService {
 
     @Override
     public void onDestroy() {
+        // Cancel any in-flight post-processing call when the recognition
+        // service is destroyed.
+        PostProcessor.cancelAll();
+        // Invalidate any post-processor callback that is still pending so it
+        // cannot deliver results to a released binder.
+        currentSessionId++;
         try {
             destroyNative();
         } catch (Throwable t) {
@@ -138,13 +155,45 @@ public class VoiceRecognitionService extends RecognitionService {
         mainHandler.post(() -> {
             Callback cb = mCallback;
             if (cb == null) return;
-            ArrayList<String> hypotheses = new ArrayList<>();
-            hypotheses.add(text);
-            Bundle bundle = new Bundle();
-            bundle.putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, hypotheses);
-            try { cb.results(bundle); } catch (RemoteException ignored) {}
+            // Capture the id of the current recognition session so the async
+            // post-processor callback can verify it is still valid before it
+            // tries to deliver results to the framework.
+            int sessionId = currentSessionId;
+            deliverResults(cb, text, sessionId);
             mCallback = null;
         });
+    }
+
+    private void deliverResults(Callback cb, String text, int sessionId) {
+        SettingsManager settings = new SettingsManager(this);
+        if (settings.isPostProcessEnabled()) {
+            new PostProcessor(settings, mainHandler).process(text, new PostProcessor.PostProcessCallback() {
+                @Override
+                public void onSuccess(String refinedText) {
+                    if (sessionId != currentSessionId) return;
+                    String out = (refinedText != null && !refinedText.trim().isEmpty())
+                            ? refinedText : text;
+                    postResults(cb, out);
+                }
+
+                @Override
+                public void onError(String error) {
+                    if (sessionId != currentSessionId) return;
+                    Log.w(TAG, "Post-process failed, delivering raw text: " + error);
+                    postResults(cb, text);
+                }
+            });
+        } else {
+            postResults(cb, text);
+        }
+    }
+
+    private void postResults(Callback cb, String text) {
+        ArrayList<String> hypotheses = new ArrayList<>();
+        hypotheses.add(text);
+        Bundle bundle = new Bundle();
+        bundle.putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, hypotheses);
+        try { cb.results(bundle); } catch (RemoteException ignored) {}
     }
 
     public void onError(int errorCode) {

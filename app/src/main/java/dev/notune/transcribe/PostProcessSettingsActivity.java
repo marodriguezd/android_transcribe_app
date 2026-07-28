@@ -1,6 +1,9 @@
 package dev.notune.transcribe;
 
+import android.content.Intent;
 import android.os.Bundle;
+import android.os.Handler;
+import android.os.Looper;
 import android.widget.ArrayAdapter;
 import android.widget.AutoCompleteTextView;
 import android.widget.Button;
@@ -40,6 +43,16 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
 
     /** Provider id currently selected in the dropdown. */
     private String selectedProviderId;
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+        // Cancel any in-flight model-list fetch when the settings screen is
+        // destroyed, so its UI callbacks cannot touch a torn-down window
+        // (e.g. calling editModel.showDropDown() after the activity is gone
+        // would throw WindowManager.BadTokenException).
+        PostProcessor.cancelAll();
+    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -127,29 +140,26 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
     private void fetchModels() {
         save(false);
         btnRefreshModels.setEnabled(false);
-        new PostProcessor(settings).fetchModels(new PostProcessor.ModelsCallback() {
+        new PostProcessor(settings, new Handler(Looper.getMainLooper()),
+                () -> !isFinishing() && !isDestroyed()).fetchModels(new PostProcessor.ModelsCallback() {
             @Override
             public void onSuccess(List<String> models) {
-                runOnUiThread(() -> {
-                    btnRefreshModels.setEnabled(true);
-                    editModel.setAdapter(new ArrayAdapter<>(
-                            PostProcessSettingsActivity.this,
-                            android.R.layout.simple_list_item_1, models));
-                    Toast.makeText(PostProcessSettingsActivity.this,
-                            getString(R.string.pp_models_loaded) + " (" + models.size() + ")",
-                            Toast.LENGTH_SHORT).show();
-                    editModel.showDropDown();
-                });
+                btnRefreshModels.setEnabled(true);
+                editModel.setAdapter(new ArrayAdapter<>(
+                        PostProcessSettingsActivity.this,
+                        android.R.layout.simple_list_item_1, models));
+                Toast.makeText(PostProcessSettingsActivity.this,
+                        getString(R.string.pp_models_loaded) + " (" + models.size() + ")",
+                        Toast.LENGTH_SHORT).show();
+                editModel.showDropDown();
             }
 
             @Override
             public void onError(String error) {
-                runOnUiThread(() -> {
-                    btnRefreshModels.setEnabled(true);
-                    Toast.makeText(PostProcessSettingsActivity.this,
-                            getString(R.string.pp_models_error) + ": " + error,
-                            Toast.LENGTH_LONG).show();
-                });
+                btnRefreshModels.setEnabled(true);
+                Toast.makeText(PostProcessSettingsActivity.this,
+                        getString(R.string.pp_models_error) + ": " + error,
+                        Toast.LENGTH_LONG).show();
             }
         });
     }
@@ -175,9 +185,14 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
         }
 
         // If the user just disabled post-processing, cancel any in-flight LLM
-        // calls so the next transcription starts fresh.
+        // calls in this process and broadcast to the IME (":ime") process so
+        // it cancels its own calls immediately instead of waiting for them to
+        // time out.
         if (wasEnabled && !nowEnabled) {
             PostProcessor.cancelAll();
+            Intent cancelIntent = new Intent(PostProcessor.CANCEL_ACTION);
+            cancelIntent.setPackage(getPackageName());
+            sendBroadcast(cancelIntent);
         }
 
         // If the user just enabled post-processing, warm up the encrypted API

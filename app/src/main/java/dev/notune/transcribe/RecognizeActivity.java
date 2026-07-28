@@ -10,6 +10,8 @@ import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
 import android.content.pm.PackageManager;
+import android.os.Handler;
+import android.os.Looper;
 
 import androidx.appcompat.app.AppCompatActivity;
 
@@ -166,7 +168,8 @@ public class RecognizeActivity extends AppCompatActivity {
                 Log.i(TAG, "Post-processing enabled, sending " + text.length()
                         + " chars to " + settings.getEffectiveApiUrl());
                 Log.i(TAG, "PP-RAW: " + text);
-                new PostProcessor(settings).process(text, new PostProcessor.PostProcessCallback() {
+                new PostProcessor(settings, new Handler(Looper.getMainLooper()),
+                        () -> !isFinishing() && !isDestroyed()).process(text, new PostProcessor.PostProcessCallback() {
                     @Override
                     public void onSuccess(String refinedText) {
                         Log.i(TAG, "Post-process OK: raw=" + text.length()
@@ -189,21 +192,19 @@ public class RecognizeActivity extends AppCompatActivity {
     }
 
     private void deliverResult(String text) {
-        runOnUiThread(() -> {
-            if (text == null || text.trim().isEmpty()) {
-                setResult(Activity.RESULT_CANCELED);
-                finish();
-                return;
-            }
-            ArrayList<String> results = new ArrayList<>();
-            results.add(text);
-
-            Intent data = new Intent();
-            data.putStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS, results);
-
-            setResult(Activity.RESULT_OK, data);
+        if (text == null || text.trim().isEmpty()) {
+            setResult(Activity.RESULT_CANCELED);
             finish();
-        });
+            return;
+        }
+        ArrayList<String> results = new ArrayList<>();
+        results.add(text);
+
+        Intent data = new Intent();
+        data.putStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS, results);
+
+        setResult(Activity.RESULT_OK, data);
+        finish();
     }
 
     private boolean isPauseAudioEnabled() {

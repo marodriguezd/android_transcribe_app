@@ -5,8 +5,11 @@ import android.util.Log;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import android.os.Handler;
+
 import java.io.IOException;
 import java.util.Collections;
+import java.util.function.BooleanSupplier;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
@@ -31,15 +34,52 @@ public class PostProcessor {
     private static final String TAG = "PostProcessor";
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
+    /**
+     * Broadcast action sent by the main process when post-processing is
+     * toggled off, so the ":ime" keyboard process can cancel its own
+     * in-flight OkHttp calls immediately.
+     */
+    public static final String CANCEL_ACTION = "dev.notune.transcribe.CANCEL_PP";
+
     private static volatile OkHttpClient sharedClient;
     private static final Object CLIENT_LOCK = new Object();
     private static final Set<Call> IN_FLIGHT = Collections.newSetFromMap(new ConcurrentHashMap<Call, Boolean>());
     private static final Object IN_FLIGHT_LOCK = new Object();
 
     private final SettingsManager settings;
+    private final Handler uiHandler;
+    private final BooleanSupplier validator;
 
+    /**
+     * Creates a PostProcessor that delivers callbacks on the caller's thread.
+     * Kept for backward compatibility with callers that manage their own
+     * UI-thread posting (e.g. fetchModels).
+     */
     public PostProcessor(SettingsManager settings) {
+        this(settings, null, null);
+    }
+
+    /**
+     * Creates a PostProcessor that delivers callbacks on the UI thread
+     * described by {@code uiHandler}. Callers can update UI directly from
+     * {@code onSuccess}/{@code onError} without runOnUiThread wrappers.
+     */
+    public PostProcessor(SettingsManager settings, Handler uiHandler) {
+        this(settings, uiHandler, null);
+    }
+
+    /**
+     * Creates a PostProcessor that delivers callbacks on the UI thread only
+     * while {@code validator} returns {@code true}. This prevents late
+     * callbacks from running after the owning Activity or Service has been
+     * destroyed. Pass a validator such as
+     * {@code () -> !isFinishing() && !isDestroyed()} from an Activity, or
+     * a service-owned flag for background services.
+     */
+    public PostProcessor(SettingsManager settings, Handler uiHandler, BooleanSupplier validator) {
         this.settings = settings;
+        this.uiHandler = uiHandler;
+        this.validator = validator;
     }
 
     private static OkHttpClient getSharedClient() {
@@ -74,14 +114,14 @@ public class PostProcessor {
 
     public void process(String rawText, final PostProcessCallback callback) {
         if (rawText == null || rawText.trim().isEmpty()) {
-            callback.onSuccess(rawText != null ? rawText : "");
+            dispatchToUi(() -> callback.onSuccess(rawText != null ? rawText : ""));
             return;
         }
 
         // Defensive re-check: if the toggle was disabled between the call site's
         // check and this method, deliver the raw text immediately.
         if (!settings.isPostProcessEnabled()) {
-            callback.onSuccess(rawText);
+            dispatchToUi(() -> callback.onSuccess(rawText));
             return;
         }
 
@@ -138,7 +178,7 @@ public class PostProcessor {
                 public void onFailure(Call call, IOException e) {
                     IN_FLIGHT.remove(call);
                     Log.e(TAG, "API call failed: " + e.getMessage());
-                    callback.onError(e.getMessage());
+                    dispatchToUi(() -> callback.onError(e.getMessage()));
                 }
 
                 @Override
@@ -148,12 +188,12 @@ public class PostProcessor {
                     // in flight, fall back to the raw transcript instead of
                     // committing the refined text.
                     if (!settings.isPostProcessEnabled()) {
-                        callback.onSuccess(rawText);
+                        dispatchToUi(() -> callback.onSuccess(rawText));
                         return;
                     }
                     if (!response.isSuccessful()) {
                         Log.e(TAG, "API error: code=" + response.code());
-                        callback.onError("API Error " + response.code());
+                        dispatchToUi(() -> callback.onError("API Error " + response.code()));
                         return;
                     }
                     try {
@@ -164,19 +204,35 @@ public class PostProcessor {
                             String resultText = choices.getJSONObject(0)
                                     .getJSONObject("message")
                                     .getString("content");
-                            callback.onSuccess(resultText.trim());
+                            dispatchToUi(() -> callback.onSuccess(resultText.trim()));
                         } else {
-                            callback.onError("Empty response from AI");
+                            dispatchToUi(() -> callback.onError("Empty response from AI"));
                         }
                     } catch (Exception e) {
                         Log.e(TAG, "Failed to parse API response: " + e.getMessage());
-                        callback.onError("Parse error: " + e.getMessage());
+                        dispatchToUi(() -> callback.onError("Parse error: " + e.getMessage()));
                     }
                 }
             });
         } catch (Exception e) {
             Log.e(TAG, "Failed to create request: " + e.getMessage());
-            callback.onError(e.getMessage());
+            dispatchToUi(() -> callback.onError(e.getMessage()));
+        }
+    }
+
+    /** Runs {@code action} on the configured UI handler, or immediately
+     *  when no handler was provided. If a validator was supplied, the action
+     *  is dropped when it returns false, preventing late callbacks from
+     *  touching a destroyed component. */
+    private void dispatchToUi(Runnable action) {
+        if (uiHandler != null) {
+            uiHandler.post(() -> {
+                if (validator != null && !validator.getAsBoolean()) return;
+                action.run();
+            });
+        } else {
+            if (validator != null && !validator.getAsBoolean()) return;
+            action.run();
         }
     }
 
@@ -206,14 +262,14 @@ public class PostProcessor {
             @Override
             public void onFailure(Call call, IOException e) {
                 IN_FLIGHT.remove(call);
-                callback.onError(e.getMessage());
+                dispatchToUi(() -> callback.onError(e.getMessage()));
             }
 
             @Override
             public void onResponse(Call call, Response response) throws IOException {
                 IN_FLIGHT.remove(call);
                 if (!response.isSuccessful()) {
-                    callback.onError("Error " + response.code());
+                    dispatchToUi(() -> callback.onError("Error " + response.code()));
                     return;
                 }
                 try {
@@ -225,9 +281,9 @@ public class PostProcessor {
                         models.add(array.getJSONObject(i).getString("id"));
                     }
                     java.util.Collections.sort(models);
-                    callback.onSuccess(models);
+                    dispatchToUi(() -> callback.onSuccess(models));
                 } catch (Exception e) {
-                    callback.onError("Parse error: " + e.getMessage());
+                    dispatchToUi(() -> callback.onError("Parse error: " + e.getMessage()));
                 }
             }
         });

@@ -290,21 +290,23 @@ public class SettingsManager {
     // One-time migration from SharedPreferences to marker files.
     //
     // Runs in every process (main and ":ime") on first launch after update.
-    // Three concurrency concerns:
+    // Concurrency concerns this protects against:
     //   1. Sentinel check + legacy read + marker write is a TOCTOU race:
     //      both processes can pass the sentinel check, read the legacy
     //      SharedPreferences, and queue their own marker writes.
-    //   2. SharedPreferences `apply()` is async: a trailing thread can still
-    //      see the stale value even after another process flushed changes.
-    //   3. The IME process can lag behind the main process. If the user
+    //   2. The IME process can lag behind the main process. If the user
     //      disables post-processing (deletes the marker) while the IME is
     //      still in its migration block, a careless migration would resurrect
     //      the marker right after the user removed it.
     //
     // Fix: serialize the whole migration with an OS-level file lock on
     // filesDir()/pp_migrated.lock, and clear the legacy SharedPreferences
-    // with a synchronous `commit()` before the sentinel so any later thread
-    // that re-enters migration sees no legacy values.
+    // with a synchronous `commit()` before the sentinel. The lock guarantees
+    // that any process waiting for us will only call `getSharedPreferences()`
+    // AFTER our commit() returns, so it loads the cleared values and does not
+    // resurrect any marker. `apply()` would not be enough because it is async:
+    // a trailing process could read the legacy file before our async write
+    // flushed, see the stale value, and recreate the marker.
     // ----------------------------------------------------------------------
 
     public static void migrateIfNeeded(Context context) {
@@ -314,20 +316,23 @@ public class SettingsManager {
         if (sentinel.exists()) return;
 
         File lockFile = new File(filesDir, MIGRATION_SENTINEL + ".lock");
+        boolean migratedThisCall = false;
         FileLock lock = null;
         try (FileOutputStream fos = new FileOutputStream(lockFile, true)) {
             FileChannel channel = fos.getChannel();
             lock = channel.tryLock();
             if (lock == null) {
-                // Another process holds the lock and is migrating. Sleep briefly
-                // so it can finish; the next App.onCreate will re-check the
-                // sentinel and skip migration if necessary.
-                try { Thread.sleep(50); } catch (InterruptedException ignored) {}
+                // Another process is migrating. Return immediately: the next
+                // App.onCreate in this process will catch up via the sentinel
+                // check. Avoid sleeping on the main thread (App.onCreate is
+                // on the UI thread in both main and ":ime") because the
+                // typical migration is <10ms and prewarmApiKey tolerates a
+                // not-yet-present marker just fine.
                 return;
             }
 
-            // Re-check sentinel under the lock (the holder may have completed
-            // in the meantime).
+            // Re-check sentinel under the lock (the previous holder may have
+            // completed in the meantime).
             if (sentinel.exists()) return;
 
             SharedPreferences legacy = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
@@ -362,11 +367,7 @@ public class SettingsManager {
                 }
             }
 
-            // Synchronously commit the legacy-key removal so any trailing
-            // process that re-enters migration after this point reads empty
-            // values and does not resurrect the marker. `apply()` is not
-            // enough here because other processes read SharedPreferences from
-            // disk, not from a shared cache.
+            // Synchronously commit the legacy-key removal (see class comment).
             try {
                 SharedPreferences.Editor editor = legacy.edit();
                 editor.remove(LEGACY_KEY_POST_PROCESS_ENABLED);
@@ -379,11 +380,12 @@ public class SettingsManager {
                 Log.e(TAG, "Failed to clear legacy SharedPreferences", e);
             }
 
-            // Create the sentinel LAST so a trailing process that races with
-            // us and somehow acquires the lock next sees the migration as
-            // complete and exits early.
+            // Create the sentinel LAST so any trailing process that races
+            // with us and somehow acquires the lock next sees the migration
+            // as complete and exits early.
             try {
                 sentinel.createNewFile();
+                migratedThisCall = true;
             } catch (IOException e) {
                 Log.e(TAG, "Failed to create migration sentinel", e);
             }
@@ -396,6 +398,15 @@ public class SettingsManager {
         } finally {
             if (lock != null && lock.isValid()) {
                 try { lock.release(); } catch (IOException ignored) {}
+            }
+            // Drop the lockfile on a successful migration so it does not leak
+            // into filesDir forever. The sentinel guards against re-running
+            // the migration, so the lockfile is no longer needed.
+            if (migratedThisCall) {
+                // Best effort; ignore failures. Deleting after releasing the
+                // lock is safe — any process still holding a stale handle will
+                // simply see EOF when it eventually closes.
+                lockFile.delete();
             }
         }
     }

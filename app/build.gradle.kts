@@ -44,10 +44,14 @@ android {
         targetCompatibility = JavaVersion.VERSION_1_8
     }
 
-    // Source sets — the Rust-built .so files land in jniLibs via cargo-ndk
+    // Source sets — the Rust-built .so files land in jniLibs via cargo-ndk.
+    // The bundled speech model is included only in release builds; debug builds
+    // ship without it to keep the APK under Telegram's 50 MB file-size limit.
+    // The app downloads the model from Hugging Face on first run in debug mode.
     sourceSets {
         getByName("main") {
             jniLibs.srcDirs("src/main/jniLibs")
+            assets.srcDirs("src/main/assets")
         }
     }
 
@@ -66,16 +70,15 @@ android {
 // For APK builds (assemble/install), asset packs are ignored by AGP so we
 // must include the asset-pack assets as an extra source directory.  For
 // bundle builds the asset pack module handles delivery and we must NOT add
-// the directory here (would cause duplicate-resource errors).
+// the directory here (would cause duplicate-resource errors).  The release
+// source set therefore only adds the model assets for release builds; debug
+// builds omit them entirely.
 val isBundle = gradle.startParameter.taskNames.any {
     it.contains("bundle", ignoreCase = true)
 }
 if (!isBundle) {
-    android.sourceSets.getByName("main") {
-        assets.srcDirs(
-            "src/main/assets",
-            rootProject.file("model_assets/src/main/assets")
-        )
+    android.sourceSets.getByName("release") {
+        assets.srcDirs(rootProject.file("model_assets/src/main/assets"))
     }
 }
 
@@ -159,7 +162,7 @@ val cargoNdkBuild by tasks.registering(Exec::class) {
     outputs.upToDateWhen { false }
 }
 
-// Wire the cargo-ndk build into the Android build lifecycle
+// Wire the cargo-ndk build into the Android build lifecycle (all variants).
 tasks.named("preBuild") {
     dependsOn(cargoNdkBuild)
 }
@@ -167,6 +170,9 @@ tasks.named("preBuild") {
 // ---------------------------------------------------------------------------
 // Model asset download task
 // ---------------------------------------------------------------------------
+// The bundled model is only downloaded for release builds. Debug builds ship
+// without it to keep the APK under Telegram's 50 MB file-size limit; the app
+// downloads the model from Hugging Face on first run.
 
 data class ModelFile(val name: String, val sha256: String)
 
@@ -250,6 +256,14 @@ val downloadModels by tasks.registering {
     }
 }
 
-tasks.named("preBuild") {
-    dependsOn(downloadModels)
+// Only download the bundled model when the user is actually building a
+// release/bundle variant. Debug builds skip the download to keep CI fast;
+// the app downloads the model at runtime instead.
+val isDebugBuild = gradle.startParameter.taskNames.any {
+    it.contains("Debug", ignoreCase = true)
+}
+if (!isDebugBuild) {
+    tasks.named("preBuild") {
+        dependsOn(downloadModels)
+    }
 }

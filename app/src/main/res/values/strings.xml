@@ -140,4 +140,17 @@
     <string name="cw_save">Save</string>
     <string name="cw_saved">Saved</string>
     <string name="cw_save_error">Failed to save the dictionary</string>
+
+    <!-- Debug build: model is downloaded on first run to keep APK small -->
+    <string name="debug_model_title">Debug model required</string>
+    <string name="debug_model_body">This debug build does not include the speech model. Download it now (~%1$s)? A Wi-Fi connection is recommended.</string>
+    <string name="debug_model_download">Download</string>
+    <string name="debug_model_cancel">Cancel</string>
+    <string name="debug_model_downloading">Downloading model…</string>
+    <string name="debug_model_downloaded">Model downloaded</string>
+    <string name="debug_model_error">Download failed: %1$s</string>
+    <string name="debug_model_retry">Retry</string>
+    <string name="debug_model_cancelled">Model download cancelled</string>
+    <string name="debug_model_no_space">Not enough free storage to download the model</string>
+    <string name="debug_model_size" translatable="false">209 MB</string>
 </resources>

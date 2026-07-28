@@ -131,4 +131,17 @@
     <string name="cw_save">Enregistrer</string>
     <string name="cw_saved">Enregistré</string>
     <string name="cw_save_error">Échec de l\'enregistrement du dictionnaire</string>
+
+    <!-- Version de débogage : le modèle est téléchargé au premier lancement pour garder l'APK petit -->
+    <string name="debug_model_title">Modèle de débogage requis</string>
+    <string name="debug_model_body">Cette version de débogage n\'inclut pas le modèle vocal. Télécharger maintenant (~%1$s) ? Une connexion Wi-Fi est recommandée.</string>
+    <string name="debug_model_download">Télécharger</string>
+    <string name="debug_model_cancel">Annuler</string>
+    <string name="debug_model_downloading">Téléchargement du modèle…</string>
+    <string name="debug_model_downloaded">Modèle téléchargé</string>
+    <string name="debug_model_error">Échec du téléchargement : %1$s</string>
+    <string name="debug_model_retry">Réessayer</string>
+    <string name="debug_model_cancelled">Téléchargement du modèle annulé</string>
+    <string name="debug_model_no_space">Espace de stockage insuffisant pour télécharger le modèle</string>
+    <string name="debug_model_size" translatable="false">209 MB</string>
 </resources>

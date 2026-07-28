@@ -131,4 +131,17 @@
     <string name="cw_save">Guardar</string>
     <string name="cw_saved">Guardado</string>
     <string name="cw_save_error">No se pudo guardar el diccionario</string>
+
+    <!-- Compilación de depuración: el modelo se descarga en el primer arranque para mantener el APK pequeño -->
+    <string name="debug_model_title">Modelo de depuración requerido</string>
+    <string name="debug_model_body">Esta compilación de depuración no incluye el modelo de voz. ¿Descargarlo ahora (~%1$s)? Se recomienda conexión Wi-Fi.</string>
+    <string name="debug_model_download">Descargar</string>
+    <string name="debug_model_cancel">Cancelar</string>
+    <string name="debug_model_downloading">Descargando modelo…</string>
+    <string name="debug_model_downloaded">Modelo descargado</string>
+    <string name="debug_model_error">Error de descarga: %1$s</string>
+    <string name="debug_model_retry">Reintentar</string>
+    <string name="debug_model_cancelled">Descarga del modelo cancelada</string>
+    <string name="debug_model_no_space">No hay suficiente espacio libre para descargar el modelo</string>
+    <string name="debug_model_size" translatable="false">209 MB</string>
 </resources>

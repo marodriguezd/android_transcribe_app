@@ -131,4 +131,17 @@
     <string name="cw_save">Salvar</string>
     <string name="cw_saved">Salvo</string>
     <string name="cw_save_error">Falha ao salvar o dicionário</string>
+
+    <!-- Build de depuração: o modelo é baixado no primeiro lançamento para manter o APK pequeno -->
+    <string name="debug_model_title">Modelo de depuração necessário</string>
+    <string name="debug_model_body">Esta compilação de depuração não inclui o modelo de voz. Baixar agora (~%1$s)? Recomenda-se conexão Wi-Fi.</string>
+    <string name="debug_model_download">Baixar</string>
+    <string name="debug_model_cancel">Cancelar</string>
+    <string name="debug_model_downloading">Baixando modelo…</string>
+    <string name="debug_model_downloaded">Modelo baixado</string>
+    <string name="debug_model_error">Falha no download: %1$s</string>
+    <string name="debug_model_retry">Tentar novamente</string>
+    <string name="debug_model_cancelled">Download do modelo cancelado</string>
+    <string name="debug_model_no_space">Armazenamento livre insuficiente para baixar o modelo</string>
+    <string name="debug_model_size" translatable="false">209 MB</string>
 </resources>

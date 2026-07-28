@@ -24,14 +24,30 @@ import androidx.core.widget.ImageViewCompat;
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
     private static final int PERM_REQ_CODE = 101;
     private static final int REQ_VOICE_TEST = 202;
+
+    // Debug builds download the model on first run. Guard against multiple
+    // concurrent downloads (e.g. after a configuration change the Activity is
+    // recreated but the background thread keeps running).
+    private static final AtomicBoolean isDownloadingDebugModel = new AtomicBoolean(false);
 
     static {
         try {
@@ -148,8 +164,11 @@ public class MainActivity extends AppCompatActivity {
         // Initial check
         updateVoiceInputStatus();
 
-        // Start init
-        initNative(this);
+        // Debug builds ship without the bundled model to keep the APK small;
+        // download it from Hugging Face on first run. This is also called from
+        // onResume() so a configuration change that occurs while downloading
+        // still initializes the engine once the model is ready.
+        maybeDownloadDebugModel();
     }
 
     @Override
@@ -157,6 +176,9 @@ public class MainActivity extends AppCompatActivity {
         super.onResume();
         // Re-check on return from the keyboard chooser, settings, or a test run.
         updateVoiceInputStatus();
+        // Re-check the debug model state after a configuration change or when
+        // returning from another screen.
+        maybeDownloadDebugModel();
     }
 
     /**
@@ -412,6 +434,157 @@ public class MainActivity extends AppCompatActivity {
                 startSubsButton.setEnabled(true);
             }
         });
+    }
+
+    // --- Debug model download -----------------------------------------------
+
+    /**
+     * Debug builds do not include the bundled speech model (keeps the APK under
+     * Telegram's 50 MB file limit). On first run, offer to download it from
+     * Hugging Face and treat it as an imported model.
+     */
+    private void maybeDownloadDebugModel() {
+        if (hasBundledModel() || hasImportedModel()) {
+            initNative(this);
+            return;
+        }
+
+        if (isDownloadingDebugModel.get()) {
+            statusText.setText(R.string.debug_model_downloading);
+            benchButton.setEnabled(false);
+            return;
+        }
+
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.debug_model_title)
+                .setMessage(getString(R.string.debug_model_body,
+                        getString(R.string.debug_model_size)))
+                .setCancelable(false)
+                .setPositiveButton(R.string.debug_model_download,
+                        (d, w) -> startDebugModelDownload())
+                .setNegativeButton(R.string.debug_model_cancel,
+                        (d, w) -> statusText.setText(R.string.debug_model_cancelled))
+                .show();
+    }
+
+    private boolean hasBundledModel() {
+        try {
+            String[] list = getAssets().list("builtin-model");
+            return list != null && list.length > 0;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private boolean hasImportedModel() {
+        File marker = new File(getFilesDir(), "active_model");
+        if (!marker.exists()) return false;
+        try (BufferedReader br = new BufferedReader(
+                new InputStreamReader(new FileInputStream(marker), StandardCharsets.UTF_8))) {
+            String name = br.readLine();
+            if (name == null) return false;
+            name = name.trim();
+            return !name.isEmpty() && new File(new File(getFilesDir(), "models"), name).exists();
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    private void startDebugModelDownload() {
+        if (!isDownloadingDebugModel.compareAndSet(false, true)) {
+            statusText.setText(R.string.debug_model_downloading);
+            benchButton.setEnabled(false);
+            return;
+        }
+        statusText.setText(R.string.debug_model_downloading);
+        benchButton.setEnabled(false);
+
+        new Thread(() -> {
+            File modelsDir = new File(getFilesDir(), "models");
+            if (!modelsDir.exists() && !modelsDir.mkdirs()) {
+                runOnUiThread(() -> onModelDownloadFailed("Cannot create models directory"));
+                return;
+            }
+
+            // Rough sanity check: the model is ~209 MB; leave extra headroom.
+            long requiredBytes = 220L * 1024 * 1024;
+            if (getFilesDir().getUsableSpace() < requiredBytes) {
+                runOnUiThread(() -> onModelDownloadFailed(getString(R.string.debug_model_no_space)));
+                return;
+            }
+
+            File dest = new File(modelsDir, "canary-180m-flash-Q8_0.gguf");
+            File tmp = new File(modelsDir, "canary-180m-flash-Q8_0.gguf.tmp");
+            String url = "https://huggingface.co/handy-computer/canary-180m-flash-gguf/resolve/main/canary-180m-flash-Q8_0.gguf?download=true";
+
+            // Mobile networks can be slow for a 209 MB file; give generous timeouts.
+            OkHttpClient client = new OkHttpClient.Builder()
+                    .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+                    .readTimeout(180, java.util.concurrent.TimeUnit.SECONDS)
+                    .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                    .build();
+            Request request = new Request.Builder().url(url).build();
+            try (Response response = client.newCall(request).execute()) {
+                if (!response.isSuccessful() || response.body() == null) {
+                    throw new IOException("HTTP " + response.code());
+                }
+                try (InputStream is = response.body().byteStream();
+                     FileOutputStream fos = new FileOutputStream(tmp)) {
+                    byte[] buffer = new byte[8192];
+                    int read;
+                    while ((read = is.read(buffer)) != -1) {
+                        fos.write(buffer, 0, read);
+                    }
+                }
+                if (!tmp.renameTo(dest)) {
+                    throw new IOException("Failed to rename downloaded model file");
+                }
+
+                // Mark this downloaded file as the active imported model.
+                try (FileOutputStream fos = new FileOutputStream(
+                        new File(getFilesDir(), "active_model"))) {
+                    fos.write("canary-180m-flash-Q8_0.gguf".getBytes(StandardCharsets.UTF_8));
+                }
+
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    statusText.setText(R.string.debug_model_downloaded);
+                    benchButton.setEnabled(true);
+                    initNative(MainActivity.this);
+                });
+            } catch (Exception e) {
+                Log.e(TAG, "Debug model download failed", e);
+                tmp.delete();
+                runOnUiThread(() -> {
+                    if (isFinishing() || isDestroyed()) return;
+                    onModelDownloadFailed(
+                            e.getMessage() != null ? e.getMessage() : "unknown");
+                });
+            } finally {
+                isDownloadingDebugModel.set(false);
+            }
+        }, "debug-model-download").start();
+    }
+
+    private void onModelDownloadFailed(String reason) {
+        statusText.setText(getString(R.string.debug_model_error, reason));
+        benchButton.setEnabled(true);
+        showRetryDownloadDialog(reason);
+    }
+
+    private void showRetryDownloadDialog(String reason) {
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.debug_model_title)
+                .setMessage(getString(R.string.debug_model_error, reason))
+                .setCancelable(false)
+                .setPositiveButton(R.string.debug_model_retry,
+                        (d, w) -> startDebugModelDownload())
+                .setNegativeButton(R.string.debug_model_cancel,
+                        (d, w) -> {
+                            statusText.setText(R.string.debug_model_cancelled);
+                            benchButton.setEnabled(true);
+                        })
+                .show();
     }
 
     private native void initNative(MainActivity activity);

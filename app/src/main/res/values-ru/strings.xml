@@ -131,4 +131,17 @@
     <string name="cw_save">Сохранить</string>
     <string name="cw_saved">Сохранено</string>
     <string name="cw_save_error">Не удалось сохранить словарь</string>
+
+    <!-- Отладочная сборка: модель скачивается при первом запуске, чтобы APK оставался небольшим -->
+    <string name="debug_model_title">Требуется отладочная модель</string>
+    <string name="debug_model_body">Эта отладочная сборка не включает речевую модель. Скачать сейчас (~%1$s)? Рекомендуется подключение к Wi-Fi.</string>
+    <string name="debug_model_download">Скачать</string>
+    <string name="debug_model_cancel">Отмена</string>
+    <string name="debug_model_downloading">Загрузка модели…</string>
+    <string name="debug_model_downloaded">Модель загружена</string>
+    <string name="debug_model_error">Ошибка загрузки: %1$s</string>
+    <string name="debug_model_retry">Повторить</string>
+    <string name="debug_model_cancelled">Загрузка модели отменена</string>
+    <string name="debug_model_no_space">Недостаточно свободного места для загрузки модели</string>
+    <string name="debug_model_size" translatable="false">209 MB</string>
 </resources>

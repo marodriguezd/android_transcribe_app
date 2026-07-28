@@ -30,6 +30,14 @@ public class App extends Application {
         ThemePrefs.apply(this);
         DynamicColors.applyToActivitiesIfAvailable(this);
         applyDeviceLanguageIfUnset();
+        // Migrate post-processing settings from SharedPreferences to marker
+        // files once. Runs in the main and ":ime" processes; the sentinel
+        // makes it idempotent.
+        SettingsManager.migrateIfNeeded(this);
+        // Warm up the encrypted API key store off the main thread so app/keyboard
+        // startup is not blocked by Keystore init (can take hundreds of ms).
+        // Only does work when post-processing is already enabled.
+        new Thread(() -> SettingsManager.prewarmApiKey(this)).start();
     }
 
     /// Writes the device's current language (BCP-47 tag, e.g. "es-ES",

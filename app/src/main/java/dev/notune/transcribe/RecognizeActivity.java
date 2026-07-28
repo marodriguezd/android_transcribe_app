@@ -125,6 +125,8 @@ public class RecognizeActivity extends AppCompatActivity {
             pauseAudioActive = false;
         }
         try { cleanupNative(); } catch (Throwable t) { /* ignore */ }
+        // Cancel any in-flight post-processing call when the popup is destroyed.
+        PostProcessor.cancelAll();
     }
 
     // Called from Rust

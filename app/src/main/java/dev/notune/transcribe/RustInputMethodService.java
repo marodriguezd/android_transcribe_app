@@ -392,6 +392,8 @@ public class RustInputMethodService extends InputMethodService {
             audioPauser.abandon(this);
             pauseAudioActive = false;
         }
+        // Cancel any in-flight post-processing call when the IME service dies.
+        PostProcessor.cancelAll();
     }
 
     // Native methods

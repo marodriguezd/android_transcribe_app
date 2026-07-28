@@ -6,10 +6,14 @@ import org.json.JSONArray;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.util.Collections;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
 import okhttp3.Callback;
+import okhttp3.ConnectionPool;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -18,31 +22,66 @@ import okhttp3.Response;
 
 /**
  * AI post-processing over an OpenAI-compatible /chat/completions endpoint.
- * Minimal port on top of upstream v0.1.18: takes the raw transcript, sends
- * it with the active system prompt, returns the refined text.
- *
- * The custom-dictionary / hotword hint injection from the old fork is
- * intentionally omitted here and can be layered back later.
+ * Uses a shared OkHttpClient so TLS sessions and TCP connections can be reused
+ * across transcriptions. In-flight calls are tracked so they can be cancelled
+ * when the user toggles post-processing off, and the enabled flag is re-checked
+ * before the refined text is delivered.
  */
 public class PostProcessor {
     private static final String TAG = "PostProcessor";
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
-    private final OkHttpClient client;
+    private static volatile OkHttpClient sharedClient;
+    private static final Object CLIENT_LOCK = new Object();
+    private static final Set<Call> IN_FLIGHT = Collections.newSetFromMap(new ConcurrentHashMap<Call, Boolean>());
+    private static final Object IN_FLIGHT_LOCK = new Object();
+
     private final SettingsManager settings;
 
     public PostProcessor(SettingsManager settings) {
-        this.client = new OkHttpClient.Builder()
-                .connectTimeout(30, TimeUnit.SECONDS)
-                .readTimeout(60, TimeUnit.SECONDS)
-                .writeTimeout(60, TimeUnit.SECONDS)
-                .build();
         this.settings = settings;
+    }
+
+    private static OkHttpClient getSharedClient() {
+        OkHttpClient client = sharedClient;
+        if (client == null) {
+            synchronized (CLIENT_LOCK) {
+                client = sharedClient;
+                if (client == null) {
+                    client = new OkHttpClient.Builder()
+                            .connectTimeout(30, TimeUnit.SECONDS)
+                            .readTimeout(60, TimeUnit.SECONDS)
+                            .writeTimeout(60, TimeUnit.SECONDS)
+                            .connectionPool(new ConnectionPool(5, 5, TimeUnit.MINUTES))
+                            .build();
+                    sharedClient = client;
+                }
+            }
+        }
+        return client;
+    }
+
+    /** Cancel every in-flight OkHttp call created by any PostProcessor instance. */
+    public static void cancelAll() {
+        synchronized (IN_FLIGHT_LOCK) {
+            for (Call call : IN_FLIGHT) {
+                if (!call.isCanceled()) {
+                    call.cancel();
+                }
+            }
+        }
     }
 
     public void process(String rawText, final PostProcessCallback callback) {
         if (rawText == null || rawText.trim().isEmpty()) {
             callback.onSuccess(rawText != null ? rawText : "");
+            return;
+        }
+
+        // Defensive re-check: if the toggle was disabled between the call site's
+        // check and this method, deliver the raw text immediately.
+        if (!settings.isPostProcessEnabled()) {
+            callback.onSuccess(rawText);
             return;
         }
 
@@ -90,15 +129,28 @@ public class PostProcessor {
                 requestBuilder.addHeader("Authorization", "Bearer " + apiKey);
             }
 
-            client.newCall(requestBuilder.build()).enqueue(new Callback() {
+            Call call = getSharedClient().newCall(requestBuilder.build());
+            synchronized (IN_FLIGHT_LOCK) {
+                IN_FLIGHT.add(call);
+            }
+            call.enqueue(new Callback() {
                 @Override
                 public void onFailure(Call call, IOException e) {
+                    IN_FLIGHT.remove(call);
                     Log.e(TAG, "API call failed: " + e.getMessage());
                     callback.onError(e.getMessage());
                 }
 
                 @Override
                 public void onResponse(Call call, Response response) throws IOException {
+                    IN_FLIGHT.remove(call);
+                    // If the user disabled post-processing while the request was
+                    // in flight, fall back to the raw transcript instead of
+                    // committing the refined text.
+                    if (!settings.isPostProcessEnabled()) {
+                        callback.onSuccess(rawText);
+                        return;
+                    }
                     if (!response.isSuccessful()) {
                         Log.e(TAG, "API error: code=" + response.code());
                         callback.onError("API Error " + response.code());
@@ -144,14 +196,22 @@ public class PostProcessor {
             requestBuilder.addHeader("Authorization", "Bearer " + apiKey);
         }
 
-        client.newCall(requestBuilder.build()).enqueue(new Callback() {
+        Call call = getSharedClient().newCall(requestBuilder.build());
+        synchronized (IN_FLIGHT_LOCK) {
+            IN_FLIGHT.add(call);
+        }
+        // Register the call before enqueueing so cancelAll() cannot miss it
+        // in the window between creation and tracking.
+        call.enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
+                IN_FLIGHT.remove(call);
                 callback.onError(e.getMessage());
             }
 
             @Override
             public void onResponse(Call call, Response response) throws IOException {
+                IN_FLIGHT.remove(call);
                 if (!response.isSuccessful()) {
                     callback.onError("Error " + response.code());
                     return;

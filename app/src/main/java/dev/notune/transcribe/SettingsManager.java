@@ -7,32 +7,54 @@ import android.util.Log;
 import androidx.security.crypto.EncryptedSharedPreferences;
 import androidx.security.crypto.MasterKey;
 
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
+
 /**
- * Minimal settings store for the AI post-processing layer (fork addition on
- * top of upstream v0.1.18). Holds only what the post-processor needs:
+ * Minimal settings store for the AI post-processing layer.
  *
- *   - whether post-processing is enabled
- *   - the OpenAI-compatible base URL, API key (encrypted), and model name
- *   - a single active system prompt
- *
- * This is intentionally slim. The old fork's SettingsManager also owned
- * model-variant / language / dictionary logic tied to the ONNX/Parakeet
- * engine; v0.1.18 manages models itself (ModelsActivity), so that logic is
- * dropped here and can grow back later as separate concerns.
+ * All user-facing settings (enabled flag, provider, base URL, model and system
+ * prompt) are stored as marker files in {@code filesDir()} so they can be read
+ * consistently from the main process and from the ":ime" process without
+ * relying on cross-process SharedPreferences semantics. The only exception is
+ * the API key, which is kept in EncryptedSharedPreferences as documented in
+ * the project's AGENTS.md.
  */
 public class SettingsManager {
     private static final String TAG = "SettingsManager";
-    private static final String PREFS_NAME = "transcribe_settings";
 
-    private static final String KEY_POST_PROCESS_ENABLED = "post_process_enabled";
-    private static final String KEY_PROVIDER = "pp_provider"; // groq/openai/cerebras/... or "custom"
-    private static final String KEY_API_URL = "api_url";      // OpenAI-compatible base URL
-    private static final String KEY_API_KEY = "api_key";      // stored encrypted
-    private static final String KEY_MODEL_NAME = "model_name";
-    private static final String KEY_SYSTEM_PROMPT = "system_prompt";
+    // SharedPreferences file used only for the encrypted API key.
+    private static final String PREFS_NAME = "transcribe_settings";
+    private static final String KEY_API_KEY = "api_key";
+
+    // Legacy keys, kept only for the one-time migration to marker files.
+    private static final String LEGACY_KEY_POST_PROCESS_ENABLED = "post_process_enabled";
+    private static final String LEGACY_KEY_PROVIDER = "pp_provider";
+    private static final String LEGACY_KEY_API_URL = "api_url";
+    private static final String LEGACY_KEY_MODEL_NAME = "model_name";
+    private static final String LEGACY_KEY_SYSTEM_PROMPT = "system_prompt";
+
+    // Marker file names in filesDir(). Presence of pp_enabled means ON.
+    private static final String PP_ENABLED_FILE = "pp_enabled";
+    private static final String PP_PROVIDER_FILE = "pp_provider";
+    private static final String PP_API_URL_FILE = "pp_api_url";
+    private static final String PP_MODEL_FILE = "pp_model";
+    private static final String PP_PROMPT_FILE = "pp_prompt";
+
+    // Sentinel that guarantees the legacy -> marker migration runs at most once.
+    private static final String MIGRATION_SENTINEL = "pp_migrated";
 
     private static final String DEFAULT_API_URL = "https://api.openai.com/v1";
     private static final String DEFAULT_MODEL = "gpt-4o-mini";
+
+    // Cached encrypted preferences instance so every post-process call does not
+    // pay the cost of rebuilding the MasterKey/EncryptedSharedPreferences.
+    private static volatile SharedPreferences cachedEncryptedPrefs;
 
     /**
      * Provider presets: known OpenAI-compatible endpoints. The user picks a
@@ -74,6 +96,8 @@ public class SettingsManager {
     private final SharedPreferences prefs;
     private final Context appContext;
 
+    private static final Object PREFS_LOCK = new Object();
+
     public SettingsManager(Context context) {
         this.appContext = context.getApplicationContext();
         this.prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
@@ -83,40 +107,62 @@ public class SettingsManager {
         return appContext;
     }
 
+    // ----------------------------------------------------------------------
+    // Toggle (marker file)
+    // ----------------------------------------------------------------------
+
     public boolean isPostProcessEnabled() {
-        return prefs.getBoolean(KEY_POST_PROCESS_ENABLED, false);
+        return new File(appContext.getFilesDir(), PP_ENABLED_FILE).exists();
     }
 
     public void setPostProcessEnabled(boolean enabled) {
-        prefs.edit().putBoolean(KEY_POST_PROCESS_ENABLED, enabled).apply();
+        File marker = new File(appContext.getFilesDir(), PP_ENABLED_FILE);
+        if (enabled) {
+            try {
+                marker.createNewFile();
+            } catch (IOException e) {
+                Log.e(TAG, "Failed to create pp_enabled marker", e);
+            }
+        } else {
+            marker.delete();
+        }
     }
 
+    public static boolean isPostProcessEnabled(Context context) {
+        return new File(context.getApplicationContext().getFilesDir(), PP_ENABLED_FILE).exists();
+    }
+
+    // ----------------------------------------------------------------------
+    // Provider + effective base URL (marker file)
+    // ----------------------------------------------------------------------
+
     public String getApiUrl() {
-        return prefs.getString(KEY_API_URL, DEFAULT_API_URL);
+        String value = readMarker(PP_API_URL_FILE);
+        return (value == null || value.isEmpty()) ? DEFAULT_API_URL : value;
     }
 
     public void setApiUrl(String url) {
-        prefs.edit().putString(KEY_API_URL, url).apply();
+        writeMarker(PP_API_URL_FILE, url);
     }
 
-    /** Selected provider preset id ("groq", "openai", ... or "custom"). */
     public String getProviderId() {
-        return prefs.getString(KEY_PROVIDER, "custom");
+        String value = readMarker(PP_PROVIDER_FILE);
+        return (value == null || value.isEmpty()) ? "custom" : value;
     }
 
     public void setProviderId(String id) {
-        prefs.edit().putString(KEY_PROVIDER, id).apply();
+        writeMarker(PP_PROVIDER_FILE, id);
     }
 
-    /**
-     * Effective base URL for API calls: the provider preset's URL, or the
-     * user-supplied URL when the provider is "custom".
-     */
     public String getEffectiveApiUrl() {
         Provider p = providerById(getProviderId());
         if (p.baseUrl != null) return p.baseUrl;
         return getApiUrl();
     }
+
+    // ----------------------------------------------------------------------
+    // API key (encrypted SharedPreferences)
+    // ----------------------------------------------------------------------
 
     public String getApiKey() {
         try {
@@ -144,40 +190,181 @@ public class SettingsManager {
     }
 
     private SharedPreferences encryptedPrefs() throws Exception {
-        MasterKey masterKey = new MasterKey.Builder(appContext)
-                .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                .build();
-        return EncryptedSharedPreferences.create(
-                appContext,
-                PREFS_NAME + "_encrypted",
-                masterKey,
-                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        );
+        SharedPreferences prefs = cachedEncryptedPrefs;
+        if (prefs == null) {
+            synchronized (PREFS_LOCK) {
+                prefs = cachedEncryptedPrefs;
+                if (prefs == null) {
+                    MasterKey masterKey = new MasterKey.Builder(appContext)
+                            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                            .build();
+                    prefs = EncryptedSharedPreferences.create(
+                            appContext,
+                            PREFS_NAME + "_encrypted",
+                            masterKey,
+                            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+                    );
+                    cachedEncryptedPrefs = prefs;
+                }
+            }
+        }
+        return prefs;
     }
 
+    // ----------------------------------------------------------------------
+    // Model name + prompt (marker files)
+    // ----------------------------------------------------------------------
+
     public String getModelName() {
-        return prefs.getString(KEY_MODEL_NAME, DEFAULT_MODEL);
+        String value = readMarker(PP_MODEL_FILE);
+        return (value == null || value.isEmpty()) ? DEFAULT_MODEL : value;
     }
 
     public void setModelName(String model) {
-        prefs.edit().putString(KEY_MODEL_NAME, model).apply();
+        writeMarker(PP_MODEL_FILE, model);
     }
 
     public String getActivePromptBody() {
-        String p = prefs.getString(KEY_SYSTEM_PROMPT, null);
+        String p = readMarker(PP_PROMPT_FILE);
         return (p == null || p.trim().isEmpty()) ? getDefaultPrompt() : p;
     }
 
     public void setActivePromptBody(String prompt) {
-        prefs.edit().putString(KEY_SYSTEM_PROMPT, prompt).apply();
+        writeMarker(PP_PROMPT_FILE, prompt);
     }
 
-    /**
-     * Default system prompt. Single source of truth lives in
-     * res/values/strings.xml (pp_default_prompt, translatable=false).
-     */
     public String getDefaultPrompt() {
         return appContext.getString(R.string.pp_default_prompt);
+    }
+
+    // ----------------------------------------------------------------------
+    // Marker file helpers
+    // ----------------------------------------------------------------------
+
+    private String readMarker(String fileName) {
+        File f = new File(appContext.getFilesDir(), fileName);
+        if (!f.exists()) return null;
+        try (BufferedReader br = new BufferedReader(
+                new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8))) {
+            StringBuilder sb = new StringBuilder();
+            String line;
+            while ((line = br.readLine()) != null) {
+                if (sb.length() > 0) sb.append('\n');
+                sb.append(line);
+            }
+            return sb.toString();
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to read marker file " + fileName, e);
+            return null;
+        }
+    }
+
+    private void writeMarker(String fileName, String value) {
+        File dir = appContext.getFilesDir();
+        File f = new File(dir, fileName);
+        if (value == null || value.isEmpty()) {
+            f.delete();
+            return;
+        }
+        // Write to a temp file and rename so readers never see a half-written
+        // marker, even when two processes/threads write concurrently.
+        File temp = new File(dir, fileName + ".tmp");
+        try (FileOutputStream os = new FileOutputStream(temp)) {
+            os.write(value.getBytes(StandardCharsets.UTF_8));
+            os.getFD().sync();
+            if (!temp.renameTo(f)) {
+                Log.e(TAG, "Failed to rename marker file " + fileName);
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to write marker file " + fileName, e);
+        } finally {
+            temp.delete();
+        }
+    }
+
+    // ----------------------------------------------------------------------
+    // One-time migration from SharedPreferences to marker files.
+    // Runs in every process, but the sentinel makes it idempotent.
+    // ----------------------------------------------------------------------
+
+    public static void migrateIfNeeded(Context context) {
+        Context app = context.getApplicationContext();
+        File filesDir = app.getFilesDir();
+        File sentinel = new File(filesDir, MIGRATION_SENTINEL);
+        if (sentinel.exists()) return;
+
+        SharedPreferences legacy = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+
+        if (legacy.contains(LEGACY_KEY_POST_PROCESS_ENABLED)) {
+            boolean enabled = legacy.getBoolean(LEGACY_KEY_POST_PROCESS_ENABLED, false);
+            if (enabled) {
+                try {
+                    new File(filesDir, PP_ENABLED_FILE).createNewFile();
+                } catch (IOException e) {
+                    Log.e(TAG, "Failed to create pp_enabled marker during migration", e);
+                }
+            }
+        }
+
+        if (legacy.contains(LEGACY_KEY_PROVIDER)) {
+            writeMarker(filesDir, PP_PROVIDER_FILE, legacy.getString(LEGACY_KEY_PROVIDER, "custom"));
+        }
+
+        if (legacy.contains(LEGACY_KEY_API_URL)) {
+            writeMarker(filesDir, PP_API_URL_FILE, legacy.getString(LEGACY_KEY_API_URL, DEFAULT_API_URL));
+        }
+
+        if (legacy.contains(LEGACY_KEY_MODEL_NAME)) {
+            writeMarker(filesDir, PP_MODEL_FILE, legacy.getString(LEGACY_KEY_MODEL_NAME, DEFAULT_MODEL));
+        }
+
+        if (legacy.contains(LEGACY_KEY_SYSTEM_PROMPT)) {
+            String prompt = legacy.getString(LEGACY_KEY_SYSTEM_PROMPT, "");
+            if (prompt != null && !prompt.isEmpty()) {
+                writeMarker(filesDir, PP_PROMPT_FILE, prompt);
+            }
+        }
+
+        try {
+            sentinel.createNewFile();
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to create migration sentinel", e);
+        }
+    }
+
+    private static void writeMarker(File filesDir, String fileName, String value) {
+        File f = new File(filesDir, fileName);
+        if (value == null || value.isEmpty()) {
+            f.delete();
+            return;
+        }
+        File temp = new File(filesDir, fileName + ".tmp");
+        try (FileOutputStream os = new FileOutputStream(temp)) {
+            os.write(value.getBytes(StandardCharsets.UTF_8));
+            os.getFD().sync();
+            if (!temp.renameTo(f)) {
+                Log.e(TAG, "Failed to rename marker file " + fileName);
+            }
+        } catch (IOException e) {
+            Log.e(TAG, "Failed to write marker file " + fileName, e);
+        } finally {
+            temp.delete();
+        }
+    }
+
+    // ----------------------------------------------------------------------
+    // Keystore pre-warm: forces EncryptedSharedPreferences/MasterKey init so
+    // the first post-process call does not pay the cold-start cost.
+    // ----------------------------------------------------------------------
+
+    public static void prewarmApiKey(Context context) {
+        if (!isPostProcessEnabled(context)) return;
+        try {
+            SettingsManager sm = new SettingsManager(context);
+            sm.getApiKey(); // triggers MasterKey/EncryptedSharedPreferences init
+        } catch (Exception e) {
+            Log.e(TAG, "Failed to prewarm API key", e);
+        }
     }
 }

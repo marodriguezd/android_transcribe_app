@@ -155,13 +155,38 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
     }
 
     private void save(boolean closeAfter) {
-        settings.setPostProcessEnabled(switchEnabled.isChecked());
+        boolean wasEnabled = settings.isPostProcessEnabled();
+        boolean nowEnabled = switchEnabled.isChecked();
+        settings.setPostProcessEnabled(nowEnabled);
         settings.setProviderId(selectedProviderId);
         settings.setApiUrl(editApiUrl.getText().toString().trim());
         settings.setApiKey(editApiKey.getText().toString().trim());
         settings.setModelName(editModel.getText().toString().trim());
-        String prompt = editPrompt.getText().toString();
-        settings.setActivePromptBody(prompt.trim().isEmpty() ? settings.getDefaultPrompt() : prompt);
+
+        // Only persist the prompt if the user actually changed it; otherwise
+        // leave the marker empty so future updates to the default prompt keep
+        // applying automatically.
+        String prompt = editPrompt.getText().toString().trim();
+        String defaultPrompt = settings.getDefaultPrompt();
+        if (prompt.isEmpty() || prompt.equals(defaultPrompt)) {
+            settings.setActivePromptBody("");
+        } else {
+            settings.setActivePromptBody(prompt);
+        }
+
+        // If the user just disabled post-processing, cancel any in-flight LLM
+        // calls so the next transcription starts fresh.
+        if (wasEnabled && !nowEnabled) {
+            PostProcessor.cancelAll();
+        }
+
+        // If the user just enabled post-processing, warm up the encrypted API
+        // key store so the first transcription does not stall on Keystore init.
+        // Run off the UI thread because Keystore init can be slow.
+        if (!wasEnabled && nowEnabled) {
+            new Thread(() -> SettingsManager.prewarmApiKey(this)).start();
+        }
+
         if (closeAfter) {
             Toast.makeText(this, R.string.pp_saved, Toast.LENGTH_SHORT).show();
             finish();

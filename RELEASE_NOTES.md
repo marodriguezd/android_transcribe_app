@@ -1,18 +1,36 @@
 # v0.1.22
 
-Fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app), built on top of upstream **v0.1.18** (inherits the v0.1.19/v0.1.20/v0.1.21 layers). This release adds **custom words** — a user-maintained dictionary that corrects misrecognized words post-transcription using phonetic similarity, fully offline.
+Fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app). This release adds an on-device **custom-words dictionary** that corrects misrecognized terms phonetically, and — most importantly — makes the optional AI **post-processing activate and deactivate reliably** between the main app and the `:ime` keyboard process.
 
-## What's new in v0.1.22 (vs v0.1.21)
+## What's new in v0.1.22
 
-### 📖 Custom words (phonetic post-correction)
-- New **Custom Words** screen accessible from the main settings card. List proper nouns, technical terms, or any words the speech model gets wrong — the corrector replaces phonetically similar misrecognitions with your terms after every transcription.
-- **How it works:** a Spanish+English phonetic encoder converts both the transcript and your dictionary terms into phonetic keys. Words within Levenshtein distance ≤ 2 on those keys are matched; ties are broken by character-bigram cosine similarity. The speaker's capitalization is preserved (all-caps input → all-caps replacement).
-- **Multi-word terms** supported (e.g. "New York", "Buenos Aires") — matched via a sliding window, longest-first.
-- **Covers every surface at once:** the corrector runs inside `transcribe_shared`, so it works in the voice popup, the IME keyboard, live subtitles, SpeechRecognizer, and file transcription — no per-surface wiring needed.
-- **Safe by design:** wrapped in its own `catch_unwind` (separate from the engine's), so a bug in the corrector can never freeze the IME — the raw transcript is delivered instead.
-- **Zero config overhead:** the dictionary is a marker file (`custom_words` in filesDir), cached with mtime so live-subtitle partials don't re-read it. The file's presence is the opt-in; deleting all content disables correction.
-- Works with **any speech model** (Whisper, Canary, Parakeet, …) and requires **no network** — everything runs on-device.
+### 📖 Custom words (phonetic dictionary, on-device)
+- New **Custom Words** editor. List any term the speech model mishears — proper nouns, technical jargon, names; one per line, `#` for comments.
+- Spanish+English phonetic encoder + Levenshtein distance ≤ 2 on phonetic keys; character-bigram cosine similarity breaks ties. Speaker's capitalization is preserved.
+- **Multi-word terms** supported (e.g. "New York", "Buenos Aires") via sliding windows, longest-first.
+- **Covers every surface at once** — runs inside the engine's `transcribe_shared`, so the voice popup, IME keyboard, live subtitles, SpeechRecognizer, and file transcription all benefit without per-surface wiring.
+- **Safe by design:** wrapped in its own `catch_unwind`, so a corrector bug can never freeze the IME — the raw transcript is delivered instead.
+- Works with **any speech model** (Whisper, Canary, Parakeet, …) and requires **no network**. The file is mtime-cached so live-subtitle partials don't re-read it.
 - UI fully localized in all 7 app languages (EN, ES, DE, FR, IT, PT, RU).
+
+### ⚙️ Post-processing: activation & deactivation now behave correctly
+- All 5 PP settings (`pp_enabled`, `pp_provider`, `pp_url`, `pp_model`, `pp_prompt`) **and the API key** now live as **marker files in `filesDir()`**. Both the main app process and the `:ime` keyboard see them instantly — fixing the *"does not stop working after disabling"* symptom reported in earlier releases.
+- **`cancelAll()` interrupts in-flight LLM calls the instant you toggle off**, and `PostProcessor.cancelAll()` is also triggered by a cancel `Broadcast` from main → IME so the keyboard's in-flight calls go down too — **no more ghost `"Refining…"`** waiting for the OkHttp timeout.
+- **Activity/Session guards** stop callbacks and late results from landing on torn-down components: lifecycle validators on the 3 Activities (`RecognizeActivity`, `PostProcessSettingsActivity`, `TranscribeFileActivity`) and on the IME service drop callbacks when `!isFinishing() && !isDestroyed()`; `VoiceRecognitionService` discards results from stale sessions via session IDs.
+- **First activation is instant:** the API key is no longer in `EncryptedSharedPreferences`, so no cold Android Keystore boot on the UI thread.
+- **Singleton `OkHttpClient` with `ConnectionPool`** reuses TLS sessions across calls; **atomic marker writes** (temp file + rename) prevent torn reads on concurrent saves for every PP setting, including the API key.
+- Legacy `SharedPreferences` → marker files migration is silent and cross-process safe for the 5 settings (see 🔄 below).
+
+### 🛠️ Debug build model download is reliable
+- Debug builds no longer ship the bundled Canary 180M Flash model **at build time**; it's downloaded by the app from Hugging Face on first run, keeping the test APK under Telegram's 50 MB limit.
+- The runtime download in `MainActivity` is hardened against early-return edge cases and `Activity`-recreation stalls so the download no longer gets stuck on configuration changes.
+- The downloaded GGUF is SHA-256 verified; checksum mismatch triggers re-download, same code path as the release build.
+
+### 🔄 Silent migration on upgrade
+- Users coming from any earlier fork release get their existing post-processing settings (toggle, provider, URL, model, prompt) migrated to marker files **automatically** — no toggle reset, nothing to configure.
+- The migration uses an **OS-level file lock** (`FileChannel.tryLock`) on a sentinel marker in `filesDir()` so the main process and the `:ime` keyboard never race. Whichever acquires the lock first does the work; the other sees the sentinel on its next `App.onCreate` and skips.
+- Legacy `SharedPreferences` is cleared **synchronously** under the lock with `commit()` so a stale `enabled=true` can never leak back into either process after migration.
+- ⚠️ **API key on upgrade:** the previous `EncryptedSharedPreferences` API-key store is **not** migrated (cross-process consistency comes from re-authenticating from the new marker). If you set an API key in any earlier release and you want the LLM cleanup to keep working after upgrading, you only need to re-enter the key once — it goes straight into the new `pp_api_key` marker file and is then cross-process consistent.
 
 ---
 

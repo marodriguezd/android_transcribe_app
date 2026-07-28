@@ -84,9 +84,7 @@ public class RustInputMethodService extends InputMethodService {
     // process audio. Flushed from onStartInputView once a field is focused
     // again so the text is never lost.
     private String pendingCommitText = null;
-    // Tracks the last-known post-processing state so we can detect off→on
-    // transitions and re-warm the encrypted API key store eagerly.
-    private boolean ppEnabledLastSeen = false;
+
     // Set to true in onDestroy() so late post-processing callbacks can drop
     // their work instead of touching detached/destroyed views.
     private boolean isDestroyed = false;
@@ -388,16 +386,6 @@ public class RustInputMethodService extends InputMethodService {
         // A field is focused and the input connection is live again — commit any
         // text that finished transcribing while nothing was focused.
         flushPendingText();
-        // Re-warm the encrypted API key store every time post-processing
-        // transitions from off → on (not just once per process lifetime), so
-        // toggling PP in settings and immediately using the keyboard does not
-        // stall on Keystore init. Once warmed, the cached
-        // EncryptedSharedPreferences makes subsequent calls free.
-        boolean ppNow = SettingsManager.isPostProcessEnabled(this);
-        if (ppNow && !ppEnabledLastSeen) {
-            new Thread(() -> SettingsManager.prewarmApiKey(this)).start();
-        }
-        ppEnabledLastSeen = ppNow;
     }
 
     @Override

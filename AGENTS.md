@@ -52,7 +52,7 @@ Post-procesado IA (fork addition): opcional, *off-line-by-default*, refina texto
 | `compileSdk` / `targetSdk` / `minSdk` | `35 / 35 / 26` | namespace y applicationId: `dev.notune.transcribe` |
 | Material | Material Components for Android | `1.12.0` (Material 3 + Material You) |
 | HTTP (post-procesado) | OkHttp | `4.12.0` |
-| Cifrado clave API | `androidx.security:security-crypto` | `1.1.0-alpha06` (EncryptedSharedPreferences) |
+| Almacenamiento clave API | marker file Base64 en `filesDir()` | sin dependencia externa |
 | Alineación kotlin-stdlib | Forzadas a `1.8.22` (vacías) | ver bloque `constraints` en `app/build.gradle.kts` |
 
 **Permisos críticos** (`AndroidManifest.xml`):
@@ -174,7 +174,7 @@ Los ajustes son **marker files en `filesDir()`**, no `SharedPreferences`. Ejempl
 
 Bindings típicos (ver `MainActivity.bindMarkerSwitch`): un `CompoundButton` cuja presencia del file representa el estado.
 
-La **clave de API del post-procesado** sí usa `EncryptedSharedPreferences` (es la única excepción).
+La **clave de API del post-procesado** se almacena como marker file codificado en Base64 (`pp_api_key`), igual que el resto de ajustes. La protección real la proporciona el sandbox de Android (filesDir es privado de la app).
 
 ### 4.6 Mapping Rust ↔ Java (mapping de módulos para agentes)
 
@@ -268,7 +268,7 @@ No renombrar archivos Rust/Java sin actualizar la entrada JNI (§4.3).
 ### 5.2 HACER (reglas positivas al añadir código)
 
 - ✅ Si añades un call-back JNI nuevo, documéntalo con la firma exacta en este `AGENTS.md` (§4.4) y añade un stub no-op en Java por defecto para no romper builds en los que aún no has cableado el lado Java.
-- ✅ Cada nuevo ajuste del usuario va como **marker file en `filesDir()`**, salvo el de la clave de API (que va cifrada en `EncryptedSharedPreferences` siguiendo el patrón de `SettingsManager`).
+- ✅ Cada nuevo ajuste del usuario va como **marker file en `filesDir()`**, sin excepción. La API key usa codificación Base64 para ofuscación mínima; la seguridad real viene del sandbox de Android.
 - ✅ Antes de añadir cadenas visibles, duplicarlas en los 7 locales. Si añades una cadena que **no** quieres traducir, márcala con `translatable="false"`.
 - ✅ Si tocas el `Engine`, lee primero `src/engine.rs` completo (~370 líneas, muy comentado): decisiones sobre warm-up, re-read de idioma, fallback a modelo bundled, warnings de capabilities (`supports_translate`/`variant().contains("turbo")`), Whisper `temperature_inc`, todo está allí por una razón documentada.
 - ✅ Si añades un nuevo surface (Activity/Service), recuerda:
@@ -342,7 +342,7 @@ Crear un nuevo ajuste toggle en UI → marker file en `filesDir()` con un nombre
 
 - Lee `src/engine.rs` y `Cargo.toml` primero.
 - Respeta nombres JNI (`Java_dev_notune_transcribe_<Class>_<method>`) y firmas de call-backs en §4.4.
-- Ajustes = marker files en `filesDir`. Clave API cifrada en `EncryptedSharedPreferences`.
+- Ajustes = marker files en `filesDir`. Clave API también en marker file (Base64).
 - Post-procesado: opcional, *safe-fallback* obligatorio al texto crudo.
 - Idioma se re-lee en cada `Engine::run` (no cachear en memoria dentro del engine).
 - Subtítulos usan un modelo de partial/final con lag-policies calibradas; subir esos números rompe el contrato.

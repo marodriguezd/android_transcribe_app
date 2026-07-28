@@ -195,12 +195,6 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
             sendBroadcast(cancelIntent);
         }
 
-        // If the user just enabled post-processing, warm up the encrypted API
-        // key store so the first transcription does not stall on Keystore init.
-        // Run off the UI thread because Keystore init can be slow.
-        if (!wasEnabled && nowEnabled) {
-            new Thread(() -> SettingsManager.prewarmApiKey(this)).start();
-        }
 
         if (closeAfter) {
             Toast.makeText(this, R.string.pp_saved, Toast.LENGTH_SHORT).show();

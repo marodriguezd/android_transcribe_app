@@ -2,10 +2,8 @@ package dev.notune.transcribe;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.util.Base64;
 import android.util.Log;
-
-import androidx.security.crypto.EncryptedSharedPreferences;
-import androidx.security.crypto.MasterKey;
 
 import java.io.BufferedReader;
 import java.io.File;
@@ -21,19 +19,18 @@ import java.nio.charset.StandardCharsets;
 /**
  * Minimal settings store for the AI post-processing layer.
  *
- * All user-facing settings (enabled flag, provider, base URL, model and system
- * prompt) are stored as marker files in {@code filesDir()} so they can be read
- * consistently from the main process and from the ":ime" process without
- * relying on cross-process SharedPreferences semantics. The only exception is
- * the API key, which is kept in EncryptedSharedPreferences as documented in
- * the project's AGENTS.md.
+ * All settings (enabled flag, provider, base URL, model, system prompt and
+ * API key) are stored as marker files in {@code filesDir()} so they can be
+ * read consistently from the main process and from the ":ime" process
+ * without relying on cross-process SharedPreferences or Keystore semantics.
+ * The API key is Base64-encoded for minimal obscurity; real protection comes
+ * from the Android app sandbox that guards filesDir().
  */
 public class SettingsManager {
     private static final String TAG = "SettingsManager";
 
-    // SharedPreferences file used only for the encrypted API key.
+    // SharedPreferences file used only for the one-time legacy migration.
     private static final String PREFS_NAME = "transcribe_settings";
-    private static final String KEY_API_KEY = "api_key";
 
     // Legacy keys, kept only for the one-time migration to marker files.
     private static final String LEGACY_KEY_POST_PROCESS_ENABLED = "post_process_enabled";
@@ -48,6 +45,7 @@ public class SettingsManager {
     private static final String PP_API_URL_FILE = "pp_api_url";
     private static final String PP_MODEL_FILE = "pp_model";
     private static final String PP_PROMPT_FILE = "pp_prompt";
+    private static final String PP_API_KEY_FILE = "pp_api_key";
 
     // Sentinel that guarantees the legacy -> marker migration runs at most once.
     private static final String MIGRATION_SENTINEL = "pp_migrated";
@@ -55,9 +53,7 @@ public class SettingsManager {
     private static final String DEFAULT_API_URL = "https://api.openai.com/v1";
     private static final String DEFAULT_MODEL = "gpt-4o-mini";
 
-    // Cached encrypted preferences instance so every post-process call does not
-    // pay the cost of rebuilding the MasterKey/EncryptedSharedPreferences.
-    private static volatile SharedPreferences cachedEncryptedPrefs;
+
 
     /**
      * Provider presets: known OpenAI-compatible endpoints. The user picks a
@@ -96,14 +92,10 @@ public class SettingsManager {
         return PROVIDERS[PROVIDERS.length - 1]; // custom
     }
 
-    private final SharedPreferences prefs;
     private final Context appContext;
-
-    private static final Object PREFS_LOCK = new Object();
 
     public SettingsManager(Context context) {
         this.appContext = context.getApplicationContext();
-        this.prefs = appContext.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
     }
 
     public Context getContext() {
@@ -164,55 +156,27 @@ public class SettingsManager {
     }
 
     // ----------------------------------------------------------------------
-    // API key (encrypted SharedPreferences)
+    // API key (marker file, Base64-encoded)
     // ----------------------------------------------------------------------
 
     public String getApiKey() {
+        String encoded = readMarker(PP_API_KEY_FILE);
+        if (encoded == null || encoded.isEmpty()) return "";
         try {
-            SharedPreferences enc = encryptedPrefs();
-            String encrypted = enc.getString(KEY_API_KEY, "");
-            if (encrypted == null || encrypted.isEmpty()) {
-                // Fallback: encrypted store wiped but a plain key exists.
-                String plain = prefs.getString(KEY_API_KEY, "");
-                return plain != null ? plain : "";
-            }
-            return encrypted;
+            return new String(Base64.decode(encoded, Base64.NO_WRAP), StandardCharsets.UTF_8);
         } catch (Exception e) {
-            Log.e(TAG, "Failed to read encrypted API key", e);
-            return prefs.getString(KEY_API_KEY, "");
+            Log.e(TAG, "Failed to decode API key from marker", e);
+            return "";
         }
     }
 
     public void setApiKey(String key) {
-        try {
-            encryptedPrefs().edit().putString(KEY_API_KEY, key).apply();
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to write encrypted API key", e);
-            prefs.edit().putString(KEY_API_KEY, key).apply();
+        if (key == null || key.isEmpty()) {
+            writeMarker(PP_API_KEY_FILE, null);
+            return;
         }
-    }
-
-    private SharedPreferences encryptedPrefs() throws Exception {
-        SharedPreferences prefs = cachedEncryptedPrefs;
-        if (prefs == null) {
-            synchronized (PREFS_LOCK) {
-                prefs = cachedEncryptedPrefs;
-                if (prefs == null) {
-                    MasterKey masterKey = new MasterKey.Builder(appContext)
-                            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-                            .build();
-                    prefs = EncryptedSharedPreferences.create(
-                            appContext,
-                            PREFS_NAME + "_encrypted",
-                            masterKey,
-                            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-                            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-                    );
-                    cachedEncryptedPrefs = prefs;
-                }
-            }
-        }
-        return prefs;
+        writeMarker(PP_API_KEY_FILE,
+                Base64.encodeToString(key.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP));
     }
 
     // ----------------------------------------------------------------------
@@ -326,8 +290,7 @@ public class SettingsManager {
                 // App.onCreate in this process will catch up via the sentinel
                 // check. Avoid sleeping on the main thread (App.onCreate is
                 // on the UI thread in both main and ":ime") because the
-                // typical migration is <10ms and prewarmApiKey tolerates a
-                // not-yet-present marker just fine.
+                // typical migration is <10ms.
                 return;
             }
 
@@ -431,18 +394,5 @@ public class SettingsManager {
         }
     }
 
-    // ----------------------------------------------------------------------
-    // Keystore pre-warm: forces EncryptedSharedPreferences/MasterKey init so
-    // the first post-process call does not pay the cold-start cost.
-    // ----------------------------------------------------------------------
 
-    public static void prewarmApiKey(Context context) {
-        if (!isPostProcessEnabled(context)) return;
-        try {
-            SettingsManager sm = new SettingsManager(context);
-            sm.getApiKey(); // triggers MasterKey/EncryptedSharedPreferences init
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to prewarm API key", e);
-        }
-    }
 }

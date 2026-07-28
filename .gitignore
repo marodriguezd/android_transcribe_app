@@ -40,3 +40,8 @@ app/src/main/jniLibs/
 # macOS
 .DS_Store
 ._*
+
+# Session scratch (typed by hand at the start of an IA session,
+# regenerated next session — never part of the repo).
+/PLAN.md
+/prompt.txt

@@ -1,10 +1,18 @@
 # v0.1.22
 
-Fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app), built on top of upstream **v0.1.18** (inherits the v0.1.19/v0.1.20/v0.1.21 layers). This is the stable build that bundles the v0.1.21 fixes (device-language default + per-run language re-read so the IME honors the chosen language) with the AI post-processing layer working end to end.
+Fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app), built on top of upstream **v0.1.18** (inherits the v0.1.19/v0.1.20/v0.1.21 layers). This release adds **custom words** — a user-maintained dictionary that corrects misrecognized words post-transcription using phonetic similarity, fully offline.
 
-## What's in v0.1.22 (vs v0.1.21)
-- Same code as v0.1.21 (no functional changes). This tag republishes a clean, signed release build so the GitHub release asset matches the working debug many users already tested — language selection (Auto/English/French/…) applies in both the voice panel and the keyboard IME, and the AI post-processing prompt refines transcripts when configured with an OpenAI-compatible provider (e.g. Groq).
-- Reminder: AI post-processing needs its provider URL, API key, and model configured in the app (settings are stored encrypted and are wiped on uninstall, so re-enter them after a fresh install).
+## What's new in v0.1.22 (vs v0.1.21)
+
+### 📖 Custom words (phonetic post-correction)
+- New **Custom Words** screen accessible from the main settings card. List proper nouns, technical terms, or any words the speech model gets wrong — the corrector replaces phonetically similar misrecognitions with your terms after every transcription.
+- **How it works:** a Spanish+English phonetic encoder converts both the transcript and your dictionary terms into phonetic keys. Words within Levenshtein distance ≤ 2 on those keys are matched; ties are broken by character-bigram cosine similarity. The speaker's capitalization is preserved (all-caps input → all-caps replacement).
+- **Multi-word terms** supported (e.g. "New York", "Buenos Aires") — matched via a sliding window, longest-first.
+- **Covers every surface at once:** the corrector runs inside `transcribe_shared`, so it works in the voice popup, the IME keyboard, live subtitles, SpeechRecognizer, and file transcription — no per-surface wiring needed.
+- **Safe by design:** wrapped in its own `catch_unwind` (separate from the engine's), so a bug in the corrector can never freeze the IME — the raw transcript is delivered instead.
+- **Zero config overhead:** the dictionary is a marker file (`custom_words` in filesDir), cached with mtime so live-subtitle partials don't re-read it. The file's presence is the opt-in; deleting all content disables correction.
+- Works with **any speech model** (Whisper, Canary, Parakeet, …) and requires **no network** — everything runs on-device.
+- UI fully localized in all 7 app languages (EN, ES, DE, FR, IT, PT, RU).
 
 ---
 

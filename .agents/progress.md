@@ -1,8 +1,37 @@
 # Progreso — estado actual del trabajo IA-asistido
 
-**Última actualización:** 2026-07-27
+**Última actualización:** 2026-07-28
 
 ## 🟢 Recién completado
+
+- **2026-07-28** — Corrector fonético de palabras personalizadas (fork
+  addition). Feature completa:
+  - `src/corrector.rs` (NUEVO, ~300 líneas): codificador fonético ES+EN,
+    Levenshtein via `strsim` 0.11, tiebreak coseno de bigramas, tokenizer
+    que preserva puntuación/espacios, matching multi-palabra por ventanas,
+    diccionario mtime-cached, safe-fallback en cualquier fallo.
+  - `Cargo.toml`: añadida dependencia `strsim = "0.11"` (pure Rust, MIT).
+  - `src/lib.rs`: `pub mod corrector;`
+  - `src/engine.rs`: `set_files_dir` en `do_load` (antes de ambos code
+    paths); `correct_if_enabled` en `transcribe_shared` con su propio
+    `catch_unwind` (safe-fallback = texto crudo).
+  - `CustomWordsActivity.java` + `activity_custom_words.xml` (NUEVO):
+    editor del marker file `filesDir/custom_words`.
+  - `activity_main.xml`: nueva card "Custom words" con `ic_dictionary.xml`.
+  - `MainActivity.java`: wiring del botón.
+  - `AndroidManifest.xml`: registro de `CustomWordsActivity`.
+  - strings `cw_*` (10) en los 7 locales (EN/ES/DE/FR/IT/PT/RU).
+  - **Investigación FUTO Voice Input:** se clonó y greppeó el repo
+    (`github.com/futo-org/voice-input`). FUTO usa `initial_prompt` de
+    whisper.cpp con `"(Glossary: …)"`, con un TODO que admite que "sólo
+    funciona bien para inglés". Se eligió post-filtro fonético en su
+    lugar (multilingüe, determinista, multi-modelo, no contaminante).
+  - **Validación:** `cargo check` limpio, `cargo test` 9/9 pasan.
+    code-reviewer-glm: 4 rondas, 7 issues encontrados y arreglados
+    (set_files_dir mal colocado, corrector fuera de catch_unwind, mutex
+    poison, dead return value, TAG convention, card title, multi-word
+    word-count mismatch).
+  - **Build Gradle:** no ejecutado (entorno sin NDK 28 instalado).
 
 - **2026-07-27** — `AGENTS.md` raíz (commit `fa36345`).
   - 348 líneas, estructura `§1 Resumen / §2 Stack / §3 Comandos+y+wiring /
@@ -16,9 +45,13 @@
 
 ## 🟡 En curso / siguiente
 
-- **Hoy** — Bootstrap de la carpeta `.agents/` con jerarquía cross-session
-  (este commit). Ficheros: `README.md`, `progress.md`, `architecture.md`,
-  `spec.md`, `INDEX.md`, `memory/dedup-round-2026-07-27.md`.
+- **2026-07-28** — Actualización de ficheros agénticos (.agents/) con la
+  nueva feature del corrector fonético: AGENTS.md §4.5/§4.6,
+  architecture.md, spec.md, progress.md, INDEX.md.
+- **Pendiente humano** — `./gradlew assembleDebug` en máquina con NDK 28
+  para confirmar que el build Android pasa limpio sin warnings nuevos.
+- **Pendiente humano** — Smoke test en dispositivo arm64: diccionario con
+  "Madrid", decir "madriz" → debe reemplazar.
 
 ## 🔴 Bloqueos / esperando humano
 
@@ -46,4 +79,5 @@ _Ninguno en este momento._
 - AGENTS.md raíz: [`../AGENTS.md`](../AGENTS.md)
 - README: [`../README.md`](../README.md)
 - RELEASE_NOTES: [`../RELEASE_NOTES.md`](../RELEASE_NOTES.md)
-- Memoria de hoy: [`memory/dedup-round-2026-07-27.md`](./memory/dedup-round-2026-07-27.md)
+- Memoria de hoy: [`memory/phonetic-corrector-2026-07-28.md`](./memory/phonetic-corrector-2026-07-28.md)
+- Memoria previa: [`memory/dedup-round-2026-07-27.md`](./memory/dedup-round-2026-07-27.md)

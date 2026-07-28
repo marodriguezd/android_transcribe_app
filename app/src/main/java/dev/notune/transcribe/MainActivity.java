@@ -87,6 +87,9 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.btn_post_process).setOnClickListener(v ->
                 startActivity(new Intent(this, PostProcessSettingsActivity.class)));
 
+        findViewById(R.id.btn_custom_words).setOnClickListener(v ->
+                startActivity(new Intent(this, CustomWordsActivity.class)));
+
         benchButton = findViewById(R.id.btn_benchmark);
         benchResultText = findViewById(R.id.text_bench_result);
         benchButton.setOnClickListener(v -> runBenchmark());

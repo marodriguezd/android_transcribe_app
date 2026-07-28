@@ -119,4 +119,16 @@
     <string name="pp_prompt">Invite système</string>
     <string name="pp_save">Enregistrer</string>
     <string name="pp_saved">Paramètres enregistrés</string>
+
+    <!-- Dictionnaire de mots personnalisés (ajout du fork) : correction phonétique -->
+    <string name="cw_card_title">Mots personnalisés</string>
+    <string name="cw_card_subtitle">Remplace les mots mal reconnus qui sonnent comme vos termes. Fonctionne avec tous les modèles, entièrement hors ligne.</string>
+    <string name="cw_card_button">Modifier les mots personnalisés</string>
+    <string name="cw_title">Mots personnalisés</string>
+    <string name="cw_subtitle">Listez les mots que vous voulez voir reconnus correctement. Un mot de la transcription qui sonne comme l\'un de ceux-ci est remplacé par votre terme. Fonctionne avec tous les modèles vocaux ; entièrement hors ligne.</string>
+    <string name="cw_hint">Mots, un par ligne</string>
+    <string name="cw_helper">Les lignes commençant par # sont des commentaires. Exemple : Madrid, Barcelona, TensorFlow</string>
+    <string name="cw_save">Enregistrer</string>
+    <string name="cw_saved">Enregistré</string>
+    <string name="cw_save_error">Échec de l\'enregistrement du dictionnaire</string>
 </resources>

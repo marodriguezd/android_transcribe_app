@@ -45,9 +45,11 @@ escrito X?" sin navegar a ciegas.
 Se rellena conforme se acumulen sesiones de trabajo. Listado en orden
 cronológico inverso (lo más reciente primero):
 
+- [`memory/phonetic-corrector-2026-07-28.md`](./memory/phonetic-corrector-2026-07-28.md) —
+  implementación del corrector fonético post-ASR + investigación de FUTO
+  Voice Input + 4 rondas de code-review.
 - [`memory/dedup-round-2026-07-27.md`](./memory/dedup-round-2026-07-27.md) —
   creación del `AGENTS.md` raíz + dedup con `README.md` + bootstrap de
   esta carpeta.
 
-_(Vacío por ahora salvo la entrada de arriba; nuevos ficheros de `memory/`
-se referencian aquí conforme se crean.)_
+_(Nuevos ficheros de `memory/` se referencian aquí conforme se crean.)_

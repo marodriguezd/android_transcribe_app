@@ -1,15 +1,13 @@
-name: Build Android App
+name: Debug APK → Telegram
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
 
 jobs:
-  build:
+  debug:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
     - uses: actions/checkout@v4
@@ -38,8 +36,6 @@ jobs:
       with:
         targets: aarch64-linux-android
 
-    # transcribe-cpp-sys compiles its C++ core (whisper.cpp/ggml) via CMake.
-    # ubuntu-latest ships cmake/ninja, but install explicitly to be safe.
     - name: Install CMake & Ninja
       run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
 
@@ -67,43 +63,35 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-gradle-
 
-    - name: Decode Keystore
-      env:
-        KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-      run: |
-        echo "$KEYSTORE_BASE64" | base64 --decode > release.keystore
-
-    - name: Build Release APK
-      env:
-        KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-        KEY_PASS: ${{ secrets.KEY_PASS }}
-        STORE_PASS: ${{ secrets.STORE_PASS }}
-      run: |
-        ./gradlew assembleRelease
+    - name: Build Debug APK
+      run: ./gradlew assembleDebug
 
     - name: Extract Version Name
-      id: extract_version
+      id: version
       run: |
         VERSION_NAME=$(grep 'versionName' app/build.gradle.kts | head -1 | grep -oP '"[^"]*"' | tr -d '"')
-        echo "Detected Version: $VERSION_NAME"
         echo "VERSION_NAME=$VERSION_NAME" >> $GITHUB_ENV
 
-    - name: Rename Artifacts
+    - name: Rename APK
       run: |
-        cp app/build/outputs/apk/release/app-release.apk android_transcribe_app_v${{ env.VERSION_NAME }}.apk
+        cp app/build/outputs/apk/debug/app-debug.apk \
+           android_transcribe_app_v${{ env.VERSION_NAME }}-debug.apk
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: app-release-apk-v${{ env.VERSION_NAME }}
-        path: android_transcribe_app_v${{ env.VERSION_NAME }}.apk
+        name: app-debug-apk-v${{ env.VERSION_NAME }}
+        path: android_transcribe_app_v${{ env.VERSION_NAME }}-debug.apk
 
-    - name: Create Release
-      if: startsWith(github.ref, 'refs/tags/')
-      uses: softprops/action-gh-release@v1
-      with:
-        name: Release v${{ env.VERSION_NAME }}
-        # Release notes come from RELEASE_NOTES.md in the tagged commit.
-        body_path: RELEASE_NOTES.md
-        files: |
-          android_transcribe_app_v${{ env.VERSION_NAME }}.apk
+    - name: Send APK to Telegram
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        COMMIT_MSG=$(git log -1 --pretty=%s)
+        COMMIT_SHA=$(git rev-parse --short HEAD)
+        curl -s -F chat_id="$TELEGRAM_CHAT_ID" \
+             -F document=@"android_transcribe_app_v${{ env.VERSION_NAME }}-debug.apk" \
+             -F caption="🔧 Debug Build v${{ env.VERSION_NAME }} ($COMMIT_SHA)
+        $COMMIT_MSG" \
+             "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument"

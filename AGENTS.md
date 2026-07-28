@@ -170,6 +170,7 @@ Los ajustes son **marker files en `filesDir()`**, no `SharedPreferences`. Ejempl
 | `model_translate` | presente = traducir a inglés (Whisper) |
 | `active_model` | contenido = nombre del GGUF importado en `models/` |
 | `model_threads` | contenido = nº entero; ausente/inválido = automático |
+| `custom_words` | contenido = términos correctos, uno por línea (líneas `#` = comentarios); ausente/vacío = corrección fonética desactivada |
 
 Bindings típicos (ver `MainActivity.bindMarkerSwitch`): un `CompoundButton` cuja presencia del file representa el estado.
 
@@ -195,6 +196,7 @@ cubre.
 | `main_activity.rs` | `MainActivity` | benchmark + status notifier | `initNative`, `benchmarkNative`; cachea samples en `Vec<f32>` desde `bench.wav`. |
 | `models.rs` | `ModelsActivity` | reload engine vía `engine::reset()` | Importa GGUF a `filesDir/models/<nombre>`. |
 | `transcribe_file.rs` | `TranscribeFileActivity` | una sola `transcribe_shared` | Comparte audio desde `Intent.ACTION_SEND/VIEW` (`audio/*`). |
+| `corrector.rs` | (`CustomWordsActivity` escribe el marker file) | vía `engine::transcribe_shared` (post-ASR, pre-callback) | Corrección fonética post-ASR: lee `filesDir/custom_words`, codifica cada palabra del transcript y los términos del diccionario con un codificador fonético ES+EN, reemplaza palabras mal reconocidas por la más cercana (Levenshtein ≤ 2 sobre claves fonéticas + tiebreak coseno de bigramas). Safe-fallback: cualquier fallo (sin diccionario, I/O error, panic) devuelve el texto crudo. Ejecuta dentro de su propio `catch_unwind` para no congelar el IME. Cubre TODAS las superficies (IME, popup, subtítulos, SpeechRecognizer, archivo) de golpe. |
 | `assets.rs` | (interno) | `engine.rs` (`do_load`) | Extrae el modelo bundled desde assets al primer arranque; `invalidate_builtin_model` borra extraídos corruptos. |
 
 **Regla modular:** mover lógica entre módulos exige actualizar también

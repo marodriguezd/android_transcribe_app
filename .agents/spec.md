@@ -14,6 +14,13 @@ cualquier app del sistema. Incluye:
 3. Un teclado propio (IME) opcional para hablar como método de entrada.
 4. **Post-procesado IA opcional** (fork addition): refina la transcripción
    con un LLM compatible OpenAI — opt-in, desactivado por defecto.
+5. **Corrección fonética de palabras personalizadas** (fork addition):
+   el usuario mantiene un diccionario de términos correctos (nombres
+   propios, jerga técnica) en un marker file `filesDir/custom_words`. Tras
+   el ASR, un corrector fonético ES+EN reemplaza palabras mal reconocidas
+   que suenan como un término del diccionario. Totalmente offline,
+   determinista, funciona con cualquier modelo. Opt-in por presencia del
+   fichero (no requiere toggle separado).
 
 **Promesa nuclear:** la captura de audio y el ASR son **100 % on-device**.
 Si el post-procesado IA está apagado, ningún byte sale del teléfono. Si está
@@ -50,6 +57,9 @@ key.
 - Speaker diarization ("quién habló cuándo").
 - Voice biometrics / identificación del hablante.
 - Custom wake-word ("Hey, …"). El trigger es siempre UI/IME/intent.
+- Biasing del vocabulario al ASR vía `initial_prompt` de Whisper (se
+  eligió un post-filtro fonético post-ASR en su lugar — ver
+  `architecture.md` §Historia de decisiones).
 - Push-to-talk sobre llamadas VoIP o gaming.
 
 ### Diferido (posible en roadmap, NO ahora)
@@ -68,6 +78,7 @@ key.
 | 3 | **Teclado de voz (IME)** | `InputMethodService` (`android:process=":ime"`) |
 | 4 | **Subtítulos en vivo** | MediaProjection foreground service |
 | 5 | **Transcripción de archivos** | `Intent.ACTION_SEND/VIEW audio/*` |
+| 6 | **Diccionario fonético personalizado** | Marker file `filesDir/custom_words` + `CustomWordsActivity` (editor) + `corrector.rs` (post-ASR) |
 
 ## Criterios de aceptación (a fuzz)
 
@@ -76,6 +87,9 @@ key.
 - Si la llamada al LLM post-procesador falla mid-transcripción, el texto
   crudo llega al usuario — nunca se pierde una transcripción por un error
   de la API externa.
+- El corrector fonético nunca pierde texto: cualquier fallo (sin
+  diccionario, I/O error, panic) devuelve la transcripción cruda sin
+  modificar.
 - El cambio de idioma en el picker aplica tanto en el popup como en el IME,
   sin necesidad de reiniciar la app ni recargar modelo.
 

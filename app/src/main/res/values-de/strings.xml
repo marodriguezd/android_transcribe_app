@@ -119,4 +119,16 @@
     <string name="pp_prompt">System-Prompt</string>
     <string name="pp_save">Speichern</string>
     <string name="pp_saved">Einstellungen gespeichert</string>
+
+    <!-- Benutzerwörterbuch (Fork-Zusatz): phonetische Nachbearbeitung -->
+    <string name="cw_card_title">Eigene Wörter</string>
+    <string name="cw_card_subtitle">Ersetzt falsch erkannte Wörter, die wie Ihre Begriffe klingen. Funktioniert mit jedem Modell, vollständig offline.</string>
+    <string name="cw_card_button">Eigene Wörter bearbeiten</string>
+    <string name="cw_title">Eigene Wörter</string>
+    <string name="cw_subtitle">Liste Wörter auf, die korrekt erkannt werden sollen. Ein Wort in der Transkription, das wie eines dieser Wörter klingt, wird durch Ihren Begriff ersetzt. Funktioniert mit jedem Sprachmodell; vollständig offline.</string>
+    <string name="cw_hint">Wörter, eines pro Zeile</string>
+    <string name="cw_helper">Zeilen mit # am Anfang sind Kommentare. Beispiel: Madrid, Barcelona, TensorFlow</string>
+    <string name="cw_save">Speichern</string>
+    <string name="cw_saved">Gespeichert</string>
+    <string name="cw_save_error">Speichern des Wörterbuchs fehlgeschlagen</string>
 </resources>

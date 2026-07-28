@@ -119,4 +119,16 @@
     <string name="pp_prompt">Prompt de sistema</string>
     <string name="pp_save">Guardar</string>
     <string name="pp_saved">Ajustes guardados</string>
+
+    <!-- Diccionario de palabras personalizadas (añadido del fork): corrección fonética -->
+    <string name="cw_card_title">Palabras personalizadas</string>
+    <string name="cw_card_subtitle">Reemplaza palabras mal reconocidas que suenan como tus términos. Funciona con cualquier modelo, totalmente sin conexión.</string>
+    <string name="cw_card_button">Editar palabras personalizadas</string>
+    <string name="cw_title">Palabras personalizadas</string>
+    <string name="cw_subtitle">Lista las palabras que quieres que se reconozcan correctamente. Una palabra de la transcripción que suene como una de estas se reemplaza por tu término. Funciona con cualquier modelo de voz; totalmente sin conexión.</string>
+    <string name="cw_hint">Palabras, una por línea</string>
+    <string name="cw_helper">Las líneas que empiezan por # son comentarios. Ejemplo: Madrid, Barcelona, TensorFlow</string>
+    <string name="cw_save">Guardar</string>
+    <string name="cw_saved">Guardado</string>
+    <string name="cw_save_error">No se pudo guardar el diccionario</string>
 </resources>

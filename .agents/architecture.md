@@ -16,11 +16,12 @@ código, ver [`../AGENTS.md`](../AGENTS.md).
 │ │ LiveSubtitle      │◄──►│  • jni 0.21                     │ │
 │ │ Service           │    │  • crossbeam-channel 0.5        │ │
 │ │ RecognizerActivity│    │  • once_cell 1.19, anyhow 1.0   │ │
+│ │                  │    │  • strsim 0.11 (corrector)      │ │
 │ └───────────────────┘    └────────────────────────────────┘ │
 │           │               ▲                                  │
 │           ▼               │ JNI callbacks                    │
 │   filesDir/ marker files: model_language, active_model,       │
-│   auto_record, pause_audio, … (sincroniza con :ime)           │
+│   auto_record, pause_audio, custom_words, … (:ime sync)      │
 └──────────────────────────────────────────────────────────────┘
                           │
                           │ marker files (cross-process)
@@ -56,6 +57,12 @@ Mic (16 kHz mono f32)
   → engine::transcribe_shared (engine singleton, Arc<Mutex>)
      • re-lee `model_language` en cada run (no cache)
      • degrada `de-DE` → `de` → `None` si la hint es rechazada
+     • catch_unwind(engine.transcribe) → Result<String,String>
+  → corrector::correct_if_enabled(text)  ← post-ASR, pre-callback
+     • lee filesDir/custom_words (mtime-cached)
+     • codificador fonético ES+EN → Levenshtein ≤ 2 + bigram coseno
+     • propio catch_unwind → safe-fallback = texto crudo
+     • cubre TODAS las superficies de golpe (IME/popup/subs/SR/archivo)
   → JNI callback `onTextTranscribed(string)`
   → Java: aplica PostProcessor si está ON (con safe-fallback)
   → commitText al InputConnection (IME)
@@ -110,6 +117,11 @@ ModelsActivity (Java)
    linking silenciosos en ABIs mal.
 7. **Re-lectura de `model_language` también tras un `engine::reset()`.** El
    marker file es la única verdad; nada se cachea en memoria engine-side.
+8. **`corrector::correct_if_enabled` tiene su propio `catch_unwind`.** Un
+   panic en el corrector (codificador fonético, cache mutex envenenado)
+   devuelve el texto crudo, no escapa a JNI ni congela el IME. Esto
+   complementa el `catch_unwind` del engine (invariante #2) — son dos
+   capas independientes para dos componentes independientes.
 
 ## Boundaries (qué expone qué a qué)
 
@@ -120,6 +132,7 @@ ModelsActivity (Java)
 | Rust audio callback ↔ `audio_buffer` | `Arc<Mutex<Vec<f32>>>` | Latencia / jitter UI |
 | Worker subtitles ↔ `LiveSubtitleService` | `crossbeam_channel::unbounded` | Race en finals/partials |
 | MainActivity ↔ ModelsActivity ↔ Rust | `engine::reset()` (condvar-coordinated) | Doble carga de modelo |
+| CustomWordsActivity ↔ `corrector.rs` | marker file `filesDir/custom_words` | Corrección fonética no aplica o usa diccionario stale |
 
 ## Historia de decisiones
 
@@ -138,14 +151,25 @@ ModelsActivity (Java)
   inmediato. Se eligió correctness sobre 1 syscall/run.
 - **Cargo + JNI bridge directo** (no C wrapper intermedio) para evitar
   dependencias innecesarias y simplificar ABI a una sola `.so`.
+- **Post-filtro fonético vs `initial_prompt` (2026-07-28).** Se investigó
+  cómo hace FUTO Voice Input su "Personal Dictionary": inyecta el
+  diccionario como `initial_prompt` de whisper.cpp con `"(Glossary: …)"`.
+  El propio código de FUTO admite en un TODO que "sólo funciona bien para
+  inglés". Se eligió un **post-filtro fonético** (`corrector.rs`) en
+  `transcribe_shared` porque: (a) funciona con las 16 familias de
+  transcribe.cpp, no sólo Whisper; (b) es determinista (reemplazo
+  garantizado) vs probabilístico (sesgo ignorable); (c) no contamina
+  cada chunk de 30s del ASR; (d) cubre ES+EN con un codificador propio.
+  El corrector vive en Rust, no en Java, para cubrir todas las superficies
+  (incluidos subtítulos en vivo) sin cablear cada callback.
 
 ## Cambios esperados
 
 Este fichero **cambia con frecuencia media** (días/semanas). Cualquier
 refactor importante toca aquí. Cambios de alcance → [`spec.md`](./spec.md);
-cambios de reglas para IAs → [`../AGENTS.md`](../AGENTS.md);cambios de estado de trabajo → [`progress.md`](./progress.md).
+cambios de reglas para IAs → [`../AGENTS.md`](../AGENTS.md); cambios de estado de trabajo → [`progress.md`](./progress.md).
 
-> **Mapping módulo ↔ clase:** la tabla canónica Rust ↔ Java (12 módulos
+> **Mapping módulo ↔ clase:** la tabla canónica Rust ↔ Java (13 módulos
 > Rust ↔ sus componentes Java ↔ cómo llaman al engine compartido) vive
 > en [`../AGENTS.md` §4.6](../AGENTS.md) — no se duplica aquí para evitar
 > drift entre ambos docs. Este doc describe los flujos y las invariantes;

@@ -119,4 +119,16 @@
     <string name="pp_prompt">Системный промпт</string>
     <string name="pp_save">Сохранить</string>
     <string name="pp_saved">Настройки сохранены</string>
+
+    <!-- Словарь пользовательских слов (добавление форка): фонетическая коррекция -->
+    <string name="cw_card_title">Свои слова</string>
+    <string name="cw_card_subtitle">Заменяет неверно распознанные слова, звучащие как ваши термины. Работает с любой моделью, полностью офлайн.</string>
+    <string name="cw_card_button">Изменить свои слова</string>
+    <string name="cw_title">Свои слова</string>
+    <string name="cw_subtitle">Перечислите слова, которые должны распознаваться правильно. Слово в транскрипции, звучащее похоже на одно из этих, заменяется вашим вариантом. Работает с любой речевой моделью; полностью офлайн.</string>
+    <string name="cw_hint">Слова, по одному в строке</string>
+    <string name="cw_helper">Строки, начинающиеся с # — комментарии. Пример: Madrid, Barcelona, TensorFlow</string>
+    <string name="cw_save">Сохранить</string>
+    <string name="cw_saved">Сохранено</string>
+    <string name="cw_save_error">Не удалось сохранить словарь</string>
 </resources>

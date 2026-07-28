@@ -251,6 +251,20 @@ pub fn transcribe_shared(engine: &Arc<Mutex<Engine>>, samples: Vec<f32>) -> Resu
         log::error!("transcription panicked; reporting as error");
         Err("transcription failed unexpectedly, please try again".to_string())
     });
+    // Apply the user's custom-word phonetic correction (post-ASR). Wrapped
+    // in its own catch_unwind so a panic in the corrector (e.g. a bug in the
+    // phonetic encoder, or a poisoned cache mutex) cannot escape to JNI and
+    // freeze the IME — the raw transcript is returned instead. This matches
+    // the engine's own resilience pattern (AGENTS.md §5.1).
+    let result = result.map(|text| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::corrector::correct_if_enabled(&text)
+        }))
+        .unwrap_or_else(|_| {
+            log::error!("corrector panicked; returning raw transcript");
+            text
+        })
+    });
     log::info!(
         "transcribed {:.1}s audio in {:.2}s",
         audio_secs,
@@ -478,6 +492,12 @@ fn do_load(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
         .and_then(|s| s.parse::<i32>().ok())
         .filter(|&n| n > 0)
         .unwrap_or_else(performance_core_count);
+
+    // Publish filesDir so the corrector can locate the custom-words marker
+    // file. Done here (before the imported-model attempt) so the corrector
+    // works whether the active model is imported or bundled; if it fails the
+    // corrector is a no-op (safe fallback).
+    crate::corrector::set_files_dir(&files_dir);
 
     if let Some(name) = read_config(&files_dir.join(ACTIVE_MODEL_FILE)) {
         let path = files_dir.join("models").join(&name);

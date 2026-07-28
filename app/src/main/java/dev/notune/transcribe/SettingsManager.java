@@ -13,6 +13,9 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileLock;
+import java.nio.channels.OverlappingFileLockException;
 import java.nio.charset.StandardCharsets;
 
 /**
@@ -285,7 +288,23 @@ public class SettingsManager {
 
     // ----------------------------------------------------------------------
     // One-time migration from SharedPreferences to marker files.
-    // Runs in every process, but the sentinel makes it idempotent.
+    //
+    // Runs in every process (main and ":ime") on first launch after update.
+    // Three concurrency concerns:
+    //   1. Sentinel check + legacy read + marker write is a TOCTOU race:
+    //      both processes can pass the sentinel check, read the legacy
+    //      SharedPreferences, and queue their own marker writes.
+    //   2. SharedPreferences `apply()` is async: a trailing thread can still
+    //      see the stale value even after another process flushed changes.
+    //   3. The IME process can lag behind the main process. If the user
+    //      disables post-processing (deletes the marker) while the IME is
+    //      still in its migration block, a careless migration would resurrect
+    //      the marker right after the user removed it.
+    //
+    // Fix: serialize the whole migration with an OS-level file lock on
+    // filesDir()/pp_migrated.lock, and clear the legacy SharedPreferences
+    // with a synchronous `commit()` before the sentinel so any later thread
+    // that re-enters migration sees no legacy values.
     // ----------------------------------------------------------------------
 
     public static void migrateIfNeeded(Context context) {
@@ -294,42 +313,90 @@ public class SettingsManager {
         File sentinel = new File(filesDir, MIGRATION_SENTINEL);
         if (sentinel.exists()) return;
 
-        SharedPreferences legacy = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        File lockFile = new File(filesDir, MIGRATION_SENTINEL + ".lock");
+        FileLock lock = null;
+        try (FileOutputStream fos = new FileOutputStream(lockFile, true)) {
+            FileChannel channel = fos.getChannel();
+            lock = channel.tryLock();
+            if (lock == null) {
+                // Another process holds the lock and is migrating. Sleep briefly
+                // so it can finish; the next App.onCreate will re-check the
+                // sentinel and skip migration if necessary.
+                try { Thread.sleep(50); } catch (InterruptedException ignored) {}
+                return;
+            }
 
-        if (legacy.contains(LEGACY_KEY_POST_PROCESS_ENABLED)) {
-            boolean enabled = legacy.getBoolean(LEGACY_KEY_POST_PROCESS_ENABLED, false);
-            if (enabled) {
-                try {
-                    new File(filesDir, PP_ENABLED_FILE).createNewFile();
-                } catch (IOException e) {
-                    Log.e(TAG, "Failed to create pp_enabled marker during migration", e);
+            // Re-check sentinel under the lock (the holder may have completed
+            // in the meantime).
+            if (sentinel.exists()) return;
+
+            SharedPreferences legacy = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+
+            if (legacy.contains(LEGACY_KEY_POST_PROCESS_ENABLED)) {
+                boolean enabled = legacy.getBoolean(LEGACY_KEY_POST_PROCESS_ENABLED, false);
+                if (enabled) {
+                    try {
+                        new File(filesDir, PP_ENABLED_FILE).createNewFile();
+                    } catch (IOException e) {
+                        Log.e(TAG, "Failed to create pp_enabled marker during migration", e);
+                    }
                 }
             }
-        }
 
-        if (legacy.contains(LEGACY_KEY_PROVIDER)) {
-            writeMarker(filesDir, PP_PROVIDER_FILE, legacy.getString(LEGACY_KEY_PROVIDER, "custom"));
-        }
-
-        if (legacy.contains(LEGACY_KEY_API_URL)) {
-            writeMarker(filesDir, PP_API_URL_FILE, legacy.getString(LEGACY_KEY_API_URL, DEFAULT_API_URL));
-        }
-
-        if (legacy.contains(LEGACY_KEY_MODEL_NAME)) {
-            writeMarker(filesDir, PP_MODEL_FILE, legacy.getString(LEGACY_KEY_MODEL_NAME, DEFAULT_MODEL));
-        }
-
-        if (legacy.contains(LEGACY_KEY_SYSTEM_PROMPT)) {
-            String prompt = legacy.getString(LEGACY_KEY_SYSTEM_PROMPT, "");
-            if (prompt != null && !prompt.isEmpty()) {
-                writeMarker(filesDir, PP_PROMPT_FILE, prompt);
+            if (legacy.contains(LEGACY_KEY_PROVIDER)) {
+                writeMarker(filesDir, PP_PROVIDER_FILE, legacy.getString(LEGACY_KEY_PROVIDER, "custom"));
             }
-        }
 
-        try {
-            sentinel.createNewFile();
+            if (legacy.contains(LEGACY_KEY_API_URL)) {
+                writeMarker(filesDir, PP_API_URL_FILE, legacy.getString(LEGACY_KEY_API_URL, DEFAULT_API_URL));
+            }
+
+            if (legacy.contains(LEGACY_KEY_MODEL_NAME)) {
+                writeMarker(filesDir, PP_MODEL_FILE, legacy.getString(LEGACY_KEY_MODEL_NAME, DEFAULT_MODEL));
+            }
+
+            if (legacy.contains(LEGACY_KEY_SYSTEM_PROMPT)) {
+                String prompt = legacy.getString(LEGACY_KEY_SYSTEM_PROMPT, "");
+                if (prompt != null && !prompt.isEmpty()) {
+                    writeMarker(filesDir, PP_PROMPT_FILE, prompt);
+                }
+            }
+
+            // Synchronously commit the legacy-key removal so any trailing
+            // process that re-enters migration after this point reads empty
+            // values and does not resurrect the marker. `apply()` is not
+            // enough here because other processes read SharedPreferences from
+            // disk, not from a shared cache.
+            try {
+                SharedPreferences.Editor editor = legacy.edit();
+                editor.remove(LEGACY_KEY_POST_PROCESS_ENABLED);
+                editor.remove(LEGACY_KEY_PROVIDER);
+                editor.remove(LEGACY_KEY_API_URL);
+                editor.remove(LEGACY_KEY_MODEL_NAME);
+                editor.remove(LEGACY_KEY_SYSTEM_PROMPT);
+                editor.commit();
+            } catch (Exception e) {
+                Log.e(TAG, "Failed to clear legacy SharedPreferences", e);
+            }
+
+            // Create the sentinel LAST so a trailing process that races with
+            // us and somehow acquires the lock next sees the migration as
+            // complete and exits early.
+            try {
+                sentinel.createNewFile();
+            } catch (IOException e) {
+                Log.e(TAG, "Failed to create migration sentinel", e);
+            }
+        } catch (OverlappingFileLockException e) {
+            // Another thread in the same JVM already holds the lock; treat as
+            // success (it will complete the migration).
+            Log.d(TAG, "Migration lock held by sibling thread");
         } catch (IOException e) {
-            Log.e(TAG, "Failed to create migration sentinel", e);
+            Log.e(TAG, "Failed during migration", e);
+        } finally {
+            if (lock != null && lock.isValid()) {
+                try { lock.release(); } catch (IOException ignored) {}
+            }
         }
     }
 

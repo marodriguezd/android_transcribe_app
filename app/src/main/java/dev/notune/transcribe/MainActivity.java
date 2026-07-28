@@ -49,6 +49,17 @@ public class MainActivity extends AppCompatActivity {
     // recreated but the background thread keeps running).
     private static final AtomicBoolean isDownloadingDebugModel = new AtomicBoolean(false);
 
+    // Live reference to whichever MainActivity instance is currently in the
+    // foreground. The model download thread reads this field on completion
+    // instead of the Activity it was created in: if a config change
+    // (rotation, locale change, ...) happens during the download, the original
+    // Activity is destroyed and the runOnUiThread callback that targets it
+    // would short-circuit, leaving the new instance stuck on
+    // "Downloading model…" forever. Resolving the live instance at completion
+    // lets us notify the Activity that is actually on screen, regardless of
+    // which one started the download.
+    private static volatile MainActivity sActiveInstance = null;
+
     static {
         try {
             System.loadLibrary("c++_shared");
@@ -174,11 +185,30 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onResume() {
         super.onResume();
+        // Claim the foreground slot so a download finishing while we are on
+        // screen — including one started by an Activity that has since been
+        // destroyed by a config change mid-download — can post its UI update
+        // and initNative here. Read by startDebugModelDownload() on completion.
+        sActiveInstance = this;
         // Re-check on return from the keyboard chooser, settings, or a test run.
         updateVoiceInputStatus();
         // Re-check the debug model state after a configuration change or when
         // returning from another screen.
         maybeDownloadDebugModel();
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        // Drop the foreground slot while we are not in the foreground. A
+        // download finishing while no Activity is foregrounded will resolve
+        // sActiveInstance to null and skip the UI update, leaving the next
+        // onResume() to detect hasImportedModel(true) and call initNative
+        // there. This avoids posting runnables into a paused/destroyed
+        // Activity that would silently drop them.
+        if (sActiveInstance == this) {
+            sActiveInstance = null;
+        }
     }
 
     /**
@@ -500,6 +530,11 @@ public class MainActivity extends AppCompatActivity {
         benchButton.setEnabled(false);
 
         new Thread(() -> {
+            // Wrap the entire body in try/finally so the AtomicBoolean is
+            // cleared even if mkdirs() or the disk-space check fails before
+            // the HTTP path runs. Otherwise the guard stays at true and the
+            // user is locked out of retrying ("Downloading model…" forever).
+            try {
             File modelsDir = new File(getFilesDir(), "models");
             if (!modelsDir.exists() && !modelsDir.mkdirs()) {
                 runOnUiThread(() -> onModelDownloadFailed("Cannot create models directory"));
@@ -546,21 +581,58 @@ public class MainActivity extends AppCompatActivity {
                     fos.write("canary-180m-flash-Q8_0.gguf".getBytes(StandardCharsets.UTF_8));
                 }
 
-                runOnUiThread(() -> {
-                    if (isFinishing() || isDestroyed()) return;
-                    statusText.setText(R.string.debug_model_downloaded);
-                    benchButton.setEnabled(true);
-                    initNative(MainActivity.this);
-                });
+                // Notify whichever MainActivity is currently in the foreground
+                // (resolved at completion, NOT the captured MainActivity.this
+                // we were created in): if a config change happened during the
+                // download, the original Activity is destroyed and a naive
+                // runOnUiThread on it would short-circuit on isDestroyed().
+                // Reading sActiveInstance at completion lets us post directly
+                // to whichever Activity is actually on screen (B, after a
+                // rotation). If no Activity is foregrounded right now, the
+                // next instance picks it up in onResume() through
+                // hasImportedModel() → initNative(); the UI text catches up
+                // on the next onStatusUpdate from Rust.
+                final MainActivity ui = sActiveInstance;
+                if (ui != null) {
+                    // Move the liveness check INSIDE the runOnUiThread body: the
+                    // outer check is on a background thread and there is a small
+                    // race window between reading isDestroyed() and the runnable
+                    // actually executing. Both activity destruction and the
+                    // runnable target run on the UI thread, so re-checking here
+                    // is atomic with the body below.
+                    ui.runOnUiThread(() -> {
+                        if (ui.isFinishing() || ui.isDestroyed()) return;
+                        ui.statusText.setText(R.string.debug_model_downloaded);
+                        ui.benchButton.setEnabled(true);
+                        ui.initNative(ui);
+                    });
+                }
             } catch (Exception e) {
                 Log.e(TAG, "Debug model download failed", e);
                 tmp.delete();
-                runOnUiThread(() -> {
-                    if (isFinishing() || isDestroyed()) return;
-                    onModelDownloadFailed(
-                            e.getMessage() != null ? e.getMessage() : "unknown");
-                });
+                // Same live-Activity dispatch as the success path: notify the
+                // currently foregrounded Activity (if any) so the retry
+                // dialog appears there. If no Activity is foregrounded, the
+                // next onResume() sees no bundled/imported model and re-shows
+                // the initial download dialog — a graceful fallback rather
+                // than a silent loss of the failure reason for one cycle.
+                final String reason = e.getMessage() != null ? e.getMessage() : "unknown";
+                final MainActivity ui = sActiveInstance;
+                if (ui != null) {
+                    // Symmetric with the success path: liveness is checked on
+                    // the UI thread, atomic with the work below.
+                    ui.runOnUiThread(() -> {
+                        if (ui.isFinishing() || ui.isDestroyed()) return;
+                        ui.onModelDownloadFailed(reason);
+                    });
+                }
+            }
             } finally {
+                // Reset regardless of whether we succeeded, caught an exception,
+                // or hit one of the early-return paths (mkdirs() failure or low
+                // disk space) — without this, the AtomicBoolean stays at true on
+                // disk-space failures and the user is locked into
+                // "Downloading model…" forever with no way to retry.
                 isDownloadingDebugModel.set(false);
             }
         }, "debug-model-download").start();

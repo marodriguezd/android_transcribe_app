@@ -294,6 +294,7 @@ public class RustInputMethodService extends InputMethodService {
                     }
                     updateRecordButtonUI(false);
                 } else {
+                    UserDictionaryHelper.syncSystemUserDictionaryAsync(this);
                     if (isPauseAudioEnabled()) {
                         audioPauser.request(this);
                         pauseAudioActive = true;

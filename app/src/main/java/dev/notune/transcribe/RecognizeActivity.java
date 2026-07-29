@@ -72,6 +72,7 @@ public class RecognizeActivity extends AppCompatActivity {
             return;
         }
 
+        UserDictionaryHelper.syncSystemUserDictionaryAsync(this);
         initNative(this);
         isRecording = true;
         status.setText("Listening... (Tap to stop)");

@@ -28,3 +28,10 @@ Este documento detalla **única y exclusivamente** las optimizaciones, refactori
 
 * **Fijación de Regla de Compilación CI/CD:** Se ha documentado e inmunizado en [`AGENTS.md`](../../AGENTS.md) la regla estricta de que **toda compilación de depuración (Debug) se realiza exclusivamente en el pipeline de CI/CD de GitHub Actions** (`Debug APK → Telegram`), prohibiendo ejecuciones locales para proteger la estabilidad del entorno.
 * **Puesta a punto de la jerarquía agéntica:** Se actualizaron e indexaron los registros en `.agents/INDEX.md`, `.agents/progress.md` y `.agents/memory/polish-agents-2026-07-29.md`.
+
+---
+
+## 3. ⏱️ Auto-Parada por Silencio en Teclado IME y Algoritmo Adaptativo VAD
+
+* **Habilitación de Auto-Stop en Teclado IME:** Se corrigió la limitación donde la auto-parada por silencio estaba desactivada internamente en el teclado IME ([`src/ime.rs`](../../src/ime.rs)). Ahora [`RustInputMethodService.java`](../../app/src/main/java/dev/notune/transcribe/RustInputMethodService.java) lee el marcador `auto_stop` y lo transmite por JNI, procesando la finalización automática mediante la respuesta de `onAutoStop()`.
+* **Calibración Adaptativa VAD ([`src/voice_session.rs`](../../src/voice_session.rs)):** Se ajustaron las constantes de nivel de voz (`MIN_SPEECH_LEVEL` a `0.05` y `SPEECH_MARGIN` a `0.04`) con ajuste adaptativo dinámico sobre el suelo de ruido. Esto asegura que susurros y voces suaves activen el temporizador de 2 segundos de silencio de forma precisa sin quedar bloqueadas por ruido de fondo.

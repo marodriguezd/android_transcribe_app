@@ -10,9 +10,9 @@ use crate::engine;
 
 // --- Optional auto-stop endpointing (same level heuristics as recog_service) --
 /// Absolute smoothed level (0..1) that must be exceeded to count as speech.
-const MIN_SPEECH_LEVEL: f32 = 0.12;
+const MIN_SPEECH_LEVEL: f32 = 0.05;
 /// How far above the running noise floor a level must be to count as speech.
-const SPEECH_MARGIN: f32 = 0.08;
+const SPEECH_MARGIN: f32 = 0.04;
 /// Trailing silence after speech that triggers auto-stop.
 const AUTO_STOP_SILENCE_MS: u64 = 2000;
 /// If no speech is ever detected, auto-stop after this long.

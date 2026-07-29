@@ -296,7 +296,7 @@ public class RustInputMethodService extends InputMethodService {
                         audioPauser.request(this);
                         pauseAudioActive = true;
                     }
-                    startRecording();
+                    startRecording(isAutoStopEnabled());
                     updateRecordButtonUI(true);
                 }
             });
@@ -335,7 +335,7 @@ public class RustInputMethodService extends InputMethodService {
                     audioPauser.request(this);
                     pauseAudioActive = true;
                 }
-                startRecording();
+                startRecording(isAutoStopEnabled());
                 updateRecordButtonUI(true);
             }
         }
@@ -446,9 +446,23 @@ public class RustInputMethodService extends InputMethodService {
     // Native methods
     private native void initNative(RustInputMethodService service);
     private native void cleanupNative();
-    private native void startRecording();
+    private native void startRecording(boolean autoStop);
     private native void stopRecording();
     private native void cancelRecording();
+
+    // Called from Rust (monitor thread) when trailing silence is detected.
+    public void onAutoStop() {
+        mainHandler.post(() -> {
+            if (isRecording) {
+                stopRecording();
+                if (pauseAudioActive) {
+                    audioPauser.abandon(this);
+                    pauseAudioActive = false;
+                }
+                updateRecordButtonUI(false);
+            }
+        });
+    }
 
     // Called from Rust
     public void onStatusUpdate(String status) {
@@ -652,6 +666,10 @@ public class RustInputMethodService extends InputMethodService {
 
     private boolean isPauseAudioEnabled() {
         return new File(getFilesDir(), "pause_audio").exists();
+    }
+
+    private boolean isAutoStopEnabled() {
+        return new File(getFilesDir(), "auto_stop").exists();
     }
 
     /** "Record in background" is default ON; the marker file is the opt-out. */

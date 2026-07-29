@@ -129,6 +129,8 @@ public class RustInputMethodService extends InputMethodService {
             // Native may be unavailable (e.g. wrong-ABI emulator); don't crash the IME.
             Log.e(TAG, "Error in initNative", t);
         }
+        // Sync Android system user dictionary words (FUTO Keyboard style)
+        UserDictionaryHelper.syncSystemUserDictionaryAsync(this);
         // Listen for cross-process post-processing cancellation from the main
         // process so we can abort in-flight OkHttp calls immediately.
         IntentFilter cancelFilter = new IntentFilter(PostProcessor.CANCEL_ACTION);

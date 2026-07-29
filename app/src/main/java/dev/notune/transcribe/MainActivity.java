@@ -114,8 +114,10 @@ public class MainActivity extends AppCompatActivity {
         findViewById(R.id.btn_post_process).setOnClickListener(v ->
                 startActivity(new Intent(this, PostProcessSettingsActivity.class)));
 
-        findViewById(R.id.btn_custom_words).setOnClickListener(v ->
-                startActivity(new Intent(this, CustomWordsActivity.class)));
+        findViewById(R.id.btn_custom_words).setOnClickListener(v -> {
+            UserDictionaryHelper.syncSystemUserDictionaryAsync(this);
+            UserDictionaryHelper.openSystemUserDictionarySettings(this);
+        });
 
         benchButton = findViewById(R.id.btn_benchmark);
         benchResultText = findViewById(R.id.text_bench_result);
@@ -195,6 +197,8 @@ public class MainActivity extends AppCompatActivity {
         // Re-check the debug model state after a configuration change or when
         // returning from another screen.
         maybeDownloadDebugModel();
+        // Sync Android system user dictionary words (FUTO Keyboard style)
+        UserDictionaryHelper.syncSystemUserDictionaryAsync(this);
     }
 
     @Override

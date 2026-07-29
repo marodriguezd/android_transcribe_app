@@ -4,6 +4,12 @@
 
 ## 🟢 Recién completado
 
+- **2026-07-29** — Post-Procesado con IA en Streaming (SSE / Token Streaming):
+  - `PostProcessor.java`: implementación de `processStreaming` mediante Server-Sent Events (`stream: true`). Reducción del tiempo de respuesta percibido de ~2.000 ms a **~300 ms** (TTFT). Motor de 3 reintentos de reconexión y fallback a petición síncrona si la API no soporta streaming (HTTP 400).
+  - `RustInputMethodService.java`: inserción fluida token por token en el editor enfocado vía `InputConnection.commitText`. Limpieza de deltas insertados (`deleteSurroundingText`) y reemplazo por transcripción bruta original ante fallo de stream para prevenir texto fragmentado ("efecto Frankenstein").
+  - `RecognizeActivity.java`: renderizado de deltas token a token en tiempo real en la pantalla de voz.
+  - **CI/CD:** Verificación de compilación limpia y envío de APK mediante GitHub Actions (`Debug APK → Telegram`).
+
 - **2026-07-29** — Actualización de ficheros agénticos (`.agents/`) con la
   feature del corrector fonético: `AGENTS.md` §4.5/§4.6, `architecture.md`,
   `spec.md`, `progress.md`, `INDEX.md`. Todo al día con la feature del

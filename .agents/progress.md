@@ -4,6 +4,12 @@
 
 ## 🟢 Recién completado
 
+- **2026-07-29** — Integración Simplificada del Diccionario del Sistema Android (Estilo FUTO Keyboard):
+  - `UserDictionaryHelper.java`: helper que abre la pantalla nativa de Ajustes del Diccionario de Usuario de Android (`Settings.ACTION_USER_DICTIONARY_SETTINGS`) con fallbacks a cadenas de acción e `Intent` de ajustes generales.
+  - Sincronización automática de palabras del sistema desde `UserDictionary.Words.CONTENT_URI` hacia el marcador `custom_words` al volver a la app y antes de iniciar cada sesión de voz en el teclado IME o ventana emergente.
+  - `AndroidManifest.xml`: añadido permiso `android.permission.READ_USER_DICTIONARY`.
+  - **CI/CD:** Compilación verificada e integrada en GitHub Actions (commit `3b837c5`, workflow `30475726536`).
+
 - **2026-07-29** — Habilitación de Auto-Parada tras 2s de Silencio en Teclado IME y Calibración Adaptativa VAD:
   - `RustInputMethodService.java` & `src/ime.rs`: eliminación de la restricción hardcodeada `false`. Transmisión del marcador `auto_stop` vía JNI y adición del callback `onAutoStop()` para auto-parar y procesar texto automáticamente en el teclado.
   - `src/voice_session.rs`: calibración adaptativa de VAD (`MIN_SPEECH_LEVEL = 0.05` y `SPEECH_MARGIN = 0.04`) sobre el suelo de ruido en tiempo real para detectar voz suave/susurrada.

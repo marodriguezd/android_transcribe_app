@@ -35,3 +35,10 @@ Este documento detalla **única y exclusivamente** las optimizaciones, refactori
 
 * **Habilitación de Auto-Stop en Teclado IME:** Se corrigió la limitación donde la auto-parada por silencio estaba desactivada internamente en el teclado IME ([`src/ime.rs`](../../src/ime.rs)). Ahora [`RustInputMethodService.java`](../../app/src/main/java/dev/notune/transcribe/RustInputMethodService.java) lee el marcador `auto_stop` y lo transmite por JNI, procesando la finalización automática mediante la respuesta de `onAutoStop()`.
 * **Calibración Adaptativa VAD ([`src/voice_session.rs`](../../src/voice_session.rs)):** Se ajustaron las constantes de nivel de voz (`MIN_SPEECH_LEVEL` a `0.05` y `SPEECH_MARGIN` a `0.04`) con ajuste adaptativo dinámico sobre el suelo de ruido. Esto asegura que susurros y voces suaves activen el temporizador de 2 segundos de silencio de forma precisa sin quedar bloqueadas por ruido de fondo.
+
+---
+
+## 4. 📖 Integración Simplificada del Diccionario del Sistema Android (Estilo FUTO Keyboard)
+
+* **Menú Nativo de Android:** Al pulsar en la tarjeta **Palabras Personalizadas**, la aplicación abre directamente la interfaz de los ajustes del Diccionario Personal de Android ([`Settings.ACTION_USER_DICTIONARY_SETTINGS`](../../app/src/main/java/dev/notune/transcribe/UserDictionaryHelper.java)) con fallbacks para capas OEM como Samsung OneUI o Xiaomi MIUI, simplificando la gestión al estilo de FUTO Keyboard.
+* **Sincronización Automática:** Se creó [`UserDictionaryHelper.java`](../../app/src/main/java/dev/notune/transcribe/UserDictionaryHelper.java) y se añadió el permiso `READ_USER_DICTIONARY`. Las palabras del sistema se extraen del `ContentProvider` de Android al volver a la app o iniciar cualquier sesión de grabación en el teclado IME o ventana de voz, sincronizándose con el corrector fonético nativo en Rust ([`src/corrector.rs`](../../src/corrector.rs)).

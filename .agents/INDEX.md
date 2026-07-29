@@ -45,6 +45,10 @@ escrito X?" sin navegar a ciegas.
 Se rellena conforme se acumulen sesiones de trabajo. Listado en orden
 cronológico inverso (lo más reciente primero):
 
+- [`memory/polish-agents-2026-07-29.md`](./memory/polish-agents-2026-07-29.md) —
+  limpieza y puesta al día de ficheros agénticos: `progress.md` al día,
+  referencias `specs.md` → `INDEX.md` corregidas en `dedup-round`,
+  preguntas resueltas consolidadas.
 - [`memory/phonetic-corrector-2026-07-28.md`](./memory/phonetic-corrector-2026-07-28.md) —
   implementación del corrector fonético post-ASR + investigación de FUTO
   Voice Input + 4 rondas de code-review.

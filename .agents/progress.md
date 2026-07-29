@@ -1,8 +1,13 @@
 # Progreso — estado actual del trabajo IA-asistido
 
-**Última actualización:** 2026-07-28
+**Última actualización:** 2026-07-29
 
 ## 🟢 Recién completado
+
+- **2026-07-29** — Actualización de ficheros agénticos (`.agents/`) con la
+  feature del corrector fonético: `AGENTS.md` §4.5/§4.6, `architecture.md`,
+  `spec.md`, `progress.md`, `INDEX.md`. Todo al día con la feature del
+  corrector.
 
 - **2026-07-28** — Corrector fonético de palabras personalizadas (fork
   addition). Feature completa:
@@ -43,11 +48,8 @@
   - Colapso de 3 filas de toolchain en §2 a una sola fila "Toolchain humano".
   - Cross-link explícito en el README hacia AGENTS.md.
 
-## 🟡 En curso / siguiente
+## 🟡 Pendiente humano
 
-- **2026-07-28** — Actualización de ficheros agénticos (.agents/) con la
-  nueva feature del corrector fonético: AGENTS.md §4.5/§4.6,
-  architecture.md, spec.md, progress.md, INDEX.md.
 - **Pendiente humano** — `./gradlew assembleDebug` en máquina con NDK 28
   para confirmar que el build Android pasa limpio sin warnings nuevos.
 - **Pendiente humano** — Smoke test en dispositivo arm64: diccionario con
@@ -67,9 +69,8 @@ _Ninguno en este momento._
 - **Idioma del contenido:** español en prosa principal (consistente con
   AGENTS.md), inglés en términos clave (commit hashes, file names,
   AGENTS.md root). Suficiente o ¿todo inglés para IAs internacionalizadas?
-- ~~**Naming `specs.md` (plural)** es ambiguo…~~ — **Resuelto**:
-  renombrado a `INDEX.md` (mantiene el rol de índice sin confundirse
-  con la spec singular).
+- **Naming `specs.md` → `INDEX.md`:** Resuelto. Renombrado para evitar
+  ambigüedad con la spec singular.
 
 ## 🔗 Enlaces activos
 

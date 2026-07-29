@@ -32,11 +32,11 @@ usuario pidió, en orden:
   IAs futuras; el code-reviewer lo dejó pasar.
 - **`.agents/` layout:** `README.md` (cómo usar el directorio) +
   `progress.md` (estado actual) + `spec.md` (QUÉ) + `architecture.md`
-  (CÓMO) + `specs.md` (índice cruzado) +
+  (CÓMO) + `INDEX.md` (índice cruzado) +
   `memory/<topic>-YYYY-MM-DD.md`. Pluralidad:
     - singular para spec / architecture / progress / README (cada uno es
       single-source-of-truth en su dominio).
-    - plural para `specs.md` (índice) y `memory/` (varios por sesión).
+    - plural para `INDEX.md` (índice) y `memory/` (varios por sesión).
 - **Tracked, no gitignored.** Razón: la mecánica "entre sesiones, entre
   agentes" exige persistencia + sincronización entre clones/máquinas.
   git es la persistencia. Si el mantenedor prefiere local-only, hay que
@@ -74,9 +74,8 @@ _Ninguno._
   [`../progress.md` §Preguntas abiertas](../progress.md)). Si prefiere
   gitignored, añadir `.agents/` a `.gitignore` y mover bootstrap a un
   script de instalación.
-- **Naming `specs.md` (plural):** algunos lectores lo leen como "otra
-  spec". Alternativas que se ofrecieron como followup: `INDEX.md` o
-  `docs.md`.
+- **Naming `specs.md` → `INDEX.md`:** Resuelto (julio 2026). El fichero
+  se renombró a `INDEX.md` para evitar ambigüedad con la spec singular.
 - **Idioma contenido:** español en prosa principal (consistente con
   AGENTS.md), inglés en términos clave (commit hashes, file names).
   Mantener consistencia o migrar a EN-only para IAs internacionalizadas.

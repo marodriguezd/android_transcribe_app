@@ -37,13 +37,20 @@ public class UserDictionaryHelper {
             intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
             context.startActivity(intent);
         } catch (ActivityNotFoundException e) {
-            Log.w(TAG, "USER_DICTIONARY_SETTINGS not found, opening general settings", e);
+            Log.w(TAG, "ACTION_USER_DICTIONARY_SETTINGS not found, trying string action fallback", e);
             try {
-                Intent fallback = new Intent(Settings.ACTION_SETTINGS);
+                Intent fallback = new Intent("android.settings.USER_DICTIONARY_SETTINGS");
                 fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 context.startActivity(fallback);
             } catch (Exception ex) {
-                Log.e(TAG, "Failed to open settings", ex);
+                Log.w(TAG, "USER_DICTIONARY_SETTINGS string fallback failed, opening general settings", ex);
+                try {
+                    Intent genSettings = new Intent(Settings.ACTION_SETTINGS);
+                    genSettings.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    context.startActivity(genSettings);
+                } catch (Exception ex2) {
+                    Log.e(TAG, "Failed to open settings", ex2);
+                }
             }
         }
     }

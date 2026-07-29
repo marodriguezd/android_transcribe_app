@@ -89,6 +89,11 @@ Post-procesado IA (fork addition): opcional, *off-line-by-default*, refina texto
   pack. Para bundle usa el asset pack `:model_assets` con
   `dynamicDelivery = "install-time"`.
 
+### Build Pipeline & Continuous Integration (REGLA GRABADA A FUEGO)
+
+- 🤖 **Compilaciones de Depuración (Debug):** Se realizan SIEMPRE a través de GitHub Actions (`Build Debug APK` workflow), el cual recompila y envía automáticamente el archivo APK de depuración al usuario a través del bot de Telegram.
+- 🚀 **Compilaciones de Lanzamiento (Release):** Se realizan SIEMPRE a través de GitHub Actions (`Build Signed Release APK` workflow / `android_release.yml`) mediante tags `vX.Y.Z` o disparadores manuales.
+
 ### Signing (AGENT-ONLY)
 
 - Si `release.keystore` existe en la raíz **y** las 3 env vars (`KEY_ALIAS`,
@@ -262,6 +267,7 @@ No renombrar archivos Rust/Java sin actualizar la entrada JNI (§4.3).
 - ❌ **No subir umbrales** de `MAX_FINAL_LAG_SAMPLES` / `MAX_PARTIAL_LAG_SAMPLES` / `MAX_PARTIAL_COST_SECS` en `subtitle.rs` sin probar hardware lento: esos números están calibrados para que un dispositivo medio no se quede atrás, no son free-tuning.
 - ❌ **No reemplazar `transcribe_shared` por código que ignore panics.** El `panic::catch_unwind` documenta un caso real: el modelo puede panic de fondo por allocations grandes, y el efecto sin catch sería un IME congelado.
 - ❌ **No romper el fallback del post-procesado:** si la llamada al LLM falla, siempre se entrega la transcripción cruda (`onError → deliverResult(text)`). Es la garantía de "no perder texto".
+- ❌ **No realizar compilaciones manuales de release/debug fuera del pipeline oficial de GitHub Actions** salvo para pruebas puntuales por ADB durante desarrollo local. Las compilaciones de depuración se canalizan vía GitHub Actions enviando el APK al bot de Telegram; las de release se generan automáticamente por GitHub Actions.
 - ❌ **No borrar el comentario explicativo en app/build.gradle.kts sobre `assetPacks` + bundle-vs-APK.** Es la trampa que rompió v0.1.x del upstream y se documentó específicamente para evitar.
 - ❌ **No introducir tests automatizados que importen el módulo entero** a través de JNI en CI: no hay emulador arm64 en el runner de GitHub Actions y los tests no-existentes ya dicen que validación = build + smoke test manual.
 

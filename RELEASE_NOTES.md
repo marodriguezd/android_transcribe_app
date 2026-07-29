@@ -1,3 +1,25 @@
+# v0.1.23
+
+Fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app). This release brings real-time **SSE streaming AI post-processing**, fixes **silence auto-stop for the IME keyboard**, and introduces seamless **Android System User Dictionary integration (FUTO Keyboard style)**.
+
+## What's new in v0.1.23
+
+### 🚀 Real-time Streaming AI Post-Processing (SSE)
+- **Token-by-token streaming:** AI post-processing now uses Server-Sent Events (`stream: true`). Text starts refining in real-time with Time-To-First-Token down to **~300 ms** (previously ~2,000 ms block wait).
+- **Live insertion in IME & Voice Popup:** Refined tokens stream directly into the focused text input field in `RustInputMethodService` and display live in `RecognizeActivity`.
+- **Resilient & No "Frankenstein" text:** Automatic 3-attempt reconnect retry on mid-stream drops. On persistent connection loss, partial deltas are cleaned up (`deleteSurroundingText`) and the raw transcript is delivered clean without text corruption.
+- **Provider Fallback:** Automatic fallback to standard block requests if a provider returns HTTP 400 (`stream` not supported).
+
+### ⏱️ IME Silence Auto-Stop & Adaptive VAD Tuning
+- **IME Keyboard Auto-Stop:** Fixed silence auto-stop (`auto_stop` marker) being hardcoded to `false` in the `:ime` keyboard process. Now the keyboard automatically stops and transcribes after 2 seconds of trailing silence.
+- **Adaptive VAD Heuristics:** Lowered minimum speech level threshold (`MIN_SPEECH_LEVEL = 0.05` and `SPEECH_MARGIN = 0.04`) in `src/voice_session.rs` with dynamic noise floor tracking, reliably capturing soft and quiet speech.
+
+### 📖 Android System User Dictionary Integration (FUTO Keyboard Style)
+- **Native Android System Menu:** Tapping **Custom Words** in `MainActivity` opens Android's native Personal User Dictionary settings (`Settings.ACTION_USER_DICTIONARY_SETTINGS`) with string action and general settings fallbacks for custom OEM ROMs (Samsung OneUI, Xiaomi MIUI, etc.).
+- **Automatic Sync:** Reads Android's `UserDictionary.Words` ContentProvider (`READ_USER_DICTIONARY` permission) on app start and right before every voice recording session, syncing system words into Rust's phonetic corrector (`src/corrector.rs`) across all surfaces.
+
+---
+
 # v0.1.22
 
 Fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app). This release adds an on-device **custom-words dictionary** that corrects misrecognized terms phonetically, and — most importantly — makes the optional AI **post-processing activate and deactivate reliably** between the main app and the `:ime` keyboard process.

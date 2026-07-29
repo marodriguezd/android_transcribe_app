@@ -1,0 +1,54 @@
+//! Centralized JNI callbacks and helpers.
+//!
+//! Provides clean, reusable wrappers for calling standard Java callbacks
+//! (`onStatusUpdate`, `onTextTranscribed`, `onAudioLevel`, `onSubtitleText`, `onAutoStop`)
+//! safely from Rust code across all surfaces.
+
+use jni::objects::JObject;
+use jni::JNIEnv;
+
+/// Invokes `onStatusUpdate(String)` on the target Java object.
+pub fn notify_status(env: &mut JNIEnv, obj: &JObject, msg: &str) {
+    if let Ok(jmsg) = env.new_string(msg) {
+        let _ = env.call_method(
+            obj,
+            "onStatusUpdate",
+            "(Ljava/lang/String;)V",
+            &[(&jmsg).into()],
+        );
+    }
+}
+
+/// Invokes `onTextTranscribed(String)` on the target Java object.
+pub fn notify_text(env: &mut JNIEnv, obj: &JObject, text: &str) {
+    if let Ok(jtxt) = env.new_string(text) {
+        let _ = env.call_method(
+            obj,
+            "onTextTranscribed",
+            "(Ljava/lang/String;)V",
+            &[(&jtxt).into()],
+        );
+    }
+}
+
+/// Invokes `onAudioLevel(float)` on the target Java object.
+pub fn notify_level(env: &mut JNIEnv, obj: &JObject, level: f32) {
+    let _ = env.call_method(obj, "onAudioLevel", "(F)V", &[level.into()]);
+}
+
+/// Invokes `onSubtitleText(String, boolean)` on the target Java object.
+pub fn notify_subtitle(env: &mut JNIEnv, obj: &JObject, text: &str, is_final: bool) {
+    if let Ok(jtxt) = env.new_string(text) {
+        let _ = env.call_method(
+            obj,
+            "onSubtitleText",
+            "(Ljava/lang/String;Z)V",
+            &[(&jtxt).into(), is_final.into()],
+        );
+    }
+}
+
+/// Invokes `onAutoStop()` on the target Java object.
+pub fn notify_auto_stop(env: &mut JNIEnv, obj: &JObject) {
+    let _ = env.call_method(obj, "onAutoStop", "()V", &[]);
+}

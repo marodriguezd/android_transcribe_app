@@ -107,24 +107,15 @@ public class SettingsManager {
     // ----------------------------------------------------------------------
 
     public boolean isPostProcessEnabled() {
-        return new File(appContext.getFilesDir(), PP_ENABLED_FILE).exists();
+        return MarkerFileHelper.exists(appContext, PP_ENABLED_FILE);
     }
 
     public void setPostProcessEnabled(boolean enabled) {
-        File marker = new File(appContext.getFilesDir(), PP_ENABLED_FILE);
-        if (enabled) {
-            try {
-                marker.createNewFile();
-            } catch (IOException e) {
-                Log.e(TAG, "Failed to create pp_enabled marker", e);
-            }
-        } else {
-            marker.delete();
-        }
+        MarkerFileHelper.setExists(appContext, PP_ENABLED_FILE, enabled);
     }
 
     public static boolean isPostProcessEnabled(Context context) {
-        return new File(context.getApplicationContext().getFilesDir(), PP_ENABLED_FILE).exists();
+        return MarkerFileHelper.exists(context, PP_ENABLED_FILE);
     }
 
     // ----------------------------------------------------------------------
@@ -210,44 +201,11 @@ public class SettingsManager {
     // ----------------------------------------------------------------------
 
     private String readMarker(String fileName) {
-        File f = new File(appContext.getFilesDir(), fileName);
-        if (!f.exists()) return null;
-        try (BufferedReader br = new BufferedReader(
-                new InputStreamReader(new FileInputStream(f), StandardCharsets.UTF_8))) {
-            StringBuilder sb = new StringBuilder();
-            String line;
-            while ((line = br.readLine()) != null) {
-                if (sb.length() > 0) sb.append('\n');
-                sb.append(line);
-            }
-            return sb.toString();
-        } catch (IOException e) {
-            Log.e(TAG, "Failed to read marker file " + fileName, e);
-            return null;
-        }
+        return MarkerFileHelper.readString(appContext, fileName, null);
     }
 
     private void writeMarker(String fileName, String value) {
-        File dir = appContext.getFilesDir();
-        File f = new File(dir, fileName);
-        if (value == null || value.isEmpty()) {
-            f.delete();
-            return;
-        }
-        // Write to a temp file and rename so readers never see a half-written
-        // marker, even when two processes/threads write concurrently.
-        File temp = new File(dir, fileName + ".tmp");
-        try (FileOutputStream os = new FileOutputStream(temp)) {
-            os.write(value.getBytes(StandardCharsets.UTF_8));
-            os.getFD().sync();
-            if (!temp.renameTo(f)) {
-                Log.e(TAG, "Failed to rename marker file " + fileName);
-            }
-        } catch (IOException e) {
-            Log.e(TAG, "Failed to write marker file " + fileName, e);
-        } finally {
-            temp.delete();
-        }
+        MarkerFileHelper.writeString(appContext, fileName, value);
     }
 
     // ----------------------------------------------------------------------

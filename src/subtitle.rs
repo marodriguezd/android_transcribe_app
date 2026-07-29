@@ -149,14 +149,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_ini
         let mut gap_pending = false;
 
         let deliver = |env: &mut jni::JNIEnv, text: &str, is_final: bool| {
-            if let Ok(jtxt) = env.new_string(text) {
-                let _ = env.call_method(
-                    service_obj,
-                    "onSubtitleText",
-                    "(Ljava/lang/String;Z)V",
-                    &[(&jtxt).into(), is_final.into()],
-                );
-            }
+            crate::jni_util::notify_subtitle(env, service_obj, text, is_final);
         };
 
         while let Ok(job) = rx.recv() {

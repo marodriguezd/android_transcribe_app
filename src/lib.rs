@@ -3,6 +3,7 @@ pub mod audio;
 pub mod corrector;
 pub mod engine;
 pub mod ime;
+pub mod jni_util;
 pub mod main_activity;
 pub mod models;
 pub mod recog_service;
@@ -10,3 +11,4 @@ pub mod recognize;
 pub mod subtitle;
 pub mod transcribe_file;
 pub mod voice_session;
+

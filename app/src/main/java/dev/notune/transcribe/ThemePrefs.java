@@ -28,33 +28,18 @@ public final class ThemePrefs {
     private ThemePrefs() {}
 
     public static int getMode(Context context) {
-        File file = new File(context.getFilesDir(), FILE_NAME);
-        if (!file.exists()) return AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM;
-        try (FileInputStream in = new FileInputStream(file)) {
-            byte[] buf = new byte[8];
-            int n = in.read(buf);
-            if (n <= 0) return AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM;
-            int mode = Integer.parseInt(new String(buf, 0, n).trim());
-            if (mode == AppCompatDelegate.MODE_NIGHT_NO
-                    || mode == AppCompatDelegate.MODE_NIGHT_YES
-                    || mode == AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM) {
-                return mode;
-            }
-            return AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM;
-        } catch (IOException | NumberFormatException e) {
-            Log.w(TAG, "Failed to read theme mode", e);
-            return AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM;
+        int mode = MarkerFileHelper.readInt(context, FILE_NAME, AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM);
+        if (mode == AppCompatDelegate.MODE_NIGHT_NO
+                || mode == AppCompatDelegate.MODE_NIGHT_YES
+                || mode == AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM) {
+            return mode;
         }
+        return AppCompatDelegate.MODE_NIGHT_FOLLOW_SYSTEM;
     }
 
     /** Persists the choice and applies it (AppCompat recreates running activities). */
     public static void setMode(Context context, int mode) {
-        File file = new File(context.getFilesDir(), FILE_NAME);
-        try (FileOutputStream out = new FileOutputStream(file)) {
-            out.write(Integer.toString(mode).getBytes());
-        } catch (IOException e) {
-            Log.e(TAG, "Failed to write theme mode", e);
-        }
+        MarkerFileHelper.writeInt(context, FILE_NAME, mode);
         AppCompatDelegate.setDefaultNightMode(mode);
     }
 

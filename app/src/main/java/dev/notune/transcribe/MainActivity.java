@@ -342,19 +342,10 @@ public class MainActivity extends AppCompatActivity {
      */
     private void bindMarkerSwitch(int switchId, String fileName, boolean inverted) {
         CompoundButton sw = findViewById(switchId);
-        File marker = new File(getFilesDir(), fileName);
-        sw.setChecked(marker.exists() != inverted);
+        sw.setChecked(MarkerFileHelper.exists(this, fileName) != inverted);
         sw.setOnCheckedChangeListener((buttonView, isChecked) -> {
             boolean shouldExist = isChecked != inverted;
-            if (shouldExist) {
-                try {
-                    marker.createNewFile();
-                } catch (IOException e) {
-                    Log.e(TAG, "Failed to create " + fileName + " file", e);
-                }
-            } else {
-                marker.delete();
-            }
+            MarkerFileHelper.setExists(this, fileName, shouldExist);
         });
     }
 

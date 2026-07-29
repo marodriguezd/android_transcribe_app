@@ -41,31 +41,7 @@ pub struct VoiceSessionState {
     pub session_active: Arc<AtomicBool>,
 }
 
-fn notify_status(env: &mut JNIEnv, obj: &JObject, msg: &str) {
-    if let Ok(jmsg) = env.new_string(msg) {
-        let _ = env.call_method(
-            obj,
-            "onStatusUpdate",
-            "(Ljava/lang/String;)V",
-            &[(&jmsg).into()],
-        );
-    }
-}
-
-fn notify_level(env: &mut JNIEnv, obj: &JObject, level: f32) {
-    let _ = env.call_method(obj, "onAudioLevel", "(F)V", &[level.into()]);
-}
-
-fn notify_text(env: &mut JNIEnv, obj: &JObject, text: &str) {
-    if let Ok(jtxt) = env.new_string(text) {
-        let _ = env.call_method(
-            obj,
-            "onTextTranscribed",
-            "(Ljava/lang/String;)V",
-            &[(&jtxt).into()],
-        );
-    }
-}
+use crate::jni_util::{notify_level, notify_status, notify_text};
 
 pub fn init_session(env: JNIEnv, target: JObject) -> VoiceSessionState {
     android_logger::init_once(

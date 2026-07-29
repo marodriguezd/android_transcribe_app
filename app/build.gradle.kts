@@ -8,6 +8,7 @@ plugins {
 android {
     namespace = "dev.notune.transcribe"
     compileSdk = 35
+    ndkVersion = "28.0.12916984"
 
     defaultConfig {
         applicationId = "dev.notune.transcribe"
@@ -122,13 +123,19 @@ val cargoNdkBuild by tasks.registering(Exec::class) {
     // platform detection needs one of these (ANDROID_NDK_HOME is not enough).
     environment("ANDROID_NDK_ROOT", ndkDir)
     environment("ANDROID_NDK", ndkDir)
+    environment("CMAKE_ANDROID_NDK", ndkDir)
+    environment("NDK_HOME", ndkDir)
+    environment("CMAKE_TOOLCHAIN_FILE", "$ndkDir/build/cmake/android.toolchain.cmake")
+    environment("CMAKE_TOOLCHAIN_FILE_aarch64_linux_android", "$ndkDir/build/cmake/android.toolchain.cmake")
+    environment("CMAKE_TOOLCHAIN_FILE_aarch64-linux-android", "$ndkDir/build/cmake/android.toolchain.cmake")
+    environment("CARGO_NDK_PLATFORM", "26")
     // ggml cannot autodetect the CPU when cross-compiling and falls back to
     // baseline armv8-a, losing the dotprod/fp16 kernels its quantized matmuls
     // rely on (several times slower). armv8.2-a+dotprod+fp16 is supported by
     // arm64 phones from ~2018 on; the engine refuses older CPUs with a clear
     // error at load (see check_cpu_features in src/engine.rs) instead of
     // crashing mid-inference.
-    environment("TRANSCRIBE_CMAKE_ARGS", "-DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16")
+    environment("TRANSCRIBE_CMAKE_ARGS", "-DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16 -DANDROID_STL=c++_shared -DCMAKE_SYSROOT=$ndkDir/toolchains/llvm/prebuilt/linux-x86_64/sysroot -DCMAKE_SYSTEM_VERSION=26 -DANDROID_PLATFORM=android-26 -DANDROID_ABI=arm64-v8a -DANDROID_NDK=$ndkDir -DCMAKE_ANDROID_NDK=$ndkDir")
 
     val jniLibsDir = project.file("src/main/jniLibs")
 

@@ -292,14 +292,7 @@ pub fn reset() {
 }
 
 fn notify_status(env: &mut JNIEnv, obj: &JObject, msg: &str) {
-    if let Ok(jmsg) = env.new_string(msg) {
-        let _ = env.call_method(
-            obj,
-            "onStatusUpdate",
-            "(Ljava/lang/String;)V",
-            &[(&jmsg).into()],
-        );
-    }
+    crate::jni_util::notify_status(env, obj, msg);
 }
 
 /// Ensures the engine is loaded. Safe to call from multiple threads

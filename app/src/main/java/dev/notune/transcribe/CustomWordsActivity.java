@@ -53,34 +53,15 @@ public class CustomWordsActivity extends AppCompatActivity {
     }
 
     private String loadWords() {
-        File file = new File(getFilesDir(), "custom_words");
-        if (!file.isFile()) {
-            return "";
-        }
-        try {
-            return new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8);
-        } catch (IOException e) {
-            android.util.Log.e(TAG, "Failed to read custom_words", e);
-            return "";
-        }
+        return MarkerFileHelper.readString(this, "custom_words", "");
     }
 
     private void saveWords(String content) {
-        File file = new File(getFilesDir(), "custom_words");
         String trimmed = content.trim();
         if (trimmed.isEmpty()) {
-            // Empty dictionary = correction disabled. Remove the file so the
-            // corrector's "file absent" fast path applies (no mtime check).
-            if (file.exists()) {
-                file.delete();
-            }
-            return;
-        }
-        try {
-            Files.write(file.toPath(), trimmed.getBytes(StandardCharsets.UTF_8));
-        } catch (IOException e) {
-            android.util.Log.e(TAG, "Failed to write custom_words", e);
-            Toast.makeText(this, R.string.cw_save_error, Toast.LENGTH_LONG).show();
+            MarkerFileHelper.delete(this, "custom_words");
+        } else {
+            MarkerFileHelper.writeString(this, "custom_words", trimmed);
         }
     }
 }

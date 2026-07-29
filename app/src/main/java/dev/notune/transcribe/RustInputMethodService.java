@@ -524,31 +524,70 @@ public class RustInputMethodService extends InputMethodService {
             if (settings.isPostProcessEnabled()) {
                 if (statusView != null) statusView.setText("Refining...");
                 if (hintView != null) hintView.setText("");
-                new PostProcessor(settings, mainHandler,
-                        () -> !isDestroyed).process(text, new PostProcessor.PostProcessCallback() {
+
+                final StringBuilder streamedDeltas = new StringBuilder();
+                final boolean[] hasStreamed = new boolean[]{false};
+
+                new PostProcessor(settings, mainHandler, () -> !isDestroyed)
+                        .processStreaming(text, new PostProcessor.StreamCallback() {
                     @Override
-                    public void onSuccess(String refinedText) {
-                        String out = (refinedText != null && !refinedText.trim().isEmpty())
-                                ? refinedText : text;
-                        commitFinalText(out);
+                    public void onToken(String deltaToken) {
+                        InputConnection ic = getCurrentInputConnection();
+                        hasStreamed[0] = true;
+                        streamedDeltas.append(deltaToken);
+                        if (inputActive && ic != null) {
+                            ic.commitText(deltaToken, 1);
+                        }
                     }
 
                     @Override
-                    public void onError(String error) {
-                        Log.w(TAG, "Post-process failed, committing raw text: " + error);
-                        // If the error is due to cancellation (user disabled PP),
-                        // commitFinalText resets the UI. Log clearly so it's not
-                        // confused with a real API failure.
-                        if (error != null && error.contains("Canceled")) {
-                            Log.d(TAG, "PP call was cancelled (user toggled off?)");
+                    public void onSuccess(String completeText) {
+                        if (hasStreamed[0]) {
+                            // Tokens were streamed directly into editor! Add trailing space and finalize UI.
+                            InputConnection ic = getCurrentInputConnection();
+                            String finalSpace = " ";
+                            if (inputActive && ic != null) {
+                                ic.commitText(finalSpace, 1);
+                            } else {
+                                pendingCommitText = (pendingCommitText != null ? pendingCommitText : "") + finalSpace;
+                            }
+                            finalizeStreamUI();
+                        } else {
+                            // Fallback to non-streaming commit
+                            commitFinalText(completeText);
                         }
-                        commitFinalText(text);
+                    }
+
+                    @Override
+                    public void onError(String error, String rawFallbackText) {
+                        Log.w(TAG, "Streaming PP failed: " + error + ", restoring raw text fallback");
+                        if (hasStreamed[0] && streamedDeltas.length() > 0) {
+                            // Clean up partial tokens inserted before stream failure to avoid Frankenstein text
+                            InputConnection ic = getCurrentInputConnection();
+                            if (inputActive && ic != null) {
+                                ic.deleteSurroundingText(streamedDeltas.length(), 0);
+                            }
+                        }
+                        commitFinalText(rawFallbackText);
                     }
                 });
             } else {
                 commitFinalText(text);
             }
         });
+    }
+
+    private void finalizeStreamUI() {
+        if (pauseAudioActive) {
+            audioPauser.abandon(this);
+            pauseAudioActive = false;
+        }
+        updateRecordButtonUI(false);
+        if (statusView != null) statusView.setText("Tap to Record");
+        if (pendingSwitchBack) {
+            pendingSwitchBack = false;
+            switchToPreviousInputMethod();
+        }
     }
 
     // Commits (or defers) the final transcribed/refined text and resets UI.

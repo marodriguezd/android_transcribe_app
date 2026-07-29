@@ -165,24 +165,31 @@ public class RecognizeActivity extends AppCompatActivity {
             SettingsManager settings = new SettingsManager(this);
             if (settings.isPostProcessEnabled()) {
                 status.setText("Refining...");
-                Log.i(TAG, "Post-processing enabled, sending " + text.length()
+                Log.i(TAG, "Post-processing enabled (streaming), sending " + text.length()
                         + " chars to " + settings.getEffectiveApiUrl());
                 Log.i(TAG, "PP-RAW: " + text);
+
+                final StringBuilder liveStreamText = new StringBuilder();
+
                 new PostProcessor(settings, new Handler(Looper.getMainLooper()),
-                        () -> !isFinishing() && !isDestroyed()).process(text, new PostProcessor.PostProcessCallback() {
+                        () -> !isFinishing() && !isDestroyed()).processStreaming(text, new PostProcessor.StreamCallback() {
                     @Override
-                    public void onSuccess(String refinedText) {
-                        Log.i(TAG, "Post-process OK: raw=" + text.length()
-                                + " chars -> refined=" + (refinedText != null ? refinedText.length() : 0) + " chars");
-                        Log.i(TAG, "PP-REFINED: " + refinedText);
-                        deliverResult(refinedText != null && !refinedText.trim().isEmpty()
-                                ? refinedText : text);
+                    public void onToken(String deltaToken) {
+                        liveStreamText.append(deltaToken);
+                        status.setText(liveStreamText.toString());
                     }
 
                     @Override
-                    public void onError(String error) {
-                        Log.w(TAG, "Post-process failed, delivering raw text: " + error);
-                        deliverResult(text);
+                    public void onSuccess(String completeText) {
+                        String out = (completeText != null && !completeText.trim().isEmpty())
+                                ? completeText : text;
+                        deliverResult(out);
+                    }
+
+                    @Override
+                    public void onError(String error, String rawFallbackText) {
+                        Log.w(TAG, "Streaming post-process failed, delivering raw text: " + error);
+                        deliverResult(rawFallbackText);
                     }
                 });
             } else {

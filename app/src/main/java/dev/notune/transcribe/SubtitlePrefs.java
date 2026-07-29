@@ -20,21 +20,11 @@ public final class SubtitlePrefs {
 
     /** Returns the line limit for the subtitle overlay; 0 means unlimited. */
     public static int getMaxLines(Context ctx) {
-        File f = new File(ctx.getFilesDir(), FILE_NAME);
-        if (!f.exists()) return DEFAULT_MAX_LINES;
-        try {
-            String s = new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8).trim();
-            return Integer.parseInt(s);
-        } catch (IOException | NumberFormatException e) {
-            return DEFAULT_MAX_LINES;
-        }
+        return MarkerFileHelper.readInt(ctx, FILE_NAME, DEFAULT_MAX_LINES);
     }
 
     public static void setMaxLines(Context ctx, int lines) {
-        File f = new File(ctx.getFilesDir(), FILE_NAME);
-        try {
-            Files.write(f.toPath(), String.valueOf(lines).getBytes(StandardCharsets.UTF_8));
-        } catch (IOException ignored) { }
+        MarkerFileHelper.writeInt(ctx, FILE_NAME, lines);
     }
 
     private static final String OVERLAY_Y_FILE = "subtitle_overlay_y";
@@ -43,20 +33,10 @@ public final class SubtitlePrefs {
 
     /** Offset of the overlay above the screen bottom, set by dragging it. */
     public static int getOverlayY(Context ctx) {
-        File f = new File(ctx.getFilesDir(), OVERLAY_Y_FILE);
-        if (!f.exists()) return DEFAULT_OVERLAY_Y;
-        try {
-            String s = new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8).trim();
-            return Integer.parseInt(s);
-        } catch (IOException | NumberFormatException e) {
-            return DEFAULT_OVERLAY_Y;
-        }
+        return MarkerFileHelper.readInt(ctx, OVERLAY_Y_FILE, DEFAULT_OVERLAY_Y);
     }
 
     public static void setOverlayY(Context ctx, int y) {
-        File f = new File(ctx.getFilesDir(), OVERLAY_Y_FILE);
-        try {
-            Files.write(f.toPath(), String.valueOf(y).getBytes(StandardCharsets.UTF_8));
-        } catch (IOException ignored) { }
+        MarkerFileHelper.writeInt(ctx, OVERLAY_Y_FILE, y);
     }
 }

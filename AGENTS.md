@@ -102,14 +102,13 @@ Post-procesado IA (fork addition): opcional, *off-line-by-default*, refina texto
 - En CI la keystore es base64-decoded desde un repo secret; ver
   `.github/workflows/android_release.yml` §Decode Keystore.
 
-### Validación y estilo
+### Validación y estilo (Ley de Arneses / Gauntlet de Uncle Bob)
 
-- No hay suite de tests automatizados. Validación = `./gradlew assembleDebug`
-  limpio (sin nuevos warnings) + smoke test en dispositivo arm64 (micrófono →
-  transcripción ≤ 2× tiempo real en CPUs modernas).
-- **Java:** no hay Checkstyle/PMD/Spotless configurado. Sigue las convenciones de §4.
-- **Rust:** no hay `rustfmt.toml` ni `clippy.toml` en el repo. Sigue el estilo
-  inline existente (4 espacios, `rustfmt` por defecto).
+- 🛡️ **La Regla del Guantelete (*The Gauntlet Validation Rule*):** De acuerdo con la filosofía de arnés de pruebas (*Test Harness*) postulada por Robert C. Martin ("Uncle Bob") para el desarrollo con IA, los asistentes de código **no** deben solicitar revisiones manuales línea por línea al usuario. Toda modificación debe someterse a portones automatizados de prueba/compilación y presentar evidencia empírica (`BUILD SUCCESSFUL`) en los registros de salida antes de declarar completada la tarea.
+- **Soporte Multi-Arquitectura (ARM64 + x86_64):** La aplicación y sus pipelines de construcción deben ser compatibles y validables tanto en dispositivos/máquinas anfitrionas ARM64 como en portátiles/emuladores x86_64.
+- **Validación automatizada:** Ejecutar `./gradlew assembleDebug` o suites de unit test sin nuevos advertencias o fallos + smoke test funcional en dispositivo/emulador.
+- **Java:** Sigue las convenciones de §4.
+- **Rust:** Sigue el estilo inline existente (4 espacios, `rustfmt` por defecto).
 
 ---
 

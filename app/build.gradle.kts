@@ -7,13 +7,13 @@ plugins {
 
 android {
     namespace = "dev.notune.transcribe"
-    compileSdk = 35
+    compileSdk = 34
     ndkVersion = "28.0.12916984"
 
     defaultConfig {
         applicationId = "dev.notune.transcribe"
         minSdk = 26
-        targetSdk = 35
+        targetSdk = 34
         versionCode = 24
         versionName = "0.1.23"
         ndk {
@@ -91,6 +91,9 @@ dependencies {
     // OpenAI-compatible /chat/completions endpoint.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
+    // Unit test harness
+    testImplementation("junit:junit:4.13.2")
+
     // Material/AppCompat transitively pull the legacy kotlin-stdlib-jdk7/jdk8:1.6.21
     // (via kotlinx-coroutines-android), whose classes were folded into
     // kotlin-stdlib in Kotlin 1.8 — causing duplicate-class build failures.
@@ -167,9 +170,15 @@ val cargoNdkBuild by tasks.registering(Exec::class) {
     outputs.upToDateWhen { false }
 }
 
-// Wire the cargo-ndk build into the Android build lifecycle (all variants).
-tasks.named("preBuild") {
-    dependsOn(cargoNdkBuild)
+// Wire the cargo-ndk build into the Android build lifecycle for APK builds
+// (skipping heavy Rust compilation during unit testing/linting to conserve CPU).
+val isUnitTestTask = gradle.startParameter.taskNames.any {
+    it.contains("test", ignoreCase = true) || it.contains("lint", ignoreCase = true)
+}
+if (!isUnitTestTask) {
+    tasks.named("preBuild") {
+        dependsOn(cargoNdkBuild)
+    }
 }
 
 // ---------------------------------------------------------------------------

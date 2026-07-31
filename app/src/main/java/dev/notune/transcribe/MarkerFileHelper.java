@@ -122,4 +122,55 @@ public final class MarkerFileHelper {
             file.delete();
         }
     }
+
+    // -----------------------------------------------------------------------
+    // Direct File-based methods for JVM unit testing without Context
+    // -----------------------------------------------------------------------
+
+    public static String readStringFromFile(File dir, String fileName, String defaultValue) {
+        if (dir == null || fileName == null) return defaultValue;
+        File file = new File(dir, fileName);
+        if (!file.isFile()) return defaultValue;
+        try {
+            return new String(Files.readAllBytes(file.toPath()), StandardCharsets.UTF_8).trim();
+        } catch (IOException e) {
+            return defaultValue;
+        }
+    }
+
+    public static void writeStringToFile(File dir, String fileName, String value) {
+        if (dir == null || fileName == null) return;
+        if (value == null || value.isEmpty()) {
+            File file = new File(dir, fileName);
+            if (file.exists()) file.delete();
+            return;
+        }
+        File temp = new File(dir, fileName + ".tmp");
+        File file = new File(dir, fileName);
+        try (java.io.FileOutputStream os = new java.io.FileOutputStream(temp)) {
+            os.write(value.getBytes(StandardCharsets.UTF_8));
+            os.getFD().sync();
+            if (!temp.renameTo(file)) {
+                Files.write(file.toPath(), value.getBytes(StandardCharsets.UTF_8));
+            }
+        } catch (IOException e) {
+            // Log or fallback
+        } finally {
+            if (temp.exists()) temp.delete();
+        }
+    }
+
+    public static int readIntFromFile(File dir, String fileName, int defaultValue) {
+        String s = readStringFromFile(dir, fileName, null);
+        if (s == null || s.isEmpty()) return defaultValue;
+        try {
+            return Integer.parseInt(s);
+        } catch (NumberFormatException e) {
+            return defaultValue;
+        }
+    }
+
+    public static void writeIntToFile(File dir, String fileName, int value) {
+        writeStringToFile(dir, fileName, Integer.toString(value));
+    }
 }

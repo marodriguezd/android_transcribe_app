@@ -106,6 +106,8 @@ Post-procesado IA (fork addition): opcional, *off-line-by-default*, refina texto
 
 - 🛡️ **La Regla del Guantelete (*The Gauntlet Validation Rule*):** De acuerdo con la filosofía de arnés de pruebas (*Test Harness*) postulada por Robert C. Martin ("Uncle Bob") para el desarrollo con IA, los asistentes de código **no** deben solicitar revisiones manuales línea por línea al usuario. Toda modificación debe someterse a portones automatizados de prueba/compilación y presentar evidencia empírica (`BUILD SUCCESSFUL`) en los registros de salida antes de declarar completada la tarea.
 - **Soporte Multi-Arquitectura (ARM64 + x86_64):** La aplicación y sus pipelines de construcción deben ser compatibles y validables tanto en dispositivos/máquinas anfitrionas ARM64 como en portátiles/emuladores x86_64.
+- **Protección Térmica y de CPU en Móviles:** Las pruebas unitarias locales (`testDebugUnitTest`) se ejecutan aisladas en la JVM sin desencadenar la compilación pesada nativa en Rust (`cargoNdkBuild`), protegiendo el procesador del dispositivo. La generación de binarios APK/AAB completos se realiza en CI/CD (GitHub Actions).
+- **Anulación de AAPT2 del Sistema:** En entornos ARM64 Linux, configurar `android.aapt2FromMavenOverride=/usr/bin/aapt2` en `gradle.properties` para usar el procesador de recursos nativo del sistema.
 - **Validación automatizada:** Ejecutar `./gradlew assembleDebug` o suites de unit test sin nuevos advertencias o fallos + smoke test funcional en dispositivo/emulador.
 - **Java:** Sigue las convenciones de §4.
 - **Rust:** Sigue el estilo inline existente (4 espacios, `rustfmt` por defecto).

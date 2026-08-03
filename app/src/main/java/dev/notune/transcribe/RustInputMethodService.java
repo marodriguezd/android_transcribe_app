@@ -4,7 +4,6 @@ import android.annotation.TargetApi;
 import android.inputmethodservice.InputMethodService;
 import android.view.LayoutInflater;
 import android.view.View;
-import android.view.ViewGroup;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
 import android.widget.Button;
@@ -46,7 +45,8 @@ public class RustInputMethodService extends InputMethodService {
 
     private TextView statusView;
     private TextView hintView;
-    // Two-line live window for streaming partial hypotheses (Nemotron etc.).
+    // Live window for streaming partial hypotheses (Nemotron etc.), up to
+    // ~three lines.
     private ScrollView partialScroll;
     private TextView partialTextView;
     private View recordContainer;
@@ -69,10 +69,6 @@ public class RustInputMethodService extends InputMethodService {
     // Key repeat settings
     private static final long REPEAT_INITIAL_DELAY = 400; // ms before repeat starts
     private static final long REPEAT_INTERVAL = 50; // ms between repeats
-    // Record-area heights: 200dp idle, shrunk while streaming partials are
-    // visible so the added 2-line partial window doesn't grow the keyboard.
-    private static final int RECORD_AREA_FULL_HEIGHT = 200;
-    private static final int RECORD_AREA_STREAMING_HEIGHT = 148;
     private Runnable backspaceRepeatRunnable;
     private Runnable spaceRepeatRunnable;
     private final AudioFocusPauser audioPauser = new AudioFocusPauser();
@@ -547,9 +543,10 @@ public class RustInputMethodService extends InputMethodService {
 
     // Called from Rust with live partial hypotheses while recording
     // (streaming models). Visual-only (per design): the partial text is shown
-    // in the keyboard's two-line window; the editor receives only the final
-    // text via onTextTranscribed, so there is no risk of Frankenstein text
-    // from revising hypotheses mid-utterance.
+    // in the keyboard's live window (up to ~three lines, auto-scrolled to the
+    // newest words); the editor receives only the final text via
+    // onTextTranscribed, so there is no risk of Frankenstein text from
+    // revising hypotheses mid-utterance.
     public void onPartialText(String text) {
         mainHandler.post(() -> {
             if (isRecording && partialTextView != null && partialScroll != null
@@ -558,34 +555,17 @@ public class RustInputMethodService extends InputMethodService {
                 // bottom so the newest words stay visible as it grows.
                 partialTextView.setText(text);
                 partialScroll.setVisibility(View.VISIBLE);
-                shrinkRecordAreaForStreaming();
                 partialScroll.post(() -> partialScroll.fullScroll(View.FOCUS_DOWN));
             }
         });
     }
 
-    /** Shrinks the decorative record area to keep the keyboard's total
-     *  height stable once the streaming partial window appears. */
-    private void shrinkRecordAreaForStreaming() {
-        if (recordContainer == null) return;
-        ViewGroup.LayoutParams lp = recordContainer.getLayoutParams();
-        if (lp != null && lp.height != RECORD_AREA_STREAMING_HEIGHT) {
-            lp.height = RECORD_AREA_STREAMING_HEIGHT;
-            recordContainer.setLayoutParams(lp);
-        }
-    }
-
-    /** Clears the streaming partial window and restores the record area. */
+    /** Clears the streaming partial window. The record area keeps its full
+     *  height: the keyboard grows slightly while live partials are shown
+     *  instead of compacting the mic button area. */
     private void clearPartialText() {
         if (partialTextView != null) partialTextView.setText("");
         if (partialScroll != null) partialScroll.setVisibility(View.GONE);
-        if (recordContainer != null) {
-            ViewGroup.LayoutParams lp = recordContainer.getLayoutParams();
-            if (lp != null && lp.height != RECORD_AREA_FULL_HEIGHT) {
-                lp.height = RECORD_AREA_FULL_HEIGHT;
-                recordContainer.setLayoutParams(lp);
-            }
-        }
     }
 
     // Called from Rust

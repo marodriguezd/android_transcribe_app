@@ -1,3 +1,14 @@
+# v0.1.24
+
+Fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app).
+
+## What's new in v0.1.24
+
+### ⌨️ IME keyboard keeps its shape while streaming partials
+- **Mic area no longer compacts:** when live partial hypotheses appear (the keyboard's live window shows up to 3 lines, always scrolled to the latest words), the record area used to shrink from 200dp to 148dp to hold the keyboard's total height — clipping the mic glow and overlapping the "Tap to Stop" hint with the record button. Now the record area always keeps its full shape: the keyboard grows slightly while live text is shown and returns to normal when the recording ends.
+
+---
+
 # v0.1.23
 
 Fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app). This release brings real-time **SSE streaming AI post-processing**, fixes **silence auto-stop for the IME keyboard**, and introduces seamless **Android System User Dictionary integration (FUTO Keyboard style)**.

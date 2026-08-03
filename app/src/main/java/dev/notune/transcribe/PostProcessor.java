@@ -140,7 +140,8 @@ public class PostProcessor {
         // Inject the transcript where the prompt template marks ${output}
         // (e.g. the bundled Wispr-style prompt). Without the marker the prompt
         // is used as-is and the text travels in the user message below.
-        if (systemInstruction != null && systemInstruction.contains("${output}")) {
+        boolean injected = systemInstruction != null && systemInstruction.contains("${output}");
+        if (injected) {
             systemInstruction = systemInstruction.replace("${output}", rawText);
         }
 
@@ -157,7 +158,7 @@ public class PostProcessor {
             }
             JSONObject userMsg = new JSONObject();
             userMsg.put("role", "user");
-            userMsg.put("content", rawText);
+            userMsg.put("content", injected ? "Apply the instructions to the transcript above." : rawText);
             messages.put(userMsg);
             json.put("messages", messages);
 
@@ -241,6 +242,11 @@ public class PostProcessor {
             return;
         }
 
+        // Set once the first token has been dispatched to the editor. A retry
+        // after that point would duplicate committed text, so failures are
+        // delivered as errors instead.
+        final boolean[] emittedAny = new boolean[]{false};
+
         String apiUrl = settings.getEffectiveApiUrl() != null ? settings.getEffectiveApiUrl().trim() : "";
         while (apiUrl.endsWith("/")) {
             apiUrl = apiUrl.substring(0, apiUrl.length() - 1);
@@ -253,7 +259,8 @@ public class PostProcessor {
         String apiKey = settings.getApiKey();
         String model = settings.getModelName();
         String systemInstruction = settings.getActivePromptBody();
-        if (systemInstruction != null && systemInstruction.contains("${output}")) {
+        boolean injected = systemInstruction != null && systemInstruction.contains("${output}");
+        if (injected) {
             systemInstruction = systemInstruction.replace("${output}", rawText);
         }
 
@@ -271,7 +278,7 @@ public class PostProcessor {
             }
             JSONObject userMsg = new JSONObject();
             userMsg.put("role", "user");
-            userMsg.put("content", rawText);
+            userMsg.put("content", injected ? "Apply the instructions to the transcript above." : rawText);
             messages.put(userMsg);
             json.put("messages", messages);
 
@@ -294,7 +301,7 @@ public class PostProcessor {
                 public void onFailure(Call call, IOException e) {
                     IN_FLIGHT.remove(call);
                     Log.e(TAG, "Streaming API call failed (attempt " + attempt + "): " + e.getMessage());
-                    handleStreamFailure(rawText, callback, attempt, e.getMessage());
+                    handleStreamFailure(rawText, callback, attempt, e.getMessage(), emittedAny[0]);
                 }
 
                 @Override
@@ -315,13 +322,13 @@ public class PostProcessor {
                             return;
                         }
                         Log.e(TAG, "Streaming API error (attempt " + attempt + "): code=" + statusCode);
-                        handleStreamFailure(rawText, callback, attempt, "API Error " + statusCode);
+                        handleStreamFailure(rawText, callback, attempt, "API Error " + statusCode, emittedAny[0]);
                         return;
                     }
 
                     try (okhttp3.ResponseBody responseBody = response.body()) {
                         if (responseBody == null) {
-                            handleStreamFailure(rawText, callback, attempt, "Empty response body");
+                            handleStreamFailure(rawText, callback, attempt, "Empty response body", emittedAny[0]);
                             return;
                         }
 
@@ -361,6 +368,7 @@ public class PostProcessor {
 
                                         if (token != null && !token.isEmpty()) {
                                             receivedTokens = true;
+                                            emittedAny[0] = true;
                                             final String tokenToEmit = token;
                                             fullTextBuilder.append(tokenToEmit);
                                             dispatchToUi(() -> callback.onToken(tokenToEmit));
@@ -376,21 +384,26 @@ public class PostProcessor {
                         if (receivedTokens || !resultStr.isEmpty()) {
                             dispatchToUi(() -> callback.onSuccess(resultStr));
                         } else {
-                            handleStreamFailure(rawText, callback, attempt, "Empty stream response");
+                            handleStreamFailure(rawText, callback, attempt, "Empty stream response", emittedAny[0]);
                         }
                     } catch (Exception e) {
                         Log.e(TAG, "Error reading stream (attempt " + attempt + "): " + e.getMessage());
-                        handleStreamFailure(rawText, callback, attempt, e.getMessage());
+                        handleStreamFailure(rawText, callback, attempt, e.getMessage(), emittedAny[0]);
                     }
                 }
             });
         } catch (Exception e) {
             Log.e(TAG, "Failed to create streaming request: " + e.getMessage());
-            handleStreamFailure(rawText, callback, attempt, e.getMessage());
+            handleStreamFailure(rawText, callback, attempt, e.getMessage(), emittedAny[0]);
         }
     }
 
-    private void handleStreamFailure(final String rawText, final StreamCallback callback, final int attempt, final String error) {
+    private void handleStreamFailure(final String rawText, final StreamCallback callback, final int attempt, final String error, final boolean emittedAny) {
+        if (emittedAny) {
+            Log.e(TAG, "Stream failed after tokens were emitted; not retrying to avoid duplicate text.");
+            dispatchToUi(() -> callback.onError(error, rawText));
+            return;
+        }
         if (attempt < 3) {
             long backoff = 150L * attempt;
             Log.i(TAG, "Retrying streaming post-processing (attempt " + (attempt + 1) + " of 3) after " + backoff + "ms");

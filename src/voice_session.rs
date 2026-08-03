@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -13,8 +13,12 @@ use crate::engine;
 const MIN_SPEECH_LEVEL: f32 = 0.05;
 /// How far above the running noise floor a level must be to count as speech.
 const SPEECH_MARGIN: f32 = 0.04;
-/// Trailing silence after speech that triggers auto-stop.
+/// Trailing silence after confirmed speech that triggers auto-stop.
 const AUTO_STOP_SILENCE_MS: u64 = 2000;
+/// Require a short continuous speech run before arming trailing-silence
+/// endpointing. This filters microphone pops/initial noise without dropping
+/// samples: the complete audio buffer is still retained for transcription.
+const MIN_SPEECH_SAMPLES: usize = 1_600; // 100 ms at 16 kHz
 /// If no speech is ever detected, auto-stop after this long.
 const AUTO_STOP_NO_SPEECH_MS: u64 = 8000;
 
@@ -28,6 +32,7 @@ struct Endpointing {
     last_voice: Mutex<Instant>,
     noise_floor: Mutex<f32>,
     speech_started: AtomicBool,
+    speech_run_samples: AtomicUsize,
 }
 
 pub struct VoiceSessionState {
@@ -120,6 +125,7 @@ pub fn start_recording(mut env: JNIEnv, state: &mut VoiceSessionState, auto_stop
             last_voice: Mutex::new(Instant::now()),
             noise_floor: Mutex::new(0.0),
             speech_started: AtomicBool::new(false),
+            speech_run_samples: AtomicUsize::new(0),
         }))
     } else {
         None
@@ -147,9 +153,29 @@ pub fn start_recording(mut env: JNIEnv, state: &mut VoiceSessionState, auto_stop
                 let floor = *ep.noise_floor.lock().unwrap();
                 let is_speech = level > MIN_SPEECH_LEVEL && level > floor + SPEECH_MARGIN;
                 if is_speech {
-                    *ep.last_voice.lock().unwrap() = Instant::now();
-                    ep.speech_started.store(true, Ordering::SeqCst);
+                    if ep.speech_started.load(Ordering::SeqCst) {
+                        // Once speech has been confirmed, every speech frame
+                        // refreshes the trailing-silence clock.
+                        *ep.last_voice.lock().unwrap() = Instant::now();
+                    } else {
+                        // Do not arm trailing-silence endpointing for a single
+                        // microphone pop or an initial noise spike. Require a
+                        // continuous 100 ms speech run first.
+                        let run = ep
+                            .speech_run_samples
+                            .fetch_add(data.len(), Ordering::SeqCst)
+                            + data.len();
+                        if run >= MIN_SPEECH_SAMPLES
+                            && ep.speech_started.swap(true, Ordering::SeqCst) == false
+                        {
+                            *ep.last_voice.lock().unwrap() = Instant::now();
+                        }
+                    }
                 } else {
+                    if !ep.speech_started.load(Ordering::SeqCst) {
+                        // The candidate speech run must be continuous.
+                        ep.speech_run_samples.store(0, Ordering::SeqCst);
+                    }
                     // Slowly adapt the noise floor while no speech is present.
                     let mut nf = ep.noise_floor.lock().unwrap();
                     *nf = *nf * 0.95 + level * 0.05;

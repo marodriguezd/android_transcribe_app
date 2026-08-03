@@ -185,33 +185,42 @@ public class PostProcessor {
                 @Override
                 public void onResponse(Call call, Response response) throws IOException {
                     IN_FLIGHT.remove(call);
-                    // If the user disabled post-processing while the request was
-                    // in flight, fall back to the raw transcript instead of
-                    // committing the refined text.
-                    if (!settings.isPostProcessEnabled()) {
-                        dispatchToUi(() -> callback.onSuccess(rawText));
-                        return;
-                    }
-                    if (!response.isSuccessful()) {
-                        Log.e(TAG, "API error: code=" + response.code());
-                        dispatchToUi(() -> callback.onError("API Error " + response.code()));
-                        return;
-                    }
-                    try {
-                        String responseData = response.body().string();
-                        JSONObject jsonResponse = new JSONObject(responseData);
-                        JSONArray choices = jsonResponse.getJSONArray("choices");
-                        if (choices.length() > 0) {
-                            String resultText = choices.getJSONObject(0)
-                                    .getJSONObject("message")
-                                    .getString("content");
-                            dispatchToUi(() -> callback.onSuccess(resultText.trim()));
-                        } else {
-                            dispatchToUi(() -> callback.onError("Empty response from AI"));
+                    // Always close the response, including error and fallback
+                    // paths. A leaked response body eventually exhausts the
+                    // shared OkHttp connection pool after repeated dictations.
+                    try (Response responseResource = response) {
+                        // If the user disabled post-processing while the request
+                        // was in flight, fall back to the raw transcript instead
+                        // of committing the refined text.
+                        if (!settings.isPostProcessEnabled()) {
+                            dispatchToUi(() -> callback.onSuccess(rawText));
+                            return;
                         }
-                    } catch (Exception e) {
-                        Log.e(TAG, "Failed to parse API response: " + e.getMessage());
-                        dispatchToUi(() -> callback.onError("Parse error: " + e.getMessage()));
+                        if (!responseResource.isSuccessful()) {
+                            Log.e(TAG, "API error: code=" + responseResource.code());
+                            dispatchToUi(() -> callback.onError("API Error " + responseResource.code()));
+                            return;
+                        }
+                        try {
+                            if (responseResource.body() == null) {
+                                dispatchToUi(() -> callback.onError("Empty response body"));
+                                return;
+                            }
+                            String responseData = responseResource.body().string();
+                            JSONObject jsonResponse = new JSONObject(responseData);
+                            JSONArray choices = jsonResponse.getJSONArray("choices");
+                            if (choices.length() > 0) {
+                                String resultText = choices.getJSONObject(0)
+                                        .getJSONObject("message")
+                                        .getString("content");
+                                dispatchToUi(() -> callback.onSuccess(resultText.trim()));
+                            } else {
+                                dispatchToUi(() -> callback.onError("Empty response from AI"));
+                            }
+                        } catch (Exception e) {
+                            Log.e(TAG, "Failed to parse API response: " + e.getMessage());
+                            dispatchToUi(() -> callback.onError("Parse error: " + e.getMessage()));
+                        }
                     }
                 }
             });
@@ -481,22 +490,28 @@ public class PostProcessor {
             @Override
             public void onResponse(Call call, Response response) throws IOException {
                 IN_FLIGHT.remove(call);
-                if (!response.isSuccessful()) {
-                    dispatchToUi(() -> callback.onError("Error " + response.code()));
-                    return;
-                }
-                try {
-                    String data = response.body().string();
-                    JSONObject json = new JSONObject(data);
-                    JSONArray array = json.getJSONArray("data");
-                    java.util.List<String> models = new java.util.ArrayList<>();
-                    for (int i = 0; i < array.length(); i++) {
-                        models.add(array.getJSONObject(i).getString("id"));
+                try (Response responseResource = response) {
+                    if (!responseResource.isSuccessful()) {
+                        dispatchToUi(() -> callback.onError("Error " + responseResource.code()));
+                        return;
                     }
-                    java.util.Collections.sort(models);
-                    dispatchToUi(() -> callback.onSuccess(models));
-                } catch (Exception e) {
-                    dispatchToUi(() -> callback.onError("Parse error: " + e.getMessage()));
+                    try {
+                        if (responseResource.body() == null) {
+                            dispatchToUi(() -> callback.onError("Empty response body"));
+                            return;
+                        }
+                        String data = responseResource.body().string();
+                        JSONObject json = new JSONObject(data);
+                        JSONArray array = json.getJSONArray("data");
+                        java.util.List<String> models = new java.util.ArrayList<>();
+                        for (int i = 0; i < array.length(); i++) {
+                            models.add(array.getJSONObject(i).getString("id"));
+                        }
+                        java.util.Collections.sort(models);
+                        dispatchToUi(() -> callback.onSuccess(models));
+                    } catch (Exception e) {
+                        dispatchToUi(() -> callback.onError("Parse error: " + e.getMessage()));
+                    }
                 }
             }
         });

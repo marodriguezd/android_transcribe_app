@@ -8,8 +8,12 @@
     <style name="AppTheme" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="colorPrimary">@color/colorPrimary</item>
         <item name="colorOnPrimary">@color/white</item>
-        <!-- Dark status-bar icons on the light background; the night variant
-             (values-night/styles.xml) switches them back to light. -->
+        <!-- Keep the system bars opaque and readable instead of inheriting a
+             transparent status bar from Material 3. The night variant switches
+             the icon appearance back to light icons. -->
+        <item name="android:windowDrawsSystemBarBackgrounds">true</item>
+        <item name="android:statusBarColor">?attr/colorSurface</item>
+        <item name="android:navigationBarColor">?attr/colorSurface</item>
         <item name="android:windowLightStatusBar">true</item>
     </style>
 
@@ -22,5 +26,8 @@
         <item name="android:windowContentOverlay">@null</item>
         <item name="android:windowAnimationStyle">@android:style/Animation.InputMethod</item>
         <item name="android:windowSoftInputMode">stateUnchanged</item>
+        <!-- The popup is intentionally translucent over the calling app. -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
 </resources>

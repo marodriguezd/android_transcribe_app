@@ -30,8 +30,12 @@ use crate::voice_session::SendStream;
 const MIN_SPEECH_LEVEL: f32 = 0.12;
 /// How far above the running noise floor a level must be to count as speech.
 const SPEECH_MARGIN: f32 = 0.08;
-/// Trailing silence after speech that triggers auto-finalisation.
+/// Trailing silence after confirmed speech that triggers auto-finalisation.
 const SILENCE_MS: u64 = 1500;
+/// Require a short continuous speech run before arming trailing-silence
+/// endpointing. This filters microphone pops/initial noise without dropping
+/// samples: the complete audio buffer is still retained for transcription.
+const MIN_SPEECH_SAMPLES: usize = 1_600; // 100 ms at 16 kHz
 /// If no speech is ever detected, finalise after this long anyway.
 const NO_SPEECH_TIMEOUT_MS: u64 = 7000;
 /// Hard cap on a single utterance (the engine internally chunks long audio).
@@ -56,6 +60,7 @@ struct Endpoint {
     noise_floor: Mutex<f32>,
     last_level_sent: Mutex<Instant>,
     speech_started: AtomicBool,
+    speech_run_samples: AtomicUsize,
     finalized: AtomicBool,
     cancelled: AtomicBool,
     started_at: Instant,
@@ -167,6 +172,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
         noise_floor: Mutex::new(0.0),
         last_level_sent: Mutex::new(now),
         speech_started: AtomicBool::new(false),
+        speech_run_samples: AtomicUsize::new(0),
         finalized: AtomicBool::new(false),
         cancelled: AtomicBool::new(false),
         started_at: now,
@@ -307,18 +313,32 @@ fn audio_callback(shared: &Arc<Endpoint>, data: &[f32]) {
     let is_speech = level > MIN_SPEECH_LEVEL && level > floor + SPEECH_MARGIN;
 
     if is_speech {
-        *shared.last_voice.lock().unwrap() = Instant::now();
-        // First detected speech -> notify beginningOfSpeech exactly once.
-        if shared
-            .speech_started
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .is_ok()
-        {
-            if let Ok(mut env) = shared.jvm.attach_current_thread() {
-                call_void(&mut env, shared.target.as_obj(), "onBeginningOfSpeech");
+        if shared.speech_started.load(Ordering::SeqCst) {
+            // Once speech has been confirmed, every speech frame refreshes the
+            // trailing-silence clock.
+            *shared.last_voice.lock().unwrap() = Instant::now();
+        } else {
+            // Do not arm trailing-silence endpointing for a single microphone
+            // pop or initial noise spike. Require a continuous 100 ms speech
+            // run first; all samples remain in audio_buffer.
+            let run = shared
+                .speech_run_samples
+                .fetch_add(data.len(), Ordering::SeqCst)
+                + data.len();
+            if run >= MIN_SPEECH_SAMPLES
+                && shared.speech_started.swap(true, Ordering::SeqCst) == false
+            {
+                *shared.last_voice.lock().unwrap() = Instant::now();
+                if let Ok(mut env) = shared.jvm.attach_current_thread() {
+                    call_void(&mut env, shared.target.as_obj(), "onBeginningOfSpeech");
+                }
             }
         }
     } else {
+        if !shared.speech_started.load(Ordering::SeqCst) {
+            // The candidate speech run must be continuous.
+            shared.speech_run_samples.store(0, Ordering::SeqCst);
+        }
         // Slowly adapt the noise floor while no speech is present.
         let mut nf = shared.noise_floor.lock().unwrap();
         *nf = *nf * 0.95 + level * 0.05;

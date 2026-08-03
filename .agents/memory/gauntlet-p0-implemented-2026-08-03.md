@@ -118,6 +118,18 @@ caminos de error no lance "not mocked".
   estados) se mantienen como literales; los nombres de modelo son nombres
   propios técnicos.
 
+### CI del push 2846494 (2026-08-03): bug real cazado y corregido
+
+El primer run del workflow `Debug APK → Telegram` (30857034745) pasó
+`check_translations.py` y `testDebugUnitTest`, pero **falló** en `Build Debug
+APK` con `error[E0425]: cannot find type 'JObject'` en `src/transcribe_file.rs:22`
+(firma de `initNative`). El import se perdió en el refactor P1.1. El harness
+JVM local no lo detecta porque `testDebugUnitTest` salta `cargoNdkBuild`
+(protección térmica, AGENTS.md) y `rustfmt --check` no resuelve nombres.
+Corregido añadiendo `JObject` al import
+(`use jni::objects::{JClass, JFloatArray, JObject}`) y verificado con
+`cargo check --lib` (exit 0). Pendiente: re-run de CI con el fix.
+
 ## Estado del Guantelete
 
 Sigue **ABIERTO**: la implementación P0 y P1.1–P1.3 está hecha y gateada por

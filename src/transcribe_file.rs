@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use jni::objects::{JClass, JFloatArray};
+use jni::objects::{JClass, JFloatArray, JObject};
 use jni::sys::jint;
 use jni::JNIEnv;
 use once_cell::sync::Lazy;

@@ -365,7 +365,7 @@ impl Engine {
                 // model default instead of failing the whole stream. Narrowed
                 // to InvalidArgument so genuine begin failures (backend, OOM)
                 // are surfaced immediately, not masked by a wasted retry.
-                Err(transcribe_cpp::Error::InvalidArgument(_)) if !ctx_retried => {
+                Err(transcribe_cpp::Error::InvalidArgument(e)) if !ctx_retried => {
                     ctx_retried = true;
                     self.stream_ext = self.stream_ext.take().map(|ext| match ext {
                         transcribe_cpp::StreamExtension::ParakeetStream(mut opts) => {

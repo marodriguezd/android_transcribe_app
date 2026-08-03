@@ -183,12 +183,15 @@ pub fn start_recording(mut env: JNIEnv, state: &mut VoiceSessionState, auto_stop
             // the pump exits without touching anything and stop_recording
             // transcribes the whole buffer as before.
             let (cmd_tx, cmd_rx) = crossbeam_channel::unbounded::<crate::engine::StreamCmd>();
-            *state.stream_cmd_tx.lock().unwrap() = Some(cmd_tx);
+            *state.stream_cmd_tx.lock().unwrap() = Some(cmd_tx.clone());
             state.streaming_active.store(false, Ordering::SeqCst);
             let jvm = state.jvm.clone();
             let target_ref = state.target_ref.clone();
             let buffer = state.audio_buffer.clone();
             let session_active = state.session_active.clone();
+            // The auto-stop monitor below also needs the flag; clone before
+            // the pump closure moves the original.
+            let session_active_monitor = session_active.clone();
             let streaming_active = state.streaming_active.clone();
             let stream_lock = state.stream_lock.clone();
             std::thread::spawn(move || {
@@ -210,7 +213,7 @@ pub fn start_recording(mut env: JNIEnv, state: &mut VoiceSessionState, auto_stop
                 let started_at = Instant::now();
                 std::thread::spawn(move || loop {
                     std::thread::sleep(Duration::from_millis(100));
-                    if !session_active.load(Ordering::SeqCst) {
+                    if !session_active_monitor.load(Ordering::SeqCst) {
                         return;
                     }
                     let speech = ep.speech_started.load(Ordering::SeqCst);
@@ -222,7 +225,7 @@ pub fn start_recording(mut env: JNIEnv, state: &mut VoiceSessionState, auto_stop
                     if done {
                         // Claim the session so a simultaneous manual stop and
                         // this monitor can't both fire.
-                        if session_active.swap(false, Ordering::SeqCst) {
+                        if session_active_monitor.swap(false, Ordering::SeqCst) {
                             if let Ok(mut env) = jvm.attach_current_thread() {
                                 let _ =
                                     env.call_method(target_ref.as_obj(), "onAutoStop", "()V", &[]);
@@ -256,7 +259,7 @@ fn streaming_pump(
     jvm: Arc<jni::JavaVM>,
     target_ref: GlobalRef,
     buffer: Arc<Mutex<Vec<f32>>>,
-    tx: crossbeam_channel::Sender<crate::engine::StreamCmd>,
+    _tx: crossbeam_channel::Sender<crate::engine::StreamCmd>,
     rx: crossbeam_channel::Receiver<crate::engine::StreamCmd>,
     session_active: Arc<AtomicBool>,
     streaming_active: Arc<AtomicBool>,

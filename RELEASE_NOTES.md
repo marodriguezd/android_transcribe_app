@@ -7,6 +7,11 @@ Fork of [notune/android_transcribe_app](https://github.com/notune/android_transc
 ### ⌨️ IME keyboard keeps its shape while streaming partials
 - **Mic area no longer compacts:** when live partial hypotheses appear (the keyboard's live window shows up to 3 lines, always scrolled to the latest words), the record area used to shrink from 200dp to 148dp to hold the keyboard's total height — clipping the mic glow and overlapping the "Tap to Stop" hint with the record button. Now the record area always keeps its full shape: the keyboard grows slightly while live text is shown and returns to normal when the recording ends.
 
+### 🛠️ AI Post-Processing: readable prompt & smarter LLM payload
+- **Prompt formatting restored:** the default system prompt (`pp_default_prompt`) now compiles with real line breaks (`\n` escapes). It shows its full paragraph structure in the post-processing settings and reaches the LLM properly structured — Android's `aapt2` was collapsing every newline into a single run-on line, which garbled the settings screen and flattened the instructions sent to the model.
+- **Transcript de-duplication:** when the active prompt embeds the transcript via the `${output}` marker, the raw text is no longer sent a second time as a separate user message. The LLM now refines the text instead of mirroring the input back unchanged.
+- **Streaming robustness:** mid-stream failures no longer trigger retries (which could duplicate text already committed into the editor); if the editor loses focus during streaming, the refined text is committed once available instead of being dropped; and defensive guards prevent rare IME force-closes when the input connection dies mid-stream.
+
 ---
 
 # v0.1.23

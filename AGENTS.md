@@ -217,6 +217,28 @@ cubre.
 `AndroidManifest.xml` (registro de activities/services) y `lib.rs` (`pub mod`).
 No renombrar archivos Rust/Java sin actualizar la entrada JNI (§4.3).
 
+**Post-procesado AI (fork addition, Java-only — contrato AGENT-ONLY):**
+- **`pp_default_prompt` es una sola línea con escapes `\n`.** AAPT2 **colapsa los saltos de línea
+  literales** de un `<string>` a un solo espacio (verificado con `aapt2 dump strings`). Un valor
+  multilínea se rompe en runtime: el campo de `PostProcessSettingsActivity` muestra todo junto
+  y el payload enviado al LLM es un muro plano — esa fue la causa del "prompt juntado" y de que
+  el LLM no refinara el texto. Usa `\n` (y `\n\n` para párrafos en blanco) dentro del valor.
+- **El transcript no se manda dos veces.** Si el prompt activo contiene `${output}`, el texto
+  crudo se inyecta en el system prompt y el `user message` pasa a ser el marcador fijo
+  `"Apply the instructions to the transcript above."`. Si NO hay `${output}`, el texto viaja en
+  el user message. No duplicarlo (flag `injected` en `process()` y `processStreamingWithRetry()`
+  de `PostProcessor.java`): mandarlo dos veces hace que el LLM devuelva la entrada sin refinar.
+- **Streaming: no reintentar tras emitir tokens.** El reintento (hasta 3, backoff
+  `150ms*attempt`) solo aplica si el fallo ocurre antes del primer token. Si ya se emitieron
+  tokens, `onError(error, raw)` se entrega de inmediato: reintentar duplicaría texto ya
+  cometido en el editor (`emittedAny` en `handleStreamFailure`).
+- **IME ↔ editor:** en `RustInputMethodService.onTextTranscribed`, los tokens se cometen al
+  editor según llegan y `committedToEditor` marca si alguno llegó de verdad. `onSuccess`: si
+  ninguno llegó → `commitFinalText(texto completo)` (no perder el texto); si llegaron → espacio
+  final. `onError`: `deleteSurroundingText` solo si hay texto cometido, y siempre fallback al
+  texto crudo. Todo `commitText`/`deleteSurroundingText` va envuelto en try/catch (editor
+  muerto → evita cierres forzosos del IME).
+
 ### 4.7 Rust: contratos del singleton Engine (no romper)
 
 - **`engine::get_engine()` → `Option<Arc<Mutex<Engine>>>`**: compartido por todos los procesos Java. Garantías: panic-catching, recovery de Mutex poison.
@@ -248,6 +270,7 @@ No renombrar archivos Rust/Java sin actualizar la entrada JNI (§4.3).
 
 - **Todas las cadenas nuevas** → añadir en `app/src/main/res/values/strings.xml` y propagarlas a `values-es`, `values-de`, `values-fr`, `values-it`, `values-pt`, `values-ru`.
 - Si una cadena **no debe traducirse** (ej. prompt de sistema por defecto), usa `translatable="false"` (ver `pp_default_prompt`).
+- **Valores `<string>` multilínea:** AAPT2 colapsa los saltos de línea literales a un solo espacio. Si el texto debe verse/enviarse multi-parágrafo (caso `pp_default_prompt`), guarda el valor en UNA línea con escapes `\n` (`\n\n` = párrafo en blanco). Verificado con `aapt2 dump strings`; ver §4.6.
 - Si el orden de idioma importa (ej. ajustes que aparecen en una columna lateral con icono), respetar el orden existente en `MainActivity.bindMarkerSwitch`.
 
 ### 4.11 Versión y release
@@ -276,6 +299,7 @@ No renombrar archivos Rust/Java sin actualizar la entrada JNI (§4.3).
 - ❌ **No subir umbrales** de `MAX_FINAL_LAG_SAMPLES` / `MAX_PARTIAL_LAG_SAMPLES` / `MAX_PARTIAL_COST_SECS` en `subtitle.rs` sin probar hardware lento: esos números están calibrados para que un dispositivo medio no se quede atrás, no son free-tuning.
 - ❌ **No reemplazar `transcribe_shared` por código que ignore panics.** El `panic::catch_unwind` documenta un caso real: el modelo puede panic de fondo por allocations grandes, y el efecto sin catch sería un IME congelado.
 - ❌ **No romper el fallback del post-procesado:** si la llamada al LLM falla, siempre se entrega la transcripción cruda (`onError → deliverResult(text)`). Es la garantía de "no perder texto".
+- ❌ **No escribir `pp_default_prompt` (ni ningún `<string>` largo) con saltos de línea literales.** AAPT2 los colapsa a un solo espacio: rompe la UI del prompt y aplana el payload que guía al LLM a refinar. Usa escapes `\n` (ver §4.6).
 - ❌ **No realizar compilaciones manuales de release/debug fuera del pipeline oficial de GitHub Actions** salvo para pruebas puntuales por ADB durante desarrollo local. Las compilaciones de depuración se canalizan vía GitHub Actions enviando el APK al bot de Telegram; las de release se generan automáticamente por GitHub Actions.
 - ❌ **No borrar el comentario explicativo en app/build.gradle.kts sobre `assetPacks` + bundle-vs-APK.** Es la trampa que rompió v0.1.x del upstream y se documentó específicamente para evitar.
 - ❌ **No introducir tests automatizados que importen el módulo entero** a través de JNI en CI: no hay emulador arm64 en el runner de GitHub Actions y los tests no-existentes ya dicen que validación = build + smoke test manual.

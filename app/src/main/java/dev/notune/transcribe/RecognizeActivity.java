@@ -32,6 +32,7 @@ public class RecognizeActivity extends AppCompatActivity {
 
     private TextView status;
     private boolean isRecording = false;
+    private int currentSessionId = 0;
     private MicLevelView micLevel;
     private final AudioFocusPauser audioPauser = new AudioFocusPauser();
     private boolean pauseAudioActive = false;
@@ -52,6 +53,7 @@ public class RecognizeActivity extends AppCompatActivity {
             // discard current recording
             if (isRecording) {
                 isRecording = false;
+                currentSessionId++;
                 cancelRecording();   // new native method
             }
             if (pauseAudioActive) {
@@ -80,7 +82,7 @@ public class RecognizeActivity extends AppCompatActivity {
             audioPauser.request(this);
             pauseAudioActive = true;
         }
-        startRecording(isAutoStopEnabled());
+        startRecording(isAutoStopEnabled(), ++currentSessionId);
     }
 
     /** Stop capture and transcribe — used by both tap-to-stop and auto-stop. */
@@ -96,8 +98,11 @@ public class RecognizeActivity extends AppCompatActivity {
     }
 
     // Called from Rust (monitor thread) when trailing silence is detected.
-    public void onAutoStop() {
-        runOnUiThread(this::finishRecording);
+    public void onAutoStop(int sessionId) {
+        runOnUiThread(() -> {
+            if (sessionId != currentSessionId) return;
+            finishRecording();
+        });
     }
 
     @Override
@@ -110,6 +115,7 @@ public class RecognizeActivity extends AppCompatActivity {
         // is a keyboard-only feature; a popup must not record unseen.)
         if (isRecording && !isFinishing()) {
             isRecording = false;
+            currentSessionId++;
             try { cancelRecording(); } catch (Throwable t) { /* ignore */ }
             if (pauseAudioActive) {
                 audioPauser.abandon(this);
@@ -122,6 +128,8 @@ public class RecognizeActivity extends AppCompatActivity {
 
     @Override
     protected void onDestroy() {
+        currentSessionId++;
+        try { cancelRecording(); } catch (Throwable ignored) { }
         super.onDestroy();
         if (pauseAudioActive) {
             audioPauser.abandon(this);
@@ -132,32 +140,49 @@ public class RecognizeActivity extends AppCompatActivity {
         PostProcessor.cancelAll();
     }
 
-    // Called from Rust
-    public void onStatusUpdate(String s) {
+    // Called from Rust for recording-scoped status updates.
+    public void onStatusUpdate(String s, int sessionId) {
         runOnUiThread(() -> {
-            final String shown;
-            if ("Ready".equals(s)) {
-                // The model-ready status can arrive after recording started.
-                shown = isRecording ? "Listening... (Tap to stop)" : "Ready";
-            } else if ("Listening...".equals(s)) {
-                shown = "Listening... (Tap to stop)";
-            } else {
-                shown = s;
-            }
-            status.setText(shown);
+            if (sessionId != currentSessionId) return;
+            showStatus(s);
         });
     }
 
+    // Called from Rust with model lifecycle updates (not tied to a recording).
+    public void onStatusUpdate(String s) {
+        runOnUiThread(() -> showStatus(s));
+    }
+
+    private void showStatus(String s) {
+        final String shown;
+        if ("Ready".equals(s)) {
+            shown = isRecording ? "Listening... (Tap to stop)" : "Ready";
+        } else if ("Listening...".equals(s)) {
+            shown = "Listening... (Tap to stop)";
+        } else {
+            shown = s;
+        }
+        status.setText(shown);
+    }
+
     // Called from Rust with 0..1
+    public void onAudioLevel(float level, int sessionId) {
+        runOnUiThread(() -> {
+            if (sessionId != currentSessionId) return;
+            micLevel.setLevel(level);
+        });
+    }
+
     public void onAudioLevel(float level) {
-        runOnUiThread(() -> micLevel.setLevel(level));
+        onAudioLevel(level, currentSessionId);
     }
 
     // Called from Rust with live partial hypotheses while recording
     // (streaming models). Visual-only: the final text replaces it via
     // onTextTranscribed.
-    public void onPartialText(String text) {
+    public void onPartialText(String text, int sessionId) {
         runOnUiThread(() -> {
+            if (sessionId != currentSessionId) return;
             if (isRecording && text != null && !text.trim().isEmpty()) {
                 status.setText(text);
             }
@@ -165,8 +190,9 @@ public class RecognizeActivity extends AppCompatActivity {
     }
 
     // Called from Rust – keep same method name as IME for code reuse
-    public void onTextTranscribed(String text) {
+    public void onTextTranscribed(String text, int sessionId) {
         runOnUiThread(() -> {
+            if (sessionId != currentSessionId) return;
             if (text == null || text.trim().isEmpty()) {
                 // Nothing was recognized (e.g. auto-stop after silence only).
                 setResult(Activity.RESULT_CANCELED);
@@ -184,10 +210,12 @@ public class RecognizeActivity extends AppCompatActivity {
                 // The ASR partials remain the live preview. Wait for one
                 // complete post-processing response before returning the result.
                 new PostProcessor(settings, new Handler(Looper.getMainLooper()),
-                        () -> !isFinishing() && !isDestroyed()).process(text,
+                        () -> sessionId == currentSessionId
+                                && !isFinishing() && !isDestroyed()).process(text,
                         new PostProcessor.PostProcessCallback() {
                     @Override
                     public void onSuccess(String refinedText) {
+                        if (sessionId != currentSessionId) return;
                         String out = (refinedText != null && !refinedText.trim().isEmpty())
                                 ? refinedText : text;
                         deliverResult(out);
@@ -195,6 +223,7 @@ public class RecognizeActivity extends AppCompatActivity {
 
                     @Override
                     public void onError(String error) {
+                        if (sessionId != currentSessionId) return;
                         Log.w(TAG, "Post-processing failed, delivering raw text: " + error);
                         deliverResult(text);
                     }
@@ -233,7 +262,7 @@ public class RecognizeActivity extends AppCompatActivity {
     // Native methods
     private native void initNative(RecognizeActivity activity);
     private native void cleanupNative();
-    private native void startRecording(boolean autoStop);
+    private native void startRecording(boolean autoStop, int sessionId);
     private native void stopRecording();
     private native void cancelRecording();
 }

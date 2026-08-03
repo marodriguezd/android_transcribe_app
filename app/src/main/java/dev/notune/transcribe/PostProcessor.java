@@ -222,7 +222,11 @@ public class PostProcessor {
                             if (resultText.isEmpty()) {
                                 dispatchToUi(() -> callback.onError("Empty response from AI"));
                             } else {
-                                dispatchToUi(() -> callback.onSuccess(resultText));
+                                // Re-check on the UI thread immediately before delivery.
+                                // If the user disabled PP after the HTTP thread parsed the
+                                // response, the raw ASR transcript still wins.
+                                dispatchToUi(() -> callback.onSuccess(
+                                        settings.isPostProcessEnabled() ? resultText : rawText));
                             }
                         } catch (Exception e) {
                             String error = "Parse error: " + e.getMessage();

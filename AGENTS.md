@@ -4,7 +4,7 @@
 
 > **Repo:** `android_transcribe_app` (fork de `notune/android_transcribe_app`)
 > **Tipo:** App Android de transcripción de voz *offline* con opción de post-procesado con IA.
-> **Última versión publicada:** 0.1.22 (`versionCode 23`, ver `app/build.gradle.kts`).
+> **Versión declarada actualmente en Gradle:** 0.1.24 (`versionCode 25`, ver `app/build.gradle.kts`). La versión realmente publicada debe comprobarse en tags/releases; no asumir que coincide con este fichero.
 
 > **Scope:** este archivo documenta el **contrato de implementación** (versiones
 > pinneadas, handshake JNI, reglas críticas, plantillas de nuevos componentes).
@@ -47,9 +47,9 @@ Post-procesado IA (fork addition): opcional, *off-line-by-default*, refina texto
 | Lenguaje UI | **Java** (sin Kotlin) | Java 8 source/target |
 | Android Gradle Plugin | `com.android.application` | **8.7.3** |
 | Build tool | Gradle wrapper | ver `gradle/wrapper/gradle-wrapper.properties` |
-| Toolchain humano | JDK 17 · Android NDK 28.0.13004108 · Rust `aarch64-linux-android` · [`cargo-ndk`](https://github.com/bbqsrc/cargo-ndk) | instalación paso a paso → [`README.md` §Prerequisites](README.md#prerequisites) |
-| Target NDK ABIs | **`arm64-v8a` únicamente** (`abiFilters += "arm64-v8a"`) | excluidas x86 / armeabi-v7a |
-| `compileSdk` / `targetSdk` / `minSdk` | `35 / 35 / 26` | namespace y applicationId: `dev.notune.transcribe` |
+| Toolchain humano | JDK 17 · Rust `aarch64-linux-android` · [`cargo-ndk`](https://github.com/bbqsrc/cargo-ndk) | NDK/SDK efectivos deben tomarse de `app/build.gradle.kts`; actualmente hay una discrepancia documentada con CI/README que debe resolverse antes de cerrar el Guantelete |
+| Target NDK ABIs | **`arm64-v8a` únicamente** (`abiFilters += "arm64-v8a"`) | excluidas x86 / armeabi-v7a; no confundir ABI del APK con arquitectura del host de build |
+| `compileSdk` / `targetSdk` / `minSdk` | Gradle efectivo: `34 / 34 / 26` | `AGENTS.md`, README y `.agents/spec.md` deben permanecer alineados con Gradle; la compatibilidad Android 15/SDK 35 queda pendiente de decisión y validación |
 | Material | Material Components for Android | `1.12.0` (Material 3 + Material You) |
 | HTTP (post-procesado) | OkHttp | `4.12.0` |
 | Almacenamiento clave API | marker file Base64 en `filesDir()` | sin dependencia externa |
@@ -111,12 +111,13 @@ Post-procesado IA (fork addition): opcional, *off-line-by-default*, refina texto
 - **Validación automatizada:** Ejecutar `./gradlew assembleDebug` o suites de unit test sin nuevos advertencias o fallos + smoke test funcional en dispositivo/emulador.
 - **Java:** Sigue las convenciones de §4.
 - **Rust:** Sigue el estilo inline existente (4 espacios, `rustfmt` por defecto).
-- **Gates automatizados implementados (Guantelete operativo):**
-  - `testDebugUnitTest` en CI (debug + release) → 14 tests JVM verdes (7 de persistencia de `MarkerFileHelper` + 7 preexistentes).
-  - `checkModels` (equivalente a `checkModelCatalog` de Handy-Android): verifica SHA-256 del modelo bundled; **FAIL** cuando el asset está corrupto (demostrado, exit 1), no-op cuando está ausente (debug).
-  - `scripts/check_translations.py`: gate de paridad i18n (excluye `translatable="false"`); 6 locales × 124 strings → PASS.
-  - `lintDebug` (hard gate, debug CI): 0 errores. Los 20 hallazgos legacy se pagaron en 2026-08-03 con guards `Build.VERSION` + `@TargetApi`, `ContextCompat.registerReceiver` con `RECEIVER_NOT_EXPORTED`, `app:tint` + widgets AppCompat explícitos (inflate sin factory AppCompat), `super.onRequestPermissionsResult`, y `tools:ignore="AppLinkUrlError"` documentado en el intent-filter VIEW de `audio/*` (handler de ficheros, no app link — no hay URL que verificar).
-  - Tests Rust `#[cfg(test)]` en `audio` y `corrector`. Verificados vía crate espejo sin deps nativas (host `cargo test` del crate completo está bloqueado por un bug de empaquetado de `transcribe-cpp-sys` v0.1.3 que afecta al upstream; se ejecutan en CI x86_64).
+- **Gates configurados / evidencia histórica parcial (Guantelete ABIERTO):**
+  - `testDebugUnitTest` está configurado en CI; el historial registra 14 tests JVM verdes, pero esta auditoría no vuelve a atribuir ese resultado al estado actual.
+  - `checkModels` verifica SHA-256 de assets bundled presentes; es no-op cuando falta el asset y **no cubre todavía** la descarga runtime debug.
+  - `scripts/check_translations.py` comprueba paridad de nombres en 6 locales alternativos; no detecta todas las cadenas hardcodeadas en Java.
+  - `lintDebug` está configurado como hard gate en debug CI; la salida histórica de 0 errores/103 warnings debe distinguirse de una ejecución actual.
+  - Tests Rust `#[cfg(test)]` en `audio` y `corrector` tienen cobertura de lógica pura mediante crate espejo; el crate cdylib completo sigue bloqueado por `transcribe-cpp-sys v0.1.3` y no debe describirse como ejecutado satisfactoriamente en CI hasta existir un workflow/log reproducible.
+  - El plan, los bloqueadores P0 y los criterios de cierre viven en [`GAUNTLETE_PLAN.md`](GAUNTLETE_PLAN.md) y [`.agents/memory/static-audit-debt-2026-08-03.md`](.agents/memory/static-audit-debt-2026-08-03.md).
 
 ---
 
@@ -165,6 +166,7 @@ static {
   - `onSubtitleText(String, boolean)` — parcial (false) o final (true).
   - `onPartialText(String)` — hipótesis parcial en vivo de modelos streaming (Nemotron) mientras se graba; visual-only en Java (el texto final llega siempre por `onTextTranscribed`/`onResults`). Las superficies sin streaming envían no-op.
   - `onAutoStop()` — disparo del monitor de endpointing.
+  - **Grabación IME/popup con generación:** las superficies `RustInputMethodService` y `RecognizeActivity` mantienen además las variantes JNI `onStatusUpdate(String, int)`, `onTextTranscribed(String, int)`, `onAudioLevel(float, int)`, `onPartialText(String, int)` y `onAutoStop(int)`. El `int` es el `sessionId` de la grabación; Java descarta callbacks tardíos cuyo ID ya no coincide con la generación activa. El engine/lifecycle conserva las variantes sin ID para estados de carga y compatibilidad con las demás superficies.
   - `onBenchmarkResult(float audioSecs, float computeSecs, String error)`.
 - **Resiliencia del engine:** `transcribe_shared` hace `panic::catch_unwind` + recuperación de `Mutex` envenenado (`unwrap_or_else(|p| p.into_inner())`). Si lo refactorizas, **mantén estas dos capas**.
 
@@ -233,9 +235,7 @@ No renombrar archivos Rust/Java sin actualizar la entrada JNI (§4.3).**Post-pro
   desactivado, se comete el texto ASR directamente; si la llamada falla, se cancela o devuelve
   una respuesta vacía/no válida, siempre se comete el texto crudo. Así se evita pegar tokens
   parciales, duplicados o texto "Frankenstein" y se conserva la fluidez del streaming ASR.
-- **Cancelación/lifecycle:** `PostProcessor.cancelAll()` cancela llamadas en vuelo y los
-  validadores de Activity/IME impiden callbacks tardíos sobre componentes destruidos. El
-  `Response` de OkHttp se cierra siempre, incluidos errores y parseos fallidos.
+- **Cancelación/lifecycle:** existen `PostProcessor.cancelAll()` y validadores de Activity/IME, y el `Response` de OkHttp se cierra siempre, incluidos errores y parseos fallidos. **Limitación auditada:** `cancelAll()` es global al proceso, no por operación; el aislamiento por sesión y la generación determinista de workers de subtítulos siguen siendo deuda P0 documentada en `GAUNTLETE_PLAN.md`.
 
 ### 4.7 Rust: contratos del singleton Engine (no romper)
 
@@ -289,7 +289,7 @@ No renombrar archivos Rust/Java sin actualizar la entrada JNI (§4.3).**Post-pro
 - ❌ **No añadir soporte para otras ABIs** (`armeabi-v7a`, `x86`, `x86_64`) sin revisar antes:
   - `check_cpu_features` requiere dotprod+fp16 (ARMv8.2 ~2018+); cualquier dispositivo antiguo fallaría en medio de la inferencia con `SIGILL`.
   - el ggml cross-compile con `GGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16` está fijado en `app/build.gradle.kts`.
-- ❌ **No romper la verificación SHA-256** ni eliminar el marker de "modelo bundled" — protege contra apps que se actualizan con un modelo nuevo y mantienen el viejo en cache.
+- ❌ **No romper la verificación SHA-256** ni eliminar el marker de "modelo bundled" — protege contra apps que se actualizan con un modelo nuevo y mantienen el viejo en cache. La descarga runtime debug también debe verificar el hash antes de escribir `active_model`; esa ruta está auditada como deuda P0 hasta corregirse.
 - ❌ **No convertir la app a Kotlin** sin discutirlo antes. Es un proyecto Java a propósito (legado del upstream, evita overhead de KSP/codegen).
 - ❌ **No mover ajustes a `SharedPreferences`** sin migrar también los marker files consumidos por Rust (`model_language`, `model_translate`, `active_model`, `model_threads`). El código Rust solo lee del *filesystem*, no de prefs.
 - ❌ **No añadir dependencias síncronas bloqueantes** al evento del audio callback de `cpal` (en `voice_session.rs`/`recog_service.rs`). Toda escritura a `audio_buffer` debe ser O(1) bajo el mutex.

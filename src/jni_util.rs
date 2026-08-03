@@ -19,6 +19,19 @@ pub fn notify_status(env: &mut JNIEnv, obj: &JObject, msg: &str) {
     }
 }
 
+/// Invokes the recording-scoped status callback. The Java side rejects the
+/// callback when its generation no longer matches the active recording.
+pub fn notify_status_with_session(env: &mut JNIEnv, obj: &JObject, msg: &str, session_id: i32) {
+    if let Ok(jmsg) = env.new_string(msg) {
+        let _ = env.call_method(
+            obj,
+            "onStatusUpdate",
+            "(Ljava/lang/String;I)V",
+            &[(&jmsg).into(), session_id.into()],
+        );
+    }
+}
+
 /// Invokes `onTextTranscribed(String)` on the target Java object.
 pub fn notify_text(env: &mut JNIEnv, obj: &JObject, text: &str) {
     if let Ok(jtxt) = env.new_string(text) {
@@ -27,6 +40,18 @@ pub fn notify_text(env: &mut JNIEnv, obj: &JObject, text: &str) {
             "onTextTranscribed",
             "(Ljava/lang/String;)V",
             &[(&jtxt).into()],
+        );
+    }
+}
+
+/// Invokes the recording-scoped final-text callback.
+pub fn notify_text_with_session(env: &mut JNIEnv, obj: &JObject, text: &str, session_id: i32) {
+    if let Ok(jtxt) = env.new_string(text) {
+        let _ = env.call_method(
+            obj,
+            "onTextTranscribed",
+            "(Ljava/lang/String;I)V",
+            &[(&jtxt).into(), session_id.into()],
         );
     }
 }
@@ -45,9 +70,31 @@ pub fn notify_partial(env: &mut JNIEnv, obj: &JObject, text: &str) {
     }
 }
 
+/// Invokes the recording-scoped partial-text callback.
+pub fn notify_partial_with_session(env: &mut JNIEnv, obj: &JObject, text: &str, session_id: i32) {
+    if let Ok(jtxt) = env.new_string(text) {
+        let _ = env.call_method(
+            obj,
+            "onPartialText",
+            "(Ljava/lang/String;I)V",
+            &[(&jtxt).into(), session_id.into()],
+        );
+    }
+}
+
 /// Invokes `onAudioLevel(float)` on the target Java object.
 pub fn notify_level(env: &mut JNIEnv, obj: &JObject, level: f32) {
     let _ = env.call_method(obj, "onAudioLevel", "(F)V", &[level.into()]);
+}
+
+/// Invokes the recording-scoped audio-level callback.
+pub fn notify_level_with_session(env: &mut JNIEnv, obj: &JObject, level: f32, session_id: i32) {
+    let _ = env.call_method(
+        obj,
+        "onAudioLevel",
+        "(FI)V",
+        &[level.into(), session_id.into()],
+    );
 }
 
 /// Invokes `onSubtitleText(String, boolean)` on the target Java object.
@@ -65,4 +112,9 @@ pub fn notify_subtitle(env: &mut JNIEnv, obj: &JObject, text: &str, is_final: bo
 /// Invokes `onAutoStop()` on the target Java object.
 pub fn notify_auto_stop(env: &mut JNIEnv, obj: &JObject) {
     let _ = env.call_method(obj, "onAutoStop", "()V", &[]);
+}
+
+/// Invokes the recording-scoped auto-stop callback.
+pub fn notify_auto_stop_with_session(env: &mut JNIEnv, obj: &JObject, session_id: i32) {
+    let _ = env.call_method(obj, "onAutoStop", "(I)V", &[session_id.into()]);
 }

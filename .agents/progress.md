@@ -4,109 +4,82 @@
 
 ## 🟢 Recién completado
 
-- **2026-08-03** — Post-procesado AI final-only: se mantiene el streaming del
-  transcriptor como previsualización visual y se elimina el streaming SSE del
-  postprocesador. Tras el texto final de ASR, `PostProcessor.process()` envía
-  una única petición completa; el IME y el popup entregan una sola vez el
-  refinado, o la transcripción cruda si PP está apagado, falla, se cancela o
-  devuelve una respuesta vacía/no válida. La integración ya no pega tokens
-  intermedios ni necesita borrar texto parcialmente insertado.
+- **2026-08-03 — Postprocesado AI final-only:** los parciales del ASR siguen
+  siendo previsualización visual; el transcript final se manda una sola vez a
+  `PostProcessor.process()` con respuesta completa y fallback al texto crudo.
+- **2026-08-03 — Auditoría estática integral:** revisados arquitectura
+  Java/Rust, JNI, callbacks, lifecycle, concurrencia, streaming ASR,
+  postprocesado, subtítulos, modelos, markers, recursos, manifest, i18n y CI.
+  Resultado detallado en
+  [`memory/static-audit-debt-2026-08-03.md`](./memory/static-audit-debt-2026-08-03.md).
+- **2026-08-03 — Registro de deuda futuro:** documentados cuatro bloqueadores
+  P0, cuatro líneas P1 y cuatro líneas P2. Esta sesión sólo actualizó docs; no
+  implementó los arreglos ni ejecutó builds/tests.
+- **2026-07-29 — Diccionario del sistema Android:** sincronización hacia
+  `filesDir/custom_words`, con editor y fallbacks de Settings.
+- **2026-07-29 — Auto-stop IME/VAD:** marcador `auto_stop`, callback de
+  auto-stop y umbrales adaptativos.
+- **2026-07-28 — Corrector fonético:** post-filtro ES+EN en Rust con
+  safe-fallback, cubriendo todas las superficies.
 
+La historia detallada de las sesiones anteriores se conserva en las memorias
+indexadas: `phonetic-corrector-2026-07-28.md`, `optimizations-2026-07-29.md`,
+`polish-agents-2026-07-29.md` y `postprocess-final-only-2026-08-03.md`.
 
-## 🟢 Recién completado
+## 🔴 Bloqueadores P0 abiertos
 
-- **2026-07-29** — Integración Simplificada del Diccionario del Sistema Android (Estilo FUTO Keyboard):
-  - `UserDictionaryHelper.java`: helper que abre la pantalla nativa de Ajustes del Diccionario de Usuario de Android (`Settings.ACTION_USER_DICTIONARY_SETTINGS`) con fallbacks a cadenas de acción e `Intent` de ajustes generales.
-  - Sincronización automática de palabras del sistema desde `UserDictionary.Words.CONTENT_URI` hacia el marcador `custom_words` al volver a la app y antes de iniciar cada sesión de voz en el teclado IME o ventana emergente.
-  - `AndroidManifest.xml`: añadido permiso `android.permission.READ_USER_DICTIONARY`.
-  - **CI/CD:** Compilación verificada e integrada en GitHub Actions (commit `3b837c5`, workflow `30475726536`).
+1. Aislar `PostProcessor` por sesión/superficie; `cancelAll()` es global.
+2. Invalidar y esperar workers antiguos de subtítulos mediante generación/token.
+3. Verificar SHA-256 en la descarga runtime debug antes de escribir
+   `active_model`.
+4. Unificar NDK/SDK entre Gradle, workflows y docs; resolver las rutas
+   `linux-x86_64` o declarar el límite real.
 
-- **2026-07-29** — Habilitación de Auto-Parada tras 2s de Silencio en Teclado IME y Calibración Adaptativa VAD:
-  - `RustInputMethodService.java` & `src/ime.rs`: eliminación de la restricción hardcodeada `false`. Transmisión del marcador `auto_stop` vía JNI y adición del callback `onAutoStop()` para auto-parar y procesar texto automáticamente en el teclado.
-  - `src/voice_session.rs`: calibración adaptativa de VAD (`MIN_SPEECH_LEVEL = 0.05` y `SPEECH_MARGIN = 0.04`) sobre el suelo de ruido en tiempo real para detectar voz suave/susurrada.
-  - **CI/CD & Verificación:** Compilación verificada en GitHub Actions (commit `8e587d9`, workflow `30474594163`) enviada por Telegram. **Confirmado y validado como funcionando correctamente por el usuario.**
+Ninguno de estos cuatro puntos está resuelto por documentación: requieren
+cambios de código/configuración y validación posterior.
 
-- **2026-07-29** — Post-Procesado AI en streaming (histórico, reemplazado el 2026-08-03):
-  - Se conserva como antecedente porque la implementación SSE/token-streaming
-    fue deliberadamente sustituida por el flujo final-only de arriba tras
-    observar que los tokens intermedios no daban un resultado fiable en el
-    editor.
+## 🟡 Deuda P1/P2
 
-- **2026-07-29** — Actualización de ficheros agénticos (`.agents/`) con la
-  feature del corrector fonético: `AGENTS.md` §4.5/§4.6, `architecture.md`,
-  `spec.md`, `progress.md`, `INDEX.md`. Todo al día con la feature del
-  corrector.
+- Añadir operation-id a transcripción de archivos.
+- Hacer atómicas todas las escrituras de markers cross-process.
+- Probar PP con HTTP controlado: payload, cancelación, timeout, JSON inválido,
+  fallback y concurrencia.
+- Probar lifecycle de subtítulos/MediaProjection en Android 10–15 y ROM OEM.
+- Habilitar `cargo test` real o documentar bloqueo reproducible en CI.
+- Ejecutar `rustfmt`/lint de todo el alcance, no sólo archivos puntuales.
+- Añadir smoke/instrumentation matrix para las seis superficies.
+- Migrar strings visibles hardcodeadas a recursos.
 
-- **2026-07-28** — Corrector fonético de palabras personalizadas (fork
-  addition). Feature completa:
-  - `src/corrector.rs` (NUEVO, ~300 líneas): codificador fonético ES+EN,
-    Levenshtein via `strsim` 0.11, tiebreak coseno de bigramas, tokenizer
-    que preserva puntuación/espacios, matching multi-palabra por ventanas,
-    diccionario mtime-cached, safe-fallback en cualquier fallo.
-  - `Cargo.toml`: añadida dependencia `strsim = "0.11"` (pure Rust, MIT).
-  - `src/lib.rs`: `pub mod corrector;`
-  - `src/engine.rs`: `set_files_dir` en `do_load` (antes de ambos code
-    paths); `correct_if_enabled` en `transcribe_shared` con su propio
-    `catch_unwind` (safe-fallback = texto crudo).
-  - `CustomWordsActivity.java` + `activity_custom_words.xml` (NUEVO):
-    editor del marker file `filesDir/custom_words`.
-  - `activity_main.xml`: nueva card "Custom words" con `ic_dictionary.xml`.
-  - `MainActivity.java`: wiring del botón.
-  - `AndroidManifest.xml`: registro de `CustomWordsActivity`.
-  - strings `cw_*` (10) en los 7 locales (EN/ES/DE/FR/IT/PT/RU).
-  - **Investigación FUTO Voice Input:** se clonó y greppeó el repo
-    (`github.com/futo-org/voice-input`). FUTO usa `initial_prompt` de
-    whisper.cpp con `"(Glossary: …)"`, con un TODO que admite que "sólo
-    funciona bien para inglés". Se eligió post-filtro fonético en su
-    lugar (multilingüe, determinista, multi-modelo, no contaminante).
-  - **Validación:** `cargo check` limpio, `cargo test` 9/9 pasan.
-    code-reviewer-glm: 4 rondas, 7 issues encontrados y arreglados
-    (set_files_dir mal colocado, corrector fuera de catch_unwind, mutex
-    poison, dead return value, TAG convention, card title, multi-word
-    word-count mismatch).
-  - **Build Gradle:** no ejecutado (entorno sin NDK 28 instalado).
+## 🟡 Validación pendiente
 
-- **2026-07-27** — `AGENTS.md` raíz (commit `fa36345`).
-  - 348 líneas, estructura `§1 Resumen / §2 Stack / §3 Comandos+y+wiring /
-    §4 Convenciones (1-11) / §5 Reglas / §6 Commits / §7 TL;DR`.
+- `./gradlew assembleDebug` y `assembleRelease` en el pipeline oficial.
+- `testDebugUnitTest`, `checkModels`, `lintDebug` y translations en CI actual.
+- Tests Rust del crate real cuando se resuelva `transcribe-cpp-sys`.
+- Smoke test en dispositivo arm64 con modelo streaming y no streaming.
+- Pruebas de cancelación rápida, cambio de modelo/idioma y PP concurrente.
 
-- **2026-07-27** — Dedup AGENTS ↔ README (commit `c0073b4`).
-  - Trim de §3 Comandos Frecuentes (→ apunta a README + solo wiring AGENT-ONLY).
-  - Reemplazo de §4.6 árbol de carpetas por tabla de mapping Rust↔Java.
-  - Colapso de 3 filas de toolchain en §2 a una sola fila "Toolchain humano".
-  - Cross-link explícito en el README hacia AGENTS.md.
+## 🔴 Bloqueos de entorno conocidos
 
-## 🟡 Pendiente humano
+- El crate completo puede quedar bloqueado por el empaquetado de
+  `transcribe-cpp-sys v0.1.3`; el crate espejo sólo cubre lógica pura.
+- La auditoría no ejecutó comandos de build/test por la restricción de esta
+  sesión. No registrar esta sesión como `BUILD SUCCESSFUL`.
 
-- **Pendiente humano** — `./gradlew assembleDebug` en máquina con NDK 28
-  para confirmar que el build Android pasa limpio sin warnings nuevos.
-- **Pendiente humano** — Smoke test en dispositivo arm64: diccionario con
-  "Madrid", decir "madriz" → debe reemplazar.
+## Regla de estado
 
-## 🔴 Bloqueos / esperando humano
+`progress.md` no declara una tarea “cerrada” sólo porque exista diseño o una
+lectura estática. Cada cierre debe indicar comando/workflow/dispositivo y
+resultado. Ver la taxonomía en la memoria de auditoría y el plan del Guantelete.
 
-_Ninguno en este momento._
+## Enlaces canónicos
 
-## ❓ Preguntas abiertas para humanos
-
-- **¿Tracked o gitignored?** Esta primera versión va tracked en git (ver
-  `.agents/README.md` §"Editar con commit-tracked"). Si el mantenimiento
-  prefiere local-only, mover `.agents/` a `.gitignore` es trivial; cambia
-  el flujo de "entre sesiones" a "sólo en esta máquina". Decisión del
-  mantenedor.
-- **Idioma del contenido:** español en prosa principal (consistente con
-  AGENTS.md), inglés en términos clave (commit hashes, file names,
-  AGENTS.md root). Suficiente o ¿todo inglés para IAs internacionalizadas?
-- **Naming `specs.md` → `INDEX.md`:** Resuelto. Renombrado para evitar
-  ambigüedad con la spec singular.
-
-## 🔗 Enlaces activos
-
-- Spec canónica: [`spec.md`](./spec.md)
+- Auditoría/deuda: [`memory/static-audit-debt-2026-08-03.md`](./memory/static-audit-debt-2026-08-03.md)
+- Memoria histórica de optimizaciones: [`memory/optimizations-2026-07-29.md`](./memory/optimizations-2026-07-29.md)
+- Memoria de limpieza agéntica: [`memory/polish-agents-2026-07-29.md`](./memory/polish-agents-2026-07-29.md)
+- Memoria del corrector: [`memory/phonetic-corrector-2026-07-28.md`](./memory/phonetic-corrector-2026-07-28.md)
+- Postprocesado final-only: [`memory/postprocess-final-only-2026-08-03.md`](./memory/postprocess-final-only-2026-08-03.md)
+- Plan QA: [`../GAUNTLETE_PLAN.md`](../GAUNTLETE_PLAN.md)
 - Arquitectura: [`architecture.md`](./architecture.md)
-- Índice cruzado: [`INDEX.md`](./INDEX.md)
-- AGENTS.md raíz: [`../AGENTS.md`](../AGENTS.md)
-- README: [`../README.md`](../README.md)
-- RELEASE_NOTES: [`../RELEASE_NOTES.md`](../RELEASE_NOTES.md)
-- Memoria de hoy: [`memory/phonetic-corrector-2026-07-28.md`](./memory/phonetic-corrector-2026-07-28.md)
-- Memoria previa: [`memory/dedup-round-2026-07-27.md`](./memory/dedup-round-2026-07-27.md)
+- Spec: [`spec.md`](./spec.md)
+- Reglas IA: [`../AGENTS.md`](../AGENTS.md)
+- Índice: [`INDEX.md`](./INDEX.md)

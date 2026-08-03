@@ -63,7 +63,7 @@ Mic (16 kHz mono f32)
      • codificador fonético ES+EN → Levenshtein ≤ 2 + bigram coseno
      • propio catch_unwind → safe-fallback = texto crudo
      • cubre TODAS las superficies de golpe (IME/popup/subs/SR/archivo)
-  → JNI callback `onTextTranscribed(string)`
+  → JNI callback `onTextTranscribed(string[, sessionId])`
   → Java: aplica PostProcessor final-only si está ON (una respuesta completa, con safe-fallback)
   → commitText único al InputConnection (IME)
   → setResult EXTRA_RESULTS (popup)
@@ -76,12 +76,13 @@ Audio del sistema vía MediaProjection
   → AudioRecord (16 kHz mono PCM 16)
   → pushAudio → LiveSubtitleState (segment + preroll + silencio)
   → crossbeam_channel::Sender<Job> → worker thread
-  → engine::transcribe_shared
-  → onSubtitleText(text, isFinal)
+  → engine::transcribe_shared  → onSubtitleText(text, isFinal)
      • partial (replacea hipótesis en ventana visible)
      • final (appendea a transcript)
      • lag > 8 s → drop + "…" gap marker
-     • parciales paradas si RTF > 2 s/segundo (predict-cost)
+     • parciales paradas si RTF > 2 s/segundo
+     • **pendiente P0:** invalidar callbacks de workers de generaciones anteriores tras cleanup/restart
+ (predict-cost)
 ```
 
 ### 3. Cambio de modelo o idioma (cross-process)
@@ -89,10 +90,32 @@ Audio del sistema vía MediaProjection
 ```
 ModelsActivity (Java)
   → escribe `model_language` / `active_model` / `model_threads` en filesDir
+     • **pendiente P1:** todas las escrituras deben usar una ruta atómica común
   → engine::reset() (singleton main, espera carga en vuelo)
   → proceso `:ime` ve el cambio SIN recarga propia
   → ✅ idioma aplica en TODAS las surfaces en el siguiente run
 ```
+
+## Estado de auditoría y deuda conocida (2026-08-03)
+
+La auditoría estática integral confirmó la coherencia del diseño principal, pero
+el Guantelete sigue **ABIERTO**. No confundir este documento de arquitectura con
+una certificación de runtime.
+
+Bloqueadores P0 que afectan a esta arquitectura:
+
+1. `PostProcessor.cancelAll()` es global al proceso; debe aislarse por operación
+   para que una superficie no cancele otra.
+2. El worker de subtítulos conserva receiver/GlobalRef tras cleanup y necesita
+   generación/token y parada determinista.
+3. La descarga runtime debug debe verificar SHA-256 antes de activar
+   `active_model`.
+4. Gradle, CI y documentación discrepan en SDK/NDK; además hay rutas
+   `linux-x86_64` que deben resolverse o declararse como límite del host.
+
+La lista completa P0/P1/P2 y los criterios de aceptación está en
+[`memory/static-audit-debt-2026-08-03.md`](./memory/static-audit-debt-2026-08-03.md)
+y el orden operativo en [`../GAUNTLETE_PLAN.md`](../GAUNTLETE_PLAN.md).
 
 ## Invariantes (a NO romper)
 

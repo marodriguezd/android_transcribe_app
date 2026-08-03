@@ -41,7 +41,7 @@ key.
   opt-in. Default = sin red.
 - **`arm64-v8a` únicamente.** ggml core exige dotprod + fp16 (ARMv8.2,
   ~2018+). `check_cpu_features` aborta limpio en CPUs más viejas.
-- **`minSdk 26` / `targetSdk 35`** (Android 8.0 → 15).
+- **`minSdk 26`** (Android 8.0+). El `compileSdk`/`targetSdk` efectivo actual es `34` según `app/build.gradle.kts`; la documentación histórica menciona 35 y debe unificarse antes de declarar soporte Android 15 cerrado.
 - **Modelo bundled:** Nemotron 3.5 ASR Streaming 0.6B Q8_0 (~751 MB),
   descargado al primer build con verificación SHA-256. Streaming
   cache-aware + detección automática de idioma (40 language-locales); el
@@ -85,6 +85,10 @@ key.
 
 ## Criterios de aceptación (a fuzz)
 
+Estos son objetivos del producto, no evidencia de que estén actualmente
+validados. El estado de validación y la deuda técnica viven en
+[`progress.md`](./progress.md) y [`memory/static-audit-debt-2026-08-03.md`](./memory/static-audit-debt-2026-08-03.md).
+
 - Abrir la app, instalar en un Pixel 8 stock, escribir hablando en WhatsApp:
   el texto aparece en ≤ 1.5× tiempo real, sin ninguna llamada de red.
 - Si la llamada al LLM post-procesador falla mid-transcripción, el texto
@@ -95,6 +99,10 @@ key.
   modificar.
 - El cambio de idioma en el picker aplica tanto en el popup como en el IME,
   sin necesidad de reiniciar la app ni recargar modelo.
+- La cancelación de una operación de postprocesado no cancela otra superficie
+  concurrente.
+- Reiniciar subtítulos no permite callbacks de una generación anterior.
+- Un modelo debug sólo se marca como activo después de verificar su SHA-256.
 
 ## Cambios esperados
 

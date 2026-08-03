@@ -70,7 +70,7 @@ public class VoiceRecognitionService extends RecognitionService {
         }
 
         try {
-            startListening(this);
+            startListening(this, currentSessionId);
         } catch (Throwable t) {
             Log.e(TAG, "startListening failed", t);
             safeError(SpeechRecognizer.ERROR_CLIENT);
@@ -119,32 +119,36 @@ public class VoiceRecognitionService extends RecognitionService {
 
     // --- Callbacks invoked from native code (any thread) ---------------------
 
-    public void onReadyForSpeech() {
+    public void onReadyForSpeech(int sessionId) {
         mainHandler.post(() -> {
+            if (sessionId != currentSessionId) return;
             Callback cb = mCallback;
             if (cb == null) return;
             try { cb.readyForSpeech(new Bundle()); } catch (RemoteException ignored) {}
         });
     }
 
-    public void onBeginningOfSpeech() {
+    public void onBeginningOfSpeech(int sessionId) {
         mainHandler.post(() -> {
+            if (sessionId != currentSessionId) return;
             Callback cb = mCallback;
             if (cb == null) return;
             try { cb.beginningOfSpeech(); } catch (RemoteException ignored) {}
         });
     }
 
-    public void onRmsChanged(float rmsdB) {
+    public void onRmsChanged(float rmsdB, int sessionId) {
         mainHandler.post(() -> {
+            if (sessionId != currentSessionId) return;
             Callback cb = mCallback;
             if (cb == null) return;
             try { cb.rmsChanged(rmsdB); } catch (RemoteException ignored) {}
         });
     }
 
-    public void onEndOfSpeech() {
+    public void onEndOfSpeech(int sessionId) {
         mainHandler.post(() -> {
+            if (sessionId != currentSessionId) return;
             Callback cb = mCallback;
             if (cb == null) return;
             try { cb.endOfSpeech(); } catch (RemoteException ignored) {}
@@ -157,8 +161,9 @@ public class VoiceRecognitionService extends RecognitionService {
      * {@link Callback#partialResults}. Only the final text goes through the
      * AI post-processor (see onResults).
      */
-    public void onPartialText(String text) {
+    public void onPartialText(String text, int sessionId) {
         mainHandler.post(() -> {
+            if (sessionId != currentSessionId) return;
             Callback cb = mCallback;
             if (cb == null || text == null || text.trim().isEmpty()) return;
             ArrayList<String> hypotheses = new ArrayList<>();
@@ -169,14 +174,14 @@ public class VoiceRecognitionService extends RecognitionService {
         });
     }
 
-    public void onResults(String text) {
+    public void onResults(String text, int sessionId) {
         mainHandler.post(() -> {
+            if (sessionId != currentSessionId) return;
             Callback cb = mCallback;
             if (cb == null) return;
             // Capture the id of the current recognition session so the async
             // post-processor callback can verify it is still valid before it
             // tries to deliver results to the framework.
-            int sessionId = currentSessionId;
             deliverResults(cb, text, sessionId);
             mCallback = null;
         });
@@ -185,7 +190,9 @@ public class VoiceRecognitionService extends RecognitionService {
     private void deliverResults(Callback cb, String text, int sessionId) {
         SettingsManager settings = new SettingsManager(this);
         if (settings.isPostProcessEnabled()) {
-            new PostProcessor(settings, mainHandler).process(text, new PostProcessor.PostProcessCallback() {
+            new PostProcessor(settings, mainHandler,
+                    () -> sessionId == currentSessionId && settings.isPostProcessEnabled())
+                    .process(text, new PostProcessor.PostProcessCallback() {
                 @Override
                 public void onSuccess(String refinedText) {
                     if (sessionId != currentSessionId) return;
@@ -214,8 +221,9 @@ public class VoiceRecognitionService extends RecognitionService {
         try { cb.results(bundle); } catch (RemoteException ignored) {}
     }
 
-    public void onError(int errorCode) {
+    public void onError(int errorCode, int sessionId) {
         mainHandler.post(() -> {
+            if (sessionId != currentSessionId) return;
             Callback cb = mCallback;
             if (cb == null) return;
             try { cb.error(errorCode); } catch (RemoteException ignored) {}
@@ -238,7 +246,7 @@ public class VoiceRecognitionService extends RecognitionService {
     // --- Native methods (implemented in src/recog_service.rs) ----------------
 
     private native void initNative(VoiceRecognitionService service);
-    private native void startListening(VoiceRecognitionService service);
+    private native void startListening(VoiceRecognitionService service, int sessionId);
     private native void stopListening();
     private native void cancelNative();
     private native void destroyNative();

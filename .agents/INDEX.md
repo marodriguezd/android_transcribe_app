@@ -42,6 +42,9 @@ escrito X?" sin navegar a ciegas.
 
 Se rellena conforme se acumulen sesiones de trabajo. Listado en orden cronológico inverso (lo más reciente primero):
 
+- [`memory/static-audit-debt-2026-08-03.md`](./memory/static-audit-debt-2026-08-03.md) —
+  auditoría estática integral, deuda P0/P1/P2, criterios de aceptación y
+  taxonomía de evidencia; estado del Guantelete abierto.
 - [`memory/postprocess-final-only-2026-08-03.md`](./memory/postprocess-final-only-2026-08-03.md) —
   separación del streaming visual del ASR y el postprocesado AI final-only con
   commit atómico y fallback al transcript crudo.

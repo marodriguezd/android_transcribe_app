@@ -64,6 +64,7 @@ public class RustInputMethodService extends InputMethodService {
     private boolean viewIsNight = false;
     private Handler mainHandler;
     private boolean isRecording = false;
+    private int currentSessionId = 0;
     private boolean pendingSwitchBack = false;
     private String lastStatus = "Initializing...";
     // Key repeat settings
@@ -309,7 +310,7 @@ public class RustInputMethodService extends InputMethodService {
                         audioPauser.request(this);
                         pauseAudioActive = true;
                     }
-                    startRecording(isAutoStopEnabled());
+                    startRecording(isAutoStopEnabled(), ++currentSessionId);
                     updateRecordButtonUI(true);
                 }
             });
@@ -348,7 +349,7 @@ public class RustInputMethodService extends InputMethodService {
                     audioPauser.request(this);
                     pauseAudioActive = true;
                 }
-                startRecording(isAutoStopEnabled());
+                startRecording(isAutoStopEnabled(), ++currentSessionId);
                 updateRecordButtonUI(true);
             }
         }
@@ -362,6 +363,7 @@ public class RustInputMethodService extends InputMethodService {
             if (isStopOnHideEnabled()) {
                 // Opt-in behavior: discard the recording when the keyboard hides.
                 try {
+                    currentSessionId++;
                     cancelRecording();
                 } catch (Throwable t) {
                     Log.w(TAG, "cancelRecording failed, falling back to stopRecording", t);
@@ -456,8 +458,11 @@ public class RustInputMethodService extends InputMethodService {
 
     @Override
     public void onDestroy() {
+        currentSessionId++;
+        try { cancelRecording(); } catch (Throwable ignored) { }
         super.onDestroy();
         isDestroyed = true;
+        currentSessionId++;
         cleanupNative();
         if (pauseAudioActive) {
             audioPauser.abandon(this);
@@ -471,13 +476,14 @@ public class RustInputMethodService extends InputMethodService {
     // Native methods
     private native void initNative(RustInputMethodService service);
     private native void cleanupNative();
-    private native void startRecording(boolean autoStop);
+    private native void startRecording(boolean autoStop, int sessionId);
     private native void stopRecording();
     private native void cancelRecording();
 
     // Called from Rust (monitor thread) when trailing silence is detected.
-    public void onAutoStop() {
+    public void onAutoStop(int sessionId) {
         mainHandler.post(() -> {
+            if (sessionId != currentSessionId) return;
             if (isRecording) {
                 stopRecording();
                 if (pauseAudioActive) {
@@ -491,19 +497,28 @@ public class RustInputMethodService extends InputMethodService {
 
     // Called from Rust
     public void onStatusUpdate(String status) {
+        mainHandler.post(() -> applyStatus(status));
+    }
+
+    public void onStatusUpdate(String status, int sessionId) {
         mainHandler.post(() -> {
-            Log.d(TAG, "Status: " + status);
-            lastStatus = status;
-            updateUiState();
-            if (pendingSwitchBack && status.startsWith("Error")) {
-                pendingSwitchBack = false;
-                switchToPreviousInputMethodSafe();
-            }
-            if (pauseAudioActive && status != null && status.startsWith("Error")) {
-                audioPauser.abandon(this);
-                pauseAudioActive = false;
-            }
+            if (sessionId != currentSessionId) return;
+            applyStatus(status);
         });
+    }
+
+    private void applyStatus(String status) {
+        Log.d(TAG, "Status: " + status);
+        lastStatus = status;
+        updateUiState();
+        if (pendingSwitchBack && status.startsWith("Error")) {
+            pendingSwitchBack = false;
+            switchToPreviousInputMethodSafe();
+        }
+        if (pauseAudioActive && status != null && status.startsWith("Error")) {
+            audioPauser.abandon(this);
+            pauseAudioActive = false;
+        }
     }
 
     private void updateUiState() {
@@ -547,8 +562,9 @@ public class RustInputMethodService extends InputMethodService {
     // newest words); the editor receives only the final text via
     // onTextTranscribed, so there is no risk of Frankenstein text from
     // revising hypotheses mid-utterance.
-    public void onPartialText(String text) {
+    public void onPartialText(String text, int sessionId) {
         mainHandler.post(() -> {
+            if (sessionId != currentSessionId) return;
             if (isRecording && partialTextView != null && partialScroll != null
                     && text != null && !text.trim().isEmpty()) {
                 // Show the live hypothesis and scroll the window to the
@@ -569,8 +585,9 @@ public class RustInputMethodService extends InputMethodService {
     }
 
     // Called from Rust
-    public void onTextTranscribed(String text) {
+    public void onTextTranscribed(String text, int sessionId) {
         mainHandler.post(() -> {
+            if (sessionId != currentSessionId) return;
             if (text == null || text.trim().isEmpty()) {
                 // Nothing recognized — don't insert a stray space.
                 updateRecordButtonUI(false);
@@ -595,10 +612,13 @@ public class RustInputMethodService extends InputMethodService {
                 // provided the real-time preview; committing only this complete
                 // result keeps the editor atomic and avoids duplicate/partial
                 // text when a provider closes or revises an SSE response.
-                new PostProcessor(settings, mainHandler, () -> !isDestroyed)
+                final int processingSessionId = sessionId;
+                new PostProcessor(settings, mainHandler,
+                        () -> processingSessionId == currentSessionId && !isDestroyed)
                         .process(text, new PostProcessor.PostProcessCallback() {
                     @Override
                     public void onSuccess(String refinedText) {
+                        if (processingSessionId != currentSessionId) return;
                         String result = refinedText != null && !refinedText.trim().isEmpty()
                                 ? refinedText : text;
                         commitFinalText(result);
@@ -606,6 +626,7 @@ public class RustInputMethodService extends InputMethodService {
 
                     @Override
                     public void onError(String error) {
+                        if (processingSessionId != currentSessionId) return;
                         Log.w(TAG, "Post-processing failed, delivering raw transcript: " + error);
                         commitFinalText(text);
                     }
@@ -678,10 +699,17 @@ public class RustInputMethodService extends InputMethodService {
             pendingCommitText = null;
         }
     }
-    public void onAudioLevel(float level) {
+    public void onAudioLevel(float level, int sessionId) {
+        if (sessionId != currentSessionId) return;
         if (micLevelView != null) {
-            mainHandler.post(() -> micLevelView.setLevel(level));
+            mainHandler.post(() -> {
+                if (sessionId == currentSessionId) micLevelView.setLevel(level);
+            });
         }
+    }
+
+    public void onAudioLevel(float level) {
+        onAudioLevel(level, currentSessionId);
     }
 
     private boolean isPauseAudioEnabled() {

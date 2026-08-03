@@ -52,6 +52,8 @@ const ERROR_NO_MATCH: i32 = 7;
 /// finaliser. Deliberately does NOT hold the cpal stream, to avoid an Arc cycle
 /// (the stream's callback holds an `Arc<Endpoint>`).
 struct Endpoint {
+    /// Java generation for this recognition session.
+    session_id: i32,
     audio_buffer: Mutex<Vec<f32>>,
     /// Total samples ever pushed (monotonic, unlike the drained buffer) —
     /// used for the minimum-audio check before transcribing.
@@ -89,22 +91,39 @@ fn call_void(env: &mut JNIEnv, obj: &JObject, method: &str) {
     let _ = env.call_method(obj, method, "()V", &[]);
 }
 
-fn call_rms(env: &mut JNIEnv, obj: &JObject, rms_db: f32) {
-    let _ = env.call_method(obj, "onRmsChanged", "(F)V", &[rms_db.into()]);
+fn call_rms(env: &mut JNIEnv, obj: &JObject, rms_db: f32, session_id: i32) {
+    let _ = env.call_method(
+        obj,
+        "onRmsChanged",
+        "(FI)V",
+        &[rms_db.into(), session_id.into()],
+    );
 }
 
-fn call_error(env: &mut JNIEnv, obj: &JObject, code: i32) {
-    let _ = env.call_method(obj, "onError", "(I)V", &[code.into()]);
+fn call_error(env: &mut JNIEnv, obj: &JObject, code: i32, session_id: i32) {
+    let _ = env.call_method(obj, "onError", "(II)V", &[code.into(), session_id.into()]);
 }
 
-fn call_results(env: &mut JNIEnv, obj: &JObject, text: &str) {
+fn call_results(env: &mut JNIEnv, obj: &JObject, text: &str, session_id: i32) {
     if let Ok(jtxt) = env.new_string(text) {
-        let _ = env.call_method(obj, "onResults", "(Ljava/lang/String;)V", &[(&jtxt).into()]);
+        let _ = env.call_method(
+            obj,
+            "onResults",
+            "(Ljava/lang/String;I)V",
+            &[(&jtxt).into(), session_id.into()],
+        );
     }
 }
 
-fn call_partial(env: &mut JNIEnv, obj: &JObject, text: &str) {
-    crate::jni_util::notify_partial(env, obj, text);
+fn call_partial(env: &mut JNIEnv, obj: &JObject, text: &str, session_id: i32) {
+    if let Ok(jtxt) = env.new_string(text) {
+        let _ = env.call_method(
+            obj,
+            "onPartialText",
+            "(Ljava/lang/String;I)V",
+            &[(&jtxt).into(), session_id.into()],
+        );
+    }
 }
 
 // --- JNI entry points ---------------------------------------------------------
@@ -142,6 +161,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
     env: JNIEnv,
     _class: JClass,
     service: JObject,
+    session_id: jni::sys::jint,
 ) {
     let jvm = match env.get_java_vm() {
         Ok(vm) => Arc::new(vm),
@@ -160,12 +180,16 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
         if let Some(old) = guard.take() {
             old.shared.cancelled.store(true, Ordering::SeqCst);
             old.shared.finalized.store(true, Ordering::SeqCst);
+            if let Some(tx) = old.shared.stream_cmd_tx.lock().unwrap().clone() {
+                let _ = tx.send(crate::engine::StreamCmd::Cancel);
+            }
             *old.stream.lock().unwrap() = None;
         }
     }
 
     let now = Instant::now();
     let shared = Arc::new(Endpoint {
+        session_id: session_id as i32,
         audio_buffer: Mutex::new(Vec::new()),
         total_pushed: AtomicUsize::new(0),
         last_voice: Mutex::new(now),
@@ -190,7 +214,12 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
             Ok(e) => e,
             Err(_) => return,
         };
-        call_void(&mut env2, shared.target.as_obj(), "onReadyForSpeech");
+        let _ = env2.call_method(
+            shared.target.as_obj(),
+            "onReadyForSpeech",
+            "(I)V",
+            &[shared.session_id.into()],
+        );
     }
 
     // Open the microphone (16 kHz mono, matching the model + voice_session).
@@ -199,7 +228,12 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
         Some(d) => d,
         None => {
             let mut env2 = jvm.attach_current_thread().unwrap();
-            call_error(&mut env2, shared.target.as_obj(), ERROR_AUDIO);
+            call_error(
+                &mut env2,
+                shared.target.as_obj(),
+                ERROR_AUDIO,
+                shared.session_id,
+            );
             return;
         }
     };
@@ -225,7 +259,12 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
         Err(e) => {
             log::error!("Failed to open microphone: {}", e);
             let mut env2 = jvm.attach_current_thread().unwrap();
-            call_error(&mut env2, shared.target.as_obj(), ERROR_AUDIO);
+            call_error(
+                &mut env2,
+                shared.target.as_obj(),
+                ERROR_AUDIO,
+                shared.session_id,
+            );
             return;
         }
     }
@@ -277,6 +316,9 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
     if let Some(session) = guard.as_ref() {
         session.shared.cancelled.store(true, Ordering::SeqCst);
         session.shared.finalized.store(true, Ordering::SeqCst);
+        if let Some(tx) = session.shared.stream_cmd_tx.lock().unwrap().clone() {
+            let _ = tx.send(crate::engine::StreamCmd::Cancel);
+        }
         *session.stream.lock().unwrap() = None;
     }
     *guard = None;
@@ -330,7 +372,12 @@ fn audio_callback(shared: &Arc<Endpoint>, data: &[f32]) {
             {
                 *shared.last_voice.lock().unwrap() = Instant::now();
                 if let Ok(mut env) = shared.jvm.attach_current_thread() {
-                    call_void(&mut env, shared.target.as_obj(), "onBeginningOfSpeech");
+                    let _ = env.call_method(
+                        shared.target.as_obj(),
+                        "onBeginningOfSpeech",
+                        "(I)V",
+                        &[shared.session_id.into()],
+                    );
                 }
             }
         }
@@ -350,7 +397,12 @@ fn audio_callback(shared: &Arc<Endpoint>, data: &[f32]) {
         *last = Instant::now();
         drop(last);
         if let Ok(mut env) = shared.jvm.attach_current_thread() {
-            call_rms(&mut env, shared.target.as_obj(), level * 10.0);
+            call_rms(
+                &mut env,
+                shared.target.as_obj(),
+                level * 10.0,
+                shared.session_id,
+            );
         }
     }
 }
@@ -437,28 +489,32 @@ fn streaming_pump(
             local.extend_from_slice(&chunk);
             chunk
         };
-        let mut partial = |text: &str| call_partial(&mut env, target, text);
+        let mut partial = |text: &str| call_partial(&mut env, target, text, shared.session_id);
         engine::transcribe_stream_shared(&engine_arc, &rx, &mut drain, &mut partial)
     };
     shared.streaming_active.store(false, Ordering::SeqCst);
 
     match result {
-        Ok(text) if !text.trim().is_empty() => call_results(&mut env, target, &text),
-        Ok(_) => call_error(&mut env, target, ERROR_NO_MATCH),
+        Ok(text) if !text.trim().is_empty() => {
+            call_results(&mut env, target, &text, shared.session_id)
+        }
+        Ok(_) => call_error(&mut env, target, ERROR_NO_MATCH, shared.session_id),
         Err(msg) if msg == "Canceled" => {}
         Err(msg) => {
             // The stream could not run (e.g. begin failed): fall back to the
             // whole-buffer transcription so no text is lost.
             if local.is_empty() {
                 log::error!("Streaming failed: {}", msg);
-                call_error(&mut env, target, ERROR_SERVER);
+                call_error(&mut env, target, ERROR_SERVER, shared.session_id);
             } else {
                 match engine::transcribe_shared(&engine_arc, local) {
-                    Ok(text) if !text.trim().is_empty() => call_results(&mut env, target, &text),
-                    Ok(_) => call_error(&mut env, target, ERROR_NO_MATCH),
+                    Ok(text) if !text.trim().is_empty() => {
+                        call_results(&mut env, target, &text, shared.session_id)
+                    }
+                    Ok(_) => call_error(&mut env, target, ERROR_NO_MATCH, shared.session_id),
                     Err(e) => {
                         log::error!("Transcription failed: {}", e);
-                        call_error(&mut env, target, ERROR_SERVER);
+                        call_error(&mut env, target, ERROR_SERVER, shared.session_id);
                     }
                 }
             }
@@ -491,7 +547,7 @@ fn finalize(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>>) {
 
     let speech = shared.speech_started.load(Ordering::SeqCst);
     if speech {
-        call_void(&mut env, target, "onEndOfSpeech");
+        let _ = env.call_method(target, "onEndOfSpeech", "(I)V", &[shared.session_id.into()]);
     }
 
     // ~0.2s minimum of audio to bother transcribing (total pushed, not the
@@ -501,14 +557,14 @@ fn finalize(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>>) {
         if let Some(tx) = shared.stream_cmd_tx.lock().unwrap().clone() {
             let _ = tx.send(crate::engine::StreamCmd::Cancel);
         }
-        call_error(&mut env, target, ERROR_NO_MATCH);
+        call_error(&mut env, target, ERROR_NO_MATCH, shared.session_id);
         clear_session(&shared);
         return;
     }
 
     if engine::get_engine().is_none() {
         if engine::ensure_loaded(&mut env, target).is_err() {
-            call_error(&mut env, target, ERROR_SERVER);
+            call_error(&mut env, target, ERROR_SERVER, shared.session_id);
             clear_session(&shared);
             return;
         }
@@ -532,15 +588,17 @@ fn finalize(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>>) {
         Some(eng_arc) => {
             let res = engine::transcribe_shared(&eng_arc, buffer);
             match res {
-                Ok(text) if !text.trim().is_empty() => call_results(&mut env, target, &text),
-                Ok(_) => call_error(&mut env, target, ERROR_NO_MATCH),
+                Ok(text) if !text.trim().is_empty() => {
+                    call_results(&mut env, target, &text, shared.session_id)
+                }
+                Ok(_) => call_error(&mut env, target, ERROR_NO_MATCH, shared.session_id),
                 Err(e) => {
                     log::error!("Transcription failed: {}", e);
-                    call_error(&mut env, target, ERROR_SERVER);
+                    call_error(&mut env, target, ERROR_SERVER, shared.session_id);
                 }
             }
         }
-        None => call_error(&mut env, target, ERROR_SERVER),
+        None => call_error(&mut env, target, ERROR_SERVER, shared.session_id),
     }
 
     clear_session(&shared);

@@ -1,68 +1,101 @@
 # agent_prompt.md — Instrucciones para el siguiente agente
 
-> **Rol:** Continúas operativizando y limpiando el *Guantelete de Uncle Bob* en
-> `android_transcribe_app`. Lee primero `AGENTS.md` (el contrato canónico),
-> `GAUNTLETE_PLAN.md` (estado actual + evidencia), y este archivo. No toques
-> lógica de JNI ni el rewrite de `PLAN.md` (SettingsManager).
+> Lee primero `AGENTS.md`, `GAUNTLETE_PLAN.md`, `.agents/progress.md` y la
+> auditoría `.agents/memory/static-audit-debt-2026-08-03.md`.
+>
+> El repositorio está en **Guantelete ABIERTO**. No confundas diseño o auditoría
+> estática con validación ejecutada. Esta guía prioriza la implementación futura.
 
-## Prioridad A: promover `lintDebug` a hard gate (más importante)
+## Regla de alcance
 
-`lintDebug` está como `continue-on-error` hasta que se paguen los 20 errores
-legacy. Objetivo: que `./gradlew lintDebug` salga VERDE y quitarse el
-`continue-on-error` del workflow `debug_telegram.yml`. **No tocar JNI ni firmas
-de callbacks (AGENTS.md §4.3, §5.1); preferir `@RequiresApi`/`@TargetApi`, guards
-de `Build.VERSION`, `app:tint`, flags `RECEIVER_EXPORTED`, y `lint:disable`
-locales justicamente documentados.**
+La auditoría pidió documentar deuda, no arreglarla automáticamente. El siguiente
+agente puede implementar los puntos de abajo sólo después de leer el código
+completo y actualizar referencias JNI/tests/documentación afectadas.
 
-Los 20 errores (ver también `app/build/.../lint-results-debug.txt`):
+## Prioridad P0 — bloqueadores
 
-| # | Archivo:Error | IssueId | Fix sugerido |
-|---|---|---|---|
-| 5 | `RustInputMethodService.java:185,478,535,606,631` | `NewApi` (API 28 `switchToPreviousInputMethod`) | guard `SDK_INT >= 28` o `@TargetApi(28)` |
-| 1 | `RustInputMethodService.java:140` | `UnspecifiedRegisterReceiverFlag` (CANCEL_PP) | add `RECEIVER_EXPORTED`/`RECEIVER_NOT_EXPORTED` en `registerReceiver` |
-| 1 | `MainActivity.java:363` | `MissingSuperCall` | `super.onRequestPermissionsResult(...)` |
-| 6 | `LiveSubtitleService.java:247-270` | `NewApi` (API 29 `AudioPlaybackCapture*Builder`) | guard `SDK_INT >= 29` o anotar |
-| 1 | `LiveSubtitleService.java:267` | `MissingPermission` (MediaProjection) | `checkPermission` o `try/catch SecurityException` |
-| 5 | `ime_layout.xml:91,105,118,131` + `service_subtitle.xml:36` | `UseAppTint` | `android:tint`→`app:tint` (+ xmlns `app`) |
-| 1 | `AndroidManifest.xml:105` | `AppLinkUrlError` | añadir URL/asset `android:autoVerify` |
+### 1. Aislar postprocesado por sesión
 
-## Prioridad B: CI de tests Rust (cuando sea posible)
+`PostProcessor.cancelAll()` es global. Introduce operation-id/owner por `Call` y
+cancela únicamente la operación afectada. Mantén el fallback al texto ASR,
+`stream:false`, cierre de `Response`, validadores y broadcast main → `:ime`.
 
-Una vez arreglado/pinneado el build de `transcribe-cpp-sys`, añade`.github/workflows/cargo-test.yml`
-que corra `cargo test` en ubuntu-latest x86_64. Mientras tanto los tests Rust están
-verificados vía el espejo en `/tmp/gauntlet_rust` (ver GAUNTLETE_PLAN §2).
+Tests mínimos:
 
-## Prioridad C: pulir la evidencia
+- dos llamadas simultáneas de superficies distintas;
+- cancelación de una sin afectar a la otra;
+- toggle off durante request;
+- HTTP error, timeout, JSON inválido y contenido vacío;
+- exactamente una entrega final por sesión.
 
-- Re-confirma los 14 JVM tests con `./gradlew testDebugUnitTest checkModels`.
-- Ejecuta `python3 scripts/check_translations.py` tras cada cambio de strings.
-- `rustfmt --check --edition 2021 src/audio.rs src/corrector.rs` (mis aportes ya son clean).
+### 2. Generación y cleanup del worker de subtítulos
 
-## Reglas de estilo y convenciones (no negociables)
-- **Commits:** convencionales (`feat:`, `ci:`, `fix:`, …), imperativo, sin punto
-  final. **No commitear sin PR abierta** siguiendo `.github/PULL_REQUEST_TEMPLATE.md`.
-- **i18n:** toda cadena visible → `values/strings.xml` + 6 locales; si no se traduce
-  → `translatable="false"`. El gate `check_translations.py` debe seguir PASS.
-- **Settings:** marker files en `filesDir()`, nunca `SharedPreferences` para los
-  que Rust consume (AGENTS.md §4.5).
-- **JNI:** firma `Java_dev_notune_transcribe_<Class>_<method>` inamovible;
-  callbacks `onStatusUpdate/onTextTranscribed/onSubtitleText/onAutoStop/...`.
-- **Engine:** re-leer `model_language` en cada `run`; preservar `catch_unwind` +
-  recovery de Mutex (AGENTS.md §4.7/5.1).
-- **Entorno host (esto):** ARM64 Termux; `cargo test` del cdylib bloqueado por CMake
-  de `transcribe-cpp-sys`; usa el espejo para pruebas puras.
+`cleanupNative()` no debe dejar workers antiguos capaces de llamar a Java.
+Añade generación/token de sesión, cierre de canal y terminación determinista.
+Preserva la semántica `isFinal=true` append / `false` replace, merging y lag
+policies calibradas.
 
-## Qué NO tocar (bloqueos explícitos)
-- `PostProcessor.java`, ningún `.rs`, layouts ni strings del rewrite de PLAN.md.
-- Firmas JNI / callbacks / orden de `System.loadLibrary` (siempre `c++_shared`
-  antes de `android_transcribe_app`).
-- Umbrales de `subtitle.rs` (`MAX_FINAL_LAG_SAMPLES`, etc.) sin validar en HW lento.
-- `abiFilters` (solo `arm64-v8a`), ni `GGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16`.
-- `.bashrc`/`.profile` del host; no `systemd`/`systemctl`.
+Tests/smoke mínimos:
 
-## Verificación rápida de sanity al arrancar
+- start/stop/start rápido;
+- revocación MediaProjection;
+- destrucción del servicio durante un job;
+- ningún callback posterior a cleanup o sobre overlay eliminado.
+
+### 3. Hash runtime del modelo debug
+
+La descarga runtime debe verificar el mismo SHA-256 declarado antes de activar
+`active_model`. Usa temporal, hash, rename y activación atómica. Prueba mismatch,
+truncado, rename fallido, reintento y falta de espacio.
+
+### 4. Unificar toolchain
+
+La fuente efectiva actual es `app/build.gradle.kts`; antes de editar, decidir la
+combinación soportada y sincronizar Gradle, workflows, README, AGENTS y docs. Las
+rutas `linux-x86_64` no pueden presentarse como compatibilidad ARM64 sin resolver
+la arquitectura o declarar el límite.
+
+## Prioridad P1
+
+- operation-id para `TranscribeFileActivity`/`transcribe_file.rs`;
+- escritura atómica de todos los marker files consumidos por main y `:ime`;
+- tests HTTP/JVM del payload y fallback final-only;
+- lifecycle de subtítulos/MediaProjection Android 10–15 y OEM.
+
+## Prioridad P2
+
+- habilitar `cargo test` real o documentar bloqueo reproducible de
+  `transcribe-cpp-sys` en CI;
+- `cargo fmt --all -- --check` del Rust tocado;
+- smoke/instrumentation matrix de las seis superficies;
+- migrar strings hardcodeadas visibles a recursos;
+- conservar evidencia fechada de cada gate.
+
+## Prohibiciones
+
+- No cambiar firmas JNI sin búsqueda global y actualización de Java/Rust.
+- No eliminar `catch_unwind` ni recuperación de Mutex poison.
+- No cachear `model_language` dentro de `Engine`.
+- No subir umbrales de subtítulos sin hardware lento.
+- No activar un modelo antes de verificar su hash.
+- No declarar “BUILD SUCCESSFUL” sin salida real del comando.
+- No declarar “Guantelete cerrado” mientras exista cualquier P0 abierto.
+
+## Validación final prevista
+
+Las invocaciones deben ejecutarse en CI/host autorizado, separadas según el
+workflow:
+
 ```bash
-./gradlew testDebugUnitTest checkModels --offline
 python3 scripts/check_translations.py
-rustfmt --check --edition 2021 src/audio.rs
+./gradlew testDebugUnitTest
+./gradlew assembleDebug
+./gradlew lintDebug
+./gradlew checkModels
+cargo test
+cargo fmt --all -- --check
 ```
+
+Después: smoke test de popup, RecognitionService, IME, subtítulos, archivo y
+custom words con modelo streaming y no streaming, PP desactivado/activado/
+fallido, cancelación rápida, cambio de idioma y proceso `:ime`.

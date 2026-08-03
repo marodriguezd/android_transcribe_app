@@ -215,29 +215,27 @@ cubre.
 
 **Regla modular:** mover lógica entre módulos exige actualizar también
 `AndroidManifest.xml` (registro de activities/services) y `lib.rs` (`pub mod`).
-No renombrar archivos Rust/Java sin actualizar la entrada JNI (§4.3).
-
-**Post-procesado AI (fork addition, Java-only — contrato AGENT-ONLY):**
+No renombrar archivos Rust/Java sin actualizar la entrada JNI (§4.3).**Post-procesado AI (fork addition, Java-only — contrato AGENT-ONLY):**
 - **`pp_default_prompt` es una sola línea con escapes `\n`.** AAPT2 **colapsa los saltos de línea
   literales** de un `<string>` a un solo espacio (verificado con `aapt2 dump strings`). Un valor
   multilínea se rompe en runtime: el campo de `PostProcessSettingsActivity` muestra todo junto
-  y el payload enviado al LLM es un muro plano — esa fue la causa del "prompt juntado" y de que
-  el LLM no refinara el texto. Usa `\n` (y `\n\n` para párrafos en blanco) dentro del valor.
+  y el payload enviado al LLM es un muro plano — esa fue la causa del "prompt juntado" y de que el
+  LLM no refinara el texto. Usa `\n` (y `\n\n` para párrafos en blanco) dentro del valor.
 - **El transcript no se manda dos veces.** Si el prompt activo contiene `${output}`, el texto
   crudo se inyecta en el system prompt y el `user message` pasa a ser el marcador fijo
   `"Apply the instructions to the transcript above."`. Si NO hay `${output}`, el texto viaja en
-  el user message. No duplicarlo (flag `injected` en `process()` y `processStreamingWithRetry()`
-  de `PostProcessor.java`): mandarlo dos veces hace que el LLM devuelva la entrada sin refinar.
-- **Streaming: no reintentar tras emitir tokens.** El reintento (hasta 3, backoff
-  `150ms*attempt`) solo aplica si el fallo ocurre antes del primer token. Si ya se emitieron
-  tokens, `onError(error, raw)` se entrega de inmediato: reintentar duplicaría texto ya
-  cometido en el editor (`emittedAny` en `handleStreamFailure`).
-- **IME ↔ editor:** en `RustInputMethodService.onTextTranscribed`, los tokens se cometen al
-  editor según llegan y `committedToEditor` marca si alguno llegó de verdad. `onSuccess`: si
-  ninguno llegó → `commitFinalText(texto completo)` (no perder el texto); si llegaron → espacio
-  final. `onError`: `deleteSurroundingText` solo si hay texto cometido, y siempre fallback al
-  texto crudo. Todo `commitText`/`deleteSurroundingText` va envuelto en try/catch (editor
-  muerto → evita cierres forzosos del IME).
+  el user message. No duplicarlo (flag `injected` en `process()` de `PostProcessor.java`):
+  mandarlo dos veces hace que el LLM devuelva la entrada sin refinar.
+- **Post-procesado final-only:** el streaming del transcriptor (`onPartialText`) es únicamente
+  una previsualización visual. Cuando llega `onTextTranscribed`, se manda el texto final una
+  sola vez mediante `process()` con una respuesta JSON completa (`stream` no se envía), y el
+  editor recibe un único `commitText` con el resultado refinado. Si el postprocesado está
+  desactivado, se comete el texto ASR directamente; si la llamada falla, se cancela o devuelve
+  una respuesta vacía/no válida, siempre se comete el texto crudo. Así se evita pegar tokens
+  parciales, duplicados o texto "Frankenstein" y se conserva la fluidez del streaming ASR.
+- **Cancelación/lifecycle:** `PostProcessor.cancelAll()` cancela llamadas en vuelo y los
+  validadores de Activity/IME impiden callbacks tardíos sobre componentes destruidos. El
+  `Response` de OkHttp se cierra siempre, incluidos errores y parseos fallidos.
 
 ### 4.7 Rust: contratos del singleton Engine (no romper)
 

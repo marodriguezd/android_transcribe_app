@@ -64,8 +64,8 @@ Mic (16 kHz mono f32)
      • propio catch_unwind → safe-fallback = texto crudo
      • cubre TODAS las superficies de golpe (IME/popup/subs/SR/archivo)
   → JNI callback `onTextTranscribed(string)`
-  → Java: aplica PostProcessor si está ON (con safe-fallback)
-  → commitText al InputConnection (IME)
+  → Java: aplica PostProcessor final-only si está ON (una respuesta completa, con safe-fallback)
+  → commitText único al InputConnection (IME)
   → setResult EXTRA_RESULTS (popup)
 ```
 
@@ -133,6 +133,10 @@ ModelsActivity (Java)
 | Worker subtitles ↔ `LiveSubtitleService` | `crossbeam_channel::unbounded` | Race en finals/partials |
 | MainActivity ↔ ModelsActivity ↔ Rust | `engine::reset()` (condvar-coordinated) | Doble carga de modelo |
 | CustomWordsActivity ↔ `corrector.rs` | marker file `filesDir/custom_words` | Corrección fonética no aplica o usa diccionario stale |
+
+## Post-procesado AI final-only (2026-08-03)
+
+El modelo ASR streaming y el postprocesador cumplen funciones distintas: los parciales de ASR se muestran como previsualización para conservar la sensación de tiempo real, pero no se pegan al editor. Al terminar la captura, `onTextTranscribed` recibe el transcript final y Java hace una única petición no-streaming a `PostProcessor.process()`. El editor recibe exactamente un resultado completo: el refinado si la llamada responde con contenido válido, o el transcript crudo si el postprocesado está desactivado, se cancela, falla, expira o devuelve una respuesta inválida. Esta separación elimina la carrera entre tokens SSE, revisiones del proveedor y `deleteSurroundingText`, sin modificar el pipeline de audio/ASR.
 
 ## Historia de decisiones
 

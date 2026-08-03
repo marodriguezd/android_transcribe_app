@@ -1,18 +1,17 @@
 package dev.notune.transcribe;
 
+import android.os.Handler;
 import android.util.Log;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import android.os.Handler;
-
 import java.io.IOException;
 import java.util.Collections;
-import java.util.function.BooleanSupplier;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.BooleanSupplier;
 
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -25,58 +24,51 @@ import okhttp3.Response;
 
 /**
  * AI post-processing over an OpenAI-compatible /chat/completions endpoint.
- * Uses a shared OkHttpClient so TLS sessions and TCP connections can be reused
- * across transcriptions. In-flight calls are tracked so they can be cancelled
- * when the user toggles post-processing off, and the enabled flag is re-checked
- * before the refined text is delivered.
+ *
+ * <p>The speech model owns the real-time experience: its partial hypotheses
+ * remain visual-only and its final transcript arrives through
+ * {@code onTextTranscribed}. Post-processing deliberately uses one complete
+ * response request after that final transcript is available. This keeps the
+ * editor atomic: it receives either the refined transcript once, or the raw
+ * transcript once if the optional network step fails.</p>
+ *
+ * <p>A shared OkHttpClient reuses connections across dictations. In-flight
+ * calls are tracked so they can be cancelled when the feature is disabled or
+ * an owning Activity/Service is destroyed.</p>
  */
 public class PostProcessor {
     private static final String TAG = "PostProcessor";
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
-    /**
-     * Broadcast action sent by the main process when post-processing is
-     * toggled off, so the ":ime" keyboard process can cancel its own
-     * in-flight OkHttp calls immediately.
-     */
+    /** Broadcast action used to cancel calls in the isolated IME process. */
     public static final String CANCEL_ACTION = "dev.notune.transcribe.CANCEL_PP";
 
     private static volatile OkHttpClient sharedClient;
     private static final Object CLIENT_LOCK = new Object();
-    private static final Set<Call> IN_FLIGHT = Collections.newSetFromMap(new ConcurrentHashMap<Call, Boolean>());
+    private static final Set<Call> IN_FLIGHT = Collections.newSetFromMap(
+            new ConcurrentHashMap<Call, Boolean>());
     private static final Object IN_FLIGHT_LOCK = new Object();
 
     private final SettingsManager settings;
     private final Handler uiHandler;
     private final BooleanSupplier validator;
 
-    /**
-     * Creates a PostProcessor that delivers callbacks on the caller's thread.
-     * Kept for backward compatibility with callers that manage their own
-     * UI-thread posting (e.g. fetchModels).
-     */
+    /** Creates a processor that delivers callbacks on the caller's thread. */
     public PostProcessor(SettingsManager settings) {
         this(settings, null, null);
     }
 
-    /**
-     * Creates a PostProcessor that delivers callbacks on the UI thread
-     * described by {@code uiHandler}. Callers can update UI directly from
-     * {@code onSuccess}/{@code onError} without runOnUiThread wrappers.
-     */
+    /** Creates a processor that delivers callbacks on {@code uiHandler}. */
     public PostProcessor(SettingsManager settings, Handler uiHandler) {
         this(settings, uiHandler, null);
     }
 
     /**
-     * Creates a PostProcessor that delivers callbacks on the UI thread only
-     * while {@code validator} returns {@code true}. This prevents late
-     * callbacks from running after the owning Activity or Service has been
-     * destroyed. Pass a validator such as
-     * {@code () -> !isFinishing() && !isDestroyed()} from an Activity, or
-     * a service-owned flag for background services.
+     * Creates a processor that delivers callbacks on {@code uiHandler} only
+     * while {@code validator} returns true.
      */
-    public PostProcessor(SettingsManager settings, Handler uiHandler, BooleanSupplier validator) {
+    public PostProcessor(SettingsManager settings, Handler uiHandler,
+                         BooleanSupplier validator) {
         this.settings = settings;
         this.uiHandler = uiHandler;
         this.validator = validator;
@@ -101,7 +93,7 @@ public class PostProcessor {
         return client;
     }
 
-    /** Cancel every in-flight OkHttp call created by any PostProcessor instance. */
+    /** Cancel every in-flight OkHttp call created by any processor instance. */
     public static void cancelAll() {
         synchronized (IN_FLIGHT_LOCK) {
             for (Call call : IN_FLIGHT) {
@@ -112,59 +104,65 @@ public class PostProcessor {
         }
     }
 
-    public void process(String rawText, final PostProcessCallback callback) {
+    /**
+     * Sends exactly one non-streaming completion request for the final ASR
+     * transcript. The callback receives either the complete refined response
+     * or an error so each caller can deliver the raw transcript as fallback.
+     */
+    public void process(final String rawText, final PostProcessCallback callback) {
         if (rawText == null || rawText.trim().isEmpty()) {
             dispatchToUi(() -> callback.onSuccess(rawText != null ? rawText : ""));
             return;
         }
 
-        // Defensive re-check: if the toggle was disabled between the call site's
-        // check and this method, deliver the raw text immediately.
+        // Re-check the marker here, not only at each caller, because the toggle
+        // can change between receiving the ASR result and creating this call.
         if (!settings.isPostProcessEnabled()) {
             dispatchToUi(() -> callback.onSuccess(rawText));
             return;
         }
 
-        String apiUrl = settings.getEffectiveApiUrl() != null ? settings.getEffectiveApiUrl().trim() : "";
-        while (apiUrl.endsWith("/")) {
-            apiUrl = apiUrl.substring(0, apiUrl.length() - 1);
-        }
-        String completionUrl = apiUrl;
-        if (!completionUrl.endsWith("/chat/completions")) {
-            completionUrl += "/chat/completions";
-        }
-
-        String apiKey = settings.getApiKey();
-        String model = settings.getModelName();
-        String systemInstruction = settings.getActivePromptBody();
-        // Inject the transcript where the prompt template marks ${output}
-        // (e.g. the bundled Wispr-style prompt). Without the marker the prompt
-        // is used as-is and the text travels in the user message below.
-        boolean injected = systemInstruction != null && systemInstruction.contains("${output}");
-        if (injected) {
-            systemInstruction = systemInstruction.replace("${output}", rawText);
-        }
+        final String completionUrl = buildCompletionUrl(settings.getEffectiveApiUrl());
+        final String apiKey = settings.getApiKey();
+        final String model = settings.getModelName();
+        final String systemInstruction = settings.getActivePromptBody();
+        final boolean injected = systemInstruction != null
+                && systemInstruction.contains("${output}");
+        final String requestSystemInstruction = injected
+                ? systemInstruction.replace("${output}", rawText)
+                : systemInstruction;
 
         try {
             JSONObject json = new JSONObject();
             json.put("model", model);
+            // Be explicit: this is the single complete-response path. Some
+            // OpenAI-compatible providers otherwise apply their own default.
+            json.put("stream", false);
 
             JSONArray messages = new JSONArray();
-            if (systemInstruction != null && !systemInstruction.trim().isEmpty()) {
-                JSONObject sysMsg = new JSONObject();
-                sysMsg.put("role", "system");
-                sysMsg.put("content", systemInstruction.trim());
-                messages.put(sysMsg);
+            if (requestSystemInstruction != null
+                    && !requestSystemInstruction.trim().isEmpty()) {
+                JSONObject systemMessage = new JSONObject();
+                systemMessage.put("role", "system");
+                systemMessage.put("content", requestSystemInstruction.trim());
+                messages.put(systemMessage);
             }
-            JSONObject userMsg = new JSONObject();
-            userMsg.put("role", "user");
-            userMsg.put("content", injected ? "Apply the instructions to the transcript above." : rawText);
-            messages.put(userMsg);
+
+            JSONObject userMessage = new JSONObject();
+            userMessage.put("role", "user");
+            // A ${output} prompt already contains the transcript in the system
+            // message. Do not send it a second time: duplicate input makes some
+            // providers echo the transcript instead of editing it.
+            userMessage.put("content", injected
+                    ? "Apply the instructions to the transcript above."
+                    : rawText);
+            messages.put(userMessage);
             json.put("messages", messages);
 
             RequestBody body = RequestBody.create(json.toString(), JSON);
             Request.Builder requestBuilder = new Request.Builder()
                     .url(completionUrl)
+                    .addHeader("Accept", "application/json")
                     .post(body);
             if (apiKey != null && !apiKey.isEmpty()) {
                 requestBuilder.addHeader("Authorization", "Bearer " + apiKey);
@@ -178,274 +176,82 @@ public class PostProcessor {
                 @Override
                 public void onFailure(Call call, IOException e) {
                     IN_FLIGHT.remove(call);
-                    Log.e(TAG, "API call failed: " + e.getMessage());
-                    dispatchToUi(() -> callback.onError(e.getMessage()));
+                    String message = e.getMessage() != null
+                            ? e.getMessage() : "Post-processing request failed";
+                    Log.e(TAG, "API call failed: " + message);
+                    dispatchToUi(() -> callback.onError(message));
                 }
 
                 @Override
                 public void onResponse(Call call, Response response) throws IOException {
                     IN_FLIGHT.remove(call);
-                    // Always close the response, including error and fallback
-                    // paths. A leaked response body eventually exhausts the
-                    // shared OkHttp connection pool after repeated dictations.
+                    // Always close responses, including HTTP errors and parse
+                    // failures, so repeated dictations do not exhaust OkHttp.
                     try (Response responseResource = response) {
                         // If the user disabled post-processing while the request
-                        // was in flight, fall back to the raw transcript instead
-                        // of committing the refined text.
+                        // was in flight, the raw transcript wins.
                         if (!settings.isPostProcessEnabled()) {
                             dispatchToUi(() -> callback.onSuccess(rawText));
                             return;
                         }
+
                         if (!responseResource.isSuccessful()) {
-                            Log.e(TAG, "API error: code=" + responseResource.code());
-                            dispatchToUi(() -> callback.onError("API Error " + responseResource.code()));
+                            String error = "API Error " + responseResource.code();
+                            Log.e(TAG, error);
+                            dispatchToUi(() -> callback.onError(error));
                             return;
                         }
+
                         try {
                             if (responseResource.body() == null) {
                                 dispatchToUi(() -> callback.onError("Empty response body"));
                                 return;
                             }
                             String responseData = responseResource.body().string();
-                            JSONObject jsonResponse = new JSONObject(responseData);
-                            JSONArray choices = jsonResponse.getJSONArray("choices");
-                            if (choices.length() > 0) {
-                                String resultText = choices.getJSONObject(0)
-                                        .getJSONObject("message")
-                                        .getString("content");
-                                dispatchToUi(() -> callback.onSuccess(resultText.trim()));
-                            } else {
+                            JSONObject responseJson = new JSONObject(responseData);
+                            JSONArray choices = responseJson.getJSONArray("choices");
+                            if (choices.length() == 0) {
                                 dispatchToUi(() -> callback.onError("Empty response from AI"));
+                                return;
+                            }
+
+                            String resultText = choices.getJSONObject(0)
+                                    .getJSONObject("message")
+                                    .getString("content")
+                                    .trim();
+                            if (resultText.isEmpty()) {
+                                dispatchToUi(() -> callback.onError("Empty response from AI"));
+                            } else {
+                                dispatchToUi(() -> callback.onSuccess(resultText));
                             }
                         } catch (Exception e) {
+                            String error = "Parse error: " + e.getMessage();
                             Log.e(TAG, "Failed to parse API response: " + e.getMessage());
-                            dispatchToUi(() -> callback.onError("Parse error: " + e.getMessage()));
+                            dispatchToUi(() -> callback.onError(error));
                         }
                     }
                 }
             });
         } catch (Exception e) {
-            Log.e(TAG, "Failed to create request: " + e.getMessage());
-            dispatchToUi(() -> callback.onError(e.getMessage()));
+            String error = e.getMessage() != null
+                    ? e.getMessage() : "Failed to create post-processing request";
+            Log.e(TAG, error);
+            dispatchToUi(() -> callback.onError(error));
         }
     }
 
-    /**
-     * Process post-processing with Server-Sent Events (SSE) streaming.
-     * Emits token deltas in real-time via {@code callback.onToken(token)}.
-     * Automatically retries up to 3 times on connection errors, and falls back to
-     * raw transcript on persistent failure to prevent partial/corrupted text.
-     */
-    public void processStreaming(final String rawText, final StreamCallback callback) {
-        processStreamingWithRetry(rawText, callback, 1);
-    }
-
-    private void processStreamingWithRetry(final String rawText, final StreamCallback callback, final int attempt) {
-        if (rawText == null || rawText.trim().isEmpty()) {
-            dispatchToUi(() -> callback.onSuccess(rawText != null ? rawText : ""));
-            return;
-        }
-
-        if (!settings.isPostProcessEnabled()) {
-            dispatchToUi(() -> callback.onSuccess(rawText));
-            return;
-        }
-
-        // Set once the first token has been dispatched to the editor. A retry
-        // after that point would duplicate committed text, so failures are
-        // delivered as errors instead.
-        final boolean[] emittedAny = new boolean[]{false};
-
-        String apiUrl = settings.getEffectiveApiUrl() != null ? settings.getEffectiveApiUrl().trim() : "";
+    private static String buildCompletionUrl(String configuredUrl) {
+        String apiUrl = configuredUrl != null ? configuredUrl.trim() : "";
         while (apiUrl.endsWith("/")) {
             apiUrl = apiUrl.substring(0, apiUrl.length() - 1);
         }
-        String completionUrl = apiUrl;
-        if (!completionUrl.endsWith("/chat/completions")) {
-            completionUrl += "/chat/completions";
+        if (!apiUrl.endsWith("/chat/completions")) {
+            apiUrl += "/chat/completions";
         }
-
-        String apiKey = settings.getApiKey();
-        String model = settings.getModelName();
-        String systemInstruction = settings.getActivePromptBody();
-        boolean injected = systemInstruction != null && systemInstruction.contains("${output}");
-        if (injected) {
-            systemInstruction = systemInstruction.replace("${output}", rawText);
-        }
-
-        try {
-            JSONObject json = new JSONObject();
-            json.put("model", model);
-            json.put("stream", true);
-
-            JSONArray messages = new JSONArray();
-            if (systemInstruction != null && !systemInstruction.trim().isEmpty()) {
-                JSONObject sysMsg = new JSONObject();
-                sysMsg.put("role", "system");
-                sysMsg.put("content", systemInstruction.trim());
-                messages.put(sysMsg);
-            }
-            JSONObject userMsg = new JSONObject();
-            userMsg.put("role", "user");
-            userMsg.put("content", injected ? "Apply the instructions to the transcript above." : rawText);
-            messages.put(userMsg);
-            json.put("messages", messages);
-
-            RequestBody body = RequestBody.create(json.toString(), JSON);
-            Request.Builder requestBuilder = new Request.Builder()
-                    .url(completionUrl)
-                    .addHeader("Accept", "text/event-stream")
-                    .post(body);
-            if (apiKey != null && !apiKey.isEmpty()) {
-                requestBuilder.addHeader("Authorization", "Bearer " + apiKey);
-            }
-
-            Call call = getSharedClient().newCall(requestBuilder.build());
-            synchronized (IN_FLIGHT_LOCK) {
-                IN_FLIGHT.add(call);
-            }
-
-            call.enqueue(new Callback() {
-                @Override
-                public void onFailure(Call call, IOException e) {
-                    IN_FLIGHT.remove(call);
-                    Log.e(TAG, "Streaming API call failed (attempt " + attempt + "): " + e.getMessage());
-                    handleStreamFailure(rawText, callback, attempt, e.getMessage(), emittedAny[0]);
-                }
-
-                @Override
-                public void onResponse(Call call, Response response) throws IOException {
-                    IN_FLIGHT.remove(call);
-                    if (!settings.isPostProcessEnabled()) {
-                        dispatchToUi(() -> callback.onSuccess(rawText));
-                        return;
-                    }
-
-                    // If provider rejected stream parameter (e.g. HTTP 400), fallback to non-streaming POST once
-                    if (!response.isSuccessful()) {
-                        int statusCode = response.code();
-                        response.close();
-                        if (statusCode == 400 && attempt == 1) {
-                            Log.w(TAG, "Streaming rejected (HTTP 400), falling back to non-streaming POST");
-                            processNonStreamingFallback(rawText, callback);
-                            return;
-                        }
-                        Log.e(TAG, "Streaming API error (attempt " + attempt + "): code=" + statusCode);
-                        handleStreamFailure(rawText, callback, attempt, "API Error " + statusCode, emittedAny[0]);
-                        return;
-                    }
-
-                    try (okhttp3.ResponseBody responseBody = response.body()) {
-                        if (responseBody == null) {
-                            handleStreamFailure(rawText, callback, attempt, "Empty response body", emittedAny[0]);
-                            return;
-                        }
-
-                        java.io.InputStream inputStream = responseBody.byteStream();
-                        java.io.BufferedReader reader = new java.io.BufferedReader(
-                                new java.io.InputStreamReader(inputStream, java.nio.charset.StandardCharsets.UTF_8));
-
-                        StringBuilder fullTextBuilder = new StringBuilder();
-                        String line;
-                        boolean receivedTokens = false;
-                        while ((line = reader.readLine()) != null) {
-                            if (!settings.isPostProcessEnabled()) {
-                                dispatchToUi(() -> callback.onSuccess(rawText));
-                                return;
-                            }
-                            line = line.trim();
-                            if (line.isEmpty() || line.startsWith(":")) {
-                                continue;
-                            }
-                            if (line.startsWith("data:")) {
-                                String dataPayload = line.substring(5).trim();
-                                if ("[DONE]".equals(dataPayload)) {
-                                    break;
-                                }
-                                try {
-                                    JSONObject jsonResponse = new JSONObject(dataPayload);
-                                    JSONArray choices = jsonResponse.optJSONArray("choices");
-                                    if (choices != null && choices.length() > 0) {
-                                        JSONObject choice0 = choices.getJSONObject(0);
-                                        JSONObject delta = choice0.optJSONObject("delta");
-                                        String token = null;
-                                        if (delta != null && delta.has("content")) {
-                                            token = delta.getString("content");
-                                        } else if (choice0.has("text")) {
-                                            token = choice0.getString("text");
-                                        }
-
-                                        if (token != null && !token.isEmpty()) {
-                                            receivedTokens = true;
-                                            emittedAny[0] = true;
-                                            final String tokenToEmit = token;
-                                            fullTextBuilder.append(tokenToEmit);
-                                            dispatchToUi(() -> callback.onToken(tokenToEmit));
-                                        }
-                                    }
-                                } catch (Exception e) {
-                                    Log.w(TAG, "Failed to parse SSE payload line: " + line, e);
-                                }
-                            }
-                        }
-
-                        final String resultStr = fullTextBuilder.toString().trim();
-                        if (receivedTokens || !resultStr.isEmpty()) {
-                            dispatchToUi(() -> callback.onSuccess(resultStr));
-                        } else {
-                            handleStreamFailure(rawText, callback, attempt, "Empty stream response", emittedAny[0]);
-                        }
-                    } catch (Exception e) {
-                        Log.e(TAG, "Error reading stream (attempt " + attempt + "): " + e.getMessage());
-                        handleStreamFailure(rawText, callback, attempt, e.getMessage(), emittedAny[0]);
-                    }
-                }
-            });
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to create streaming request: " + e.getMessage());
-            handleStreamFailure(rawText, callback, attempt, e.getMessage(), emittedAny[0]);
-        }
+        return apiUrl;
     }
 
-    private void handleStreamFailure(final String rawText, final StreamCallback callback, final int attempt, final String error, final boolean emittedAny) {
-        if (emittedAny) {
-            Log.e(TAG, "Stream failed after tokens were emitted; not retrying to avoid duplicate text.");
-            dispatchToUi(() -> callback.onError(error, rawText));
-            return;
-        }
-        if (attempt < 3) {
-            long backoff = 150L * attempt;
-            Log.i(TAG, "Retrying streaming post-processing (attempt " + (attempt + 1) + " of 3) after " + backoff + "ms");
-            if (uiHandler != null) {
-                uiHandler.postDelayed(() -> processStreamingWithRetry(rawText, callback, attempt + 1), backoff);
-            } else {
-                try { Thread.sleep(backoff); } catch (InterruptedException ignored) {}
-                processStreamingWithRetry(rawText, callback, attempt + 1);
-            }
-        } else {
-            Log.e(TAG, "All 3 streaming attempts failed. Delivering raw transcript fallback.");
-            dispatchToUi(() -> callback.onError(error, rawText));
-        }
-    }
-
-    private void processNonStreamingFallback(final String rawText, final StreamCallback callback) {
-        process(rawText, new PostProcessCallback() {
-            @Override
-            public void onSuccess(String refinedText) {
-                callback.onSuccess(refinedText != null && !refinedText.trim().isEmpty() ? refinedText : rawText);
-            }
-
-            @Override
-            public void onError(String error) {
-                callback.onError(error, rawText);
-            }
-        });
-    }
-
-    /** Runs {@code action} on the configured UI handler, or immediately
-     *  when no handler was provided. If a validator was supplied, the action
-     *  is dropped when it returns false, preventing late callbacks from
-     *  touching a destroyed component. */
+    /** Runs {@code action} on the configured handler, if the owner is valid. */
     private void dispatchToUi(Runnable action) {
         if (uiHandler != null) {
             uiHandler.post(() -> {
@@ -458,8 +264,10 @@ public class PostProcessor {
         }
     }
 
+    /** Fetches model IDs from the provider's OpenAI-compatible /models endpoint. */
     public void fetchModels(final ModelsCallback callback) {
-        String baseUrl = settings.getEffectiveApiUrl() != null ? settings.getEffectiveApiUrl().trim() : "";
+        String baseUrl = settings.getEffectiveApiUrl() != null
+                ? settings.getEffectiveApiUrl().trim() : "";
         while (baseUrl.endsWith("/")) {
             baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
         }
@@ -478,13 +286,12 @@ public class PostProcessor {
         synchronized (IN_FLIGHT_LOCK) {
             IN_FLIGHT.add(call);
         }
-        // Register the call before enqueueing so cancelAll() cannot miss it
-        // in the window between creation and tracking.
         call.enqueue(new Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
                 IN_FLIGHT.remove(call);
-                dispatchToUi(() -> callback.onError(e.getMessage()));
+                String message = e.getMessage() != null ? e.getMessage() : "Request failed";
+                dispatchToUi(() -> callback.onError(message));
             }
 
             @Override
@@ -492,7 +299,8 @@ public class PostProcessor {
                 IN_FLIGHT.remove(call);
                 try (Response responseResource = response) {
                     if (!responseResource.isSuccessful()) {
-                        dispatchToUi(() -> callback.onError("Error " + responseResource.code()));
+                        dispatchToUi(() -> callback.onError(
+                                "Error " + responseResource.code()));
                         return;
                     }
                     try {
@@ -507,7 +315,7 @@ public class PostProcessor {
                         for (int i = 0; i < array.length(); i++) {
                             models.add(array.getJSONObject(i).getString("id"));
                         }
-                        java.util.Collections.sort(models);
+                        Collections.sort(models);
                         dispatchToUi(() -> callback.onSuccess(models));
                     } catch (Exception e) {
                         dispatchToUi(() -> callback.onError("Parse error: " + e.getMessage()));
@@ -515,12 +323,6 @@ public class PostProcessor {
                 }
             }
         });
-    }
-
-    public interface StreamCallback {
-        void onToken(String deltaToken);
-        void onSuccess(String completeText);
-        void onError(String error, String rawFallbackText);
     }
 
     public interface PostProcessCallback {

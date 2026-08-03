@@ -4,7 +4,12 @@ Este documento detalla **única y exclusivamente** las optimizaciones, refactori
 
 ---
 
-## 1. 🚀 Post-Procesado con IA en Streaming (Server-Sent Events / SSE)
+## 1. 🚀 Post-Procesado con IA en Streaming (histórico, sustituido el 2026-08-03)
+
+> Esta sección conserva la decisión histórica. El diseño activo ya no usa SSE
+> para el LLM: los parciales del ASR siguen siendo visuales, y el postprocesado
+> espera el transcript final y entrega una única respuesta completa. Ver la
+> memoria de 2026-08-03 y `architecture.md`.
 
 ### ⚡ Reducción de Latencia Percibida (~2.000 ms → ~300 ms)
 * **Transmisión de tokens en tiempo real:** Se ha rediseñado la comunicación HTTP con modelos LLM compatibles con OpenAI en [`PostProcessor.java`](../../app/src/main/java/dev/notune/transcribe/PostProcessor.java) para usar Server-Sent Events (`stream: true`).

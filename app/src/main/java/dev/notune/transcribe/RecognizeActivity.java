@@ -177,31 +177,26 @@ public class RecognizeActivity extends AppCompatActivity {
             SettingsManager settings = new SettingsManager(this);
             if (settings.isPostProcessEnabled()) {
                 status.setText("Refining...");
-                Log.i(TAG, "Post-processing enabled (streaming), sending " + text.length()
-                        + " chars to " + settings.getEffectiveApiUrl());
+                Log.i(TAG, "Post-processing enabled, sending final transcript ("
+                        + text.length() + " chars) to " + settings.getEffectiveApiUrl());
                 Log.i(TAG, "PP-RAW: " + text);
 
-                final StringBuilder liveStreamText = new StringBuilder();
-
+                // The ASR partials remain the live preview. Wait for one
+                // complete post-processing response before returning the result.
                 new PostProcessor(settings, new Handler(Looper.getMainLooper()),
-                        () -> !isFinishing() && !isDestroyed()).processStreaming(text, new PostProcessor.StreamCallback() {
+                        () -> !isFinishing() && !isDestroyed()).process(text,
+                        new PostProcessor.PostProcessCallback() {
                     @Override
-                    public void onToken(String deltaToken) {
-                        liveStreamText.append(deltaToken);
-                        status.setText(liveStreamText.toString());
-                    }
-
-                    @Override
-                    public void onSuccess(String completeText) {
-                        String out = (completeText != null && !completeText.trim().isEmpty())
-                                ? completeText : text;
+                    public void onSuccess(String refinedText) {
+                        String out = (refinedText != null && !refinedText.trim().isEmpty())
+                                ? refinedText : text;
                         deliverResult(out);
                     }
 
                     @Override
-                    public void onError(String error, String rawFallbackText) {
-                        Log.w(TAG, "Streaming post-process failed, delivering raw text: " + error);
-                        deliverResult(rawFallbackText);
+                    public void onError(String error) {
+                        Log.w(TAG, "Post-processing failed, delivering raw text: " + error);
+                        deliverResult(text);
                     }
                 });
             } else {

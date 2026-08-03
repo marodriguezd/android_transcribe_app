@@ -591,94 +591,29 @@ public class RustInputMethodService extends InputMethodService {
                 if (statusView != null) statusView.setText("Refining...");
                 if (hintView != null) hintView.setText("");
 
-                final StringBuilder streamedDeltas = new StringBuilder();
-                final boolean[] hasStreamed = new boolean[]{false};
-                // Whether any token actually reached the editor. Tokens only
-                // count once commitText executes on a live input connection,
-                // so the cleanup/commit decisions below never touch a dead
-                // editor or duplicate text.
-                final boolean[] committedToEditor = new boolean[]{false};
-
+                // The LLM is intentionally not streamed. The ASR model already
+                // provided the real-time preview; committing only this complete
+                // result keeps the editor atomic and avoids duplicate/partial
+                // text when a provider closes or revises an SSE response.
                 new PostProcessor(settings, mainHandler, () -> !isDestroyed)
-                        .processStreaming(text, new PostProcessor.StreamCallback() {
+                        .process(text, new PostProcessor.PostProcessCallback() {
                     @Override
-                    public void onToken(String deltaToken) {
-                        InputConnection ic = getCurrentInputConnection();
-                        hasStreamed[0] = true;
-                        streamedDeltas.append(deltaToken);
-                        if (inputActive && ic != null) {
-                            try {
-                                ic.commitText(deltaToken, 1);
-                                committedToEditor[0] = true;
-                            } catch (Exception e) {
-                                Log.w(TAG, "commitText failed during streaming", e);
-                            }
-                        }
+                    public void onSuccess(String refinedText) {
+                        String result = refinedText != null && !refinedText.trim().isEmpty()
+                                ? refinedText : text;
+                        commitFinalText(result);
                     }
 
                     @Override
-                    public void onSuccess(String completeText) {
-                        if (hasStreamed[0]) {
-                            if (!committedToEditor[0]) {
-                                // Tokens were streamed but the editor was
-                                // unavailable the whole time; commit the
-                                // refined text instead of losing it.
-                                commitFinalText(completeText);
-                                return;
-                            }
-                            // Tokens were streamed directly into editor! Add trailing space and finalize UI.
-                            InputConnection ic = getCurrentInputConnection();
-                            String finalSpace = " ";
-                            if (inputActive && ic != null) {
-                                try {
-                                    ic.commitText(finalSpace, 1);
-                                } catch (Exception e) {
-                                    Log.w(TAG, "commitText failed for trailing space", e);
-                                }
-                            } else {
-                                pendingCommitText = (pendingCommitText != null ? pendingCommitText : "") + finalSpace;
-                            }
-                            finalizeStreamUI();
-                        } else {
-                            // Fallback to non-streaming commit
-                            commitFinalText(completeText);
-                        }
-                    }
-
-                    @Override
-                    public void onError(String error, String rawFallbackText) {
-                        Log.w(TAG, "Streaming PP failed: " + error + ", restoring raw text fallback");
-                        if (committedToEditor[0] && streamedDeltas.length() > 0) {
-                            // Clean up partial tokens inserted before stream failure to avoid Frankenstein text
-                            InputConnection ic = getCurrentInputConnection();
-                            if (inputActive && ic != null) {
-                                try {
-                                    ic.deleteSurroundingText(streamedDeltas.length(), 0);
-                                } catch (Exception e) {
-                                    Log.w(TAG, "deleteSurroundingText failed during cleanup", e);
-                                }
-                            }
-                        }
-                        commitFinalText(rawFallbackText);
+                    public void onError(String error) {
+                        Log.w(TAG, "Post-processing failed, delivering raw transcript: " + error);
+                        commitFinalText(text);
                     }
                 });
             } else {
                 commitFinalText(text);
             }
         });
-    }
-
-    private void finalizeStreamUI() {
-        if (pauseAudioActive) {
-            audioPauser.abandon(this);
-            pauseAudioActive = false;
-        }
-        updateRecordButtonUI(false);
-        if (statusView != null) statusView.setText("Tap to Record");
-        if (pendingSwitchBack) {
-            pendingSwitchBack = false;
-            switchToPreviousInputMethodSafe();
-        }
     }
 
     // Commits (or defers) the final transcribed/refined text and resets UI.
@@ -709,18 +644,26 @@ public class RustInputMethodService extends InputMethodService {
     // Commits transcribed text into the active input connection, optionally
     // selecting it afterwards (select_transcription setting).
     private void commitTranscribedText(InputConnection ic, String committed) {
-        ic.commitText(committed, 1);
+        try {
+            ic.commitText(committed, 1);
 
-        if (!pendingSwitchBack && new File(getFilesDir(), "select_transcription").exists()) {
-            android.view.inputmethod.ExtractedText et = ic.getExtractedText(
-                new android.view.inputmethod.ExtractedTextRequest(), 0);
-            if (et != null) {
-                int end = et.selectionStart;
-                int start = end - committed.length();
-                if (start >= 0) {
-                    ic.setSelection(start, end);
+            if (!pendingSwitchBack && new File(getFilesDir(), "select_transcription").exists()) {
+                android.view.inputmethod.ExtractedText et = ic.getExtractedText(
+                    new android.view.inputmethod.ExtractedTextRequest(), 0);
+                if (et != null) {
+                    int end = et.selectionStart;
+                    int start = end - committed.length();
+                    if (start >= 0) {
+                        ic.setSelection(start, end);
+                    }
                 }
             }
+        } catch (Exception e) {
+            // The target app can destroy its editor while ASR or post-processing
+            // is finishing. Do not crash the IME; defer the exact final text so
+            // it can be committed when the next editor becomes available.
+            Log.w(TAG, "commitText failed for final transcript", e);
+            pendingCommitText = committed;
         }
     }
 

@@ -99,6 +99,12 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
         editModel.setText(settings.getModelName());
         editPrompt.setText(settings.getActivePromptBody());
 
+        // Align the model field with the selected provider. A provider change
+        // leaves the old provider's model behind (e.g. switching OpenAI ->
+        // Groq kept "gpt-4o-mini"), which the new provider's API rejects,
+        // silently defeating post-processing. Replacing another provider's
+        // default (or an empty/unknown model) with the current provider's
+        // default keeps the stored model valid for the endpoint in use.
         updateProviderUi(current, false);
 
         btnRefreshModels.setOnClickListener(v -> fetchModels());
@@ -117,16 +123,29 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
         boolean isCustom = p.baseUrl == null;
         layoutApiUrl.setVisibility(isCustom ? android.view.View.VISIBLE : android.view.View.GONE);
 
-        if (userInitiated && p.defaultModel != null && !p.defaultModel.isEmpty()) {
+        // Keep the model field consistent with the selected provider.
+        //  - userInitiated (provider switch): always adopt the new provider's
+        //    default model. A stale model from the previous provider (e.g.
+        //    "gpt-4o-mini" after switching OpenAI -> Groq, or any fetched
+        //    model like "openai/gpt-oss-120b") is rejected by the new
+        //    provider's API, silently defeating post-processing.
+        //  - Initial load: only replace a clearly foreign default (another
+        //    provider's known default model) or an empty field, so a model
+        //    the user hand-typed/customised is preserved.
+        if (p.defaultModel != null && !p.defaultModel.isEmpty()) {
             String currentModel = editModel.getText().toString().trim();
-            boolean isAnotherDefault = false;
-            for (SettingsManager.Provider q : SettingsManager.PROVIDERS) {
-                if (currentModel.equals(q.defaultModel)) {
-                    isAnotherDefault = true;
-                    break;
+            boolean belongsToAnotherProvider = false;
+            if (!currentModel.isEmpty()) {
+                for (SettingsManager.Provider q : SettingsManager.PROVIDERS) {
+                    if (!q.id.equals(p.id) && currentModel.equals(q.defaultModel)) {
+                        belongsToAnotherProvider = true;
+                        break;
+                    }
                 }
             }
-            if (currentModel.isEmpty() || isAnotherDefault) {
+            if (userInitiated) {
+                editModel.setText(p.defaultModel);
+            } else if (currentModel.isEmpty() || belongsToAnotherProvider) {
                 editModel.setText(p.defaultModel);
             }
         }

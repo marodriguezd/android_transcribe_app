@@ -1,6 +1,17 @@
 # Progreso — estado actual del trabajo IA-asistido
 
-**Última actualización:** 2026-07-29
+**Última actualización:** 2026-08-03
+
+## 🟢 Recién completado
+
+- **2026-08-03** — Post-procesado AI final-only: se mantiene el streaming del
+  transcriptor como previsualización visual y se elimina el streaming SSE del
+  postprocesador. Tras el texto final de ASR, `PostProcessor.process()` envía
+  una única petición completa; el IME y el popup entregan una sola vez el
+  refinado, o la transcripción cruda si PP está apagado, falla, se cancela o
+  devuelve una respuesta vacía/no válida. La integración ya no pega tokens
+  intermedios ni necesita borrar texto parcialmente insertado.
+
 
 ## 🟢 Recién completado
 
@@ -15,11 +26,11 @@
   - `src/voice_session.rs`: calibración adaptativa de VAD (`MIN_SPEECH_LEVEL = 0.05` y `SPEECH_MARGIN = 0.04`) sobre el suelo de ruido en tiempo real para detectar voz suave/susurrada.
   - **CI/CD & Verificación:** Compilación verificada en GitHub Actions (commit `8e587d9`, workflow `30474594163`) enviada por Telegram. **Confirmado y validado como funcionando correctamente por el usuario.**
 
-- **2026-07-29** — Post-Procesado con IA en Streaming (SSE / Token Streaming):
-  - `PostProcessor.java`: implementación de `processStreaming` mediante Server-Sent Events (`stream: true`). Reducción del tiempo de respuesta percibido de ~2.000 ms a **~300 ms** (TTFT). Motor de 3 reintentos de reconexión y fallback a petición síncrona si la API no soporta streaming (HTTP 400).
-  - `RustInputMethodService.java`: inserción fluida token por token en el editor enfocado vía `InputConnection.commitText`. Limpieza de deltas insertados (`deleteSurroundingText`) y reemplazo por transcripción bruta original ante fallo de stream para prevenir texto fragmentado ("efecto Frankenstein").
-  - `RecognizeActivity.java`: renderizado de deltas token a token en tiempo real en la pantalla de voz.
-  - **CI/CD & Verificación:** Compilación limpia en GitHub Actions (commit `53b3275`, workflow `30473923160`) enviada por Telegram. **Confirmado y validado como funcionando correctamente por el usuario.**
+- **2026-07-29** — Post-Procesado AI en streaming (histórico, reemplazado el 2026-08-03):
+  - Se conserva como antecedente porque la implementación SSE/token-streaming
+    fue deliberadamente sustituida por el flujo final-only de arriba tras
+    observar que los tokens intermedios no daban un resultado fiable en el
+    editor.
 
 - **2026-07-29** — Actualización de ficheros agénticos (`.agents/`) con la
   feature del corrector fonético: `AGENTS.md` §4.5/§4.6, `architecture.md`,

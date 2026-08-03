@@ -4,6 +4,15 @@ Historial completo de cambios del proyecto **android_transcribe_app** (fork de [
 
 ---
 
+# Unreleased
+
+### 🤖 Postprocesado AI final-only
+- Los parciales del transcriptor continúan mostrándose en streaming como previsualización visual.
+- El transcript final se envía una única vez al postprocesador con una respuesta JSON completa; el IME y el popup hacen un único commit del resultado.
+- Si el postprocesado está apagado, se cancela, falla o devuelve contenido inválido, se entrega la transcripción cruda sin perder texto.
+
+---
+
 # v0.1.23
 
 Fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app). This release brings real-time **SSE streaming AI post-processing**, fixes **silence auto-stop for the IME keyboard**, and introduces seamless **Android System User Dictionary integration (FUTO Keyboard style)**.

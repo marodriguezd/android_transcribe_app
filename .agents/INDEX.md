@@ -38,12 +38,15 @@ escrito X?" sin navegar a ciegas.
 - **No** cuando es sólo un párrafo largo (mejor sección de un doc
   existente).
 - **Casi siempre no** cuando es spec temporal para una decisión — va a
-  `memory/<topic>-<fecha>.md`.
+  `memory/<topic>-<fecha>.md`.## Memoria por tema
 
-## Memoria por tema
+Se rellena conforme se acumulen sesiones de trabajo. Listado en orden cronológico inverso (lo más reciente primero):
 
-Se rellena conforme se acumulen sesiones de trabajo. Listado en orden
-cronológico inverso (lo más reciente primero):
+- [`memory/postprocess-final-only-2026-08-03.md`](./memory/postprocess-final-only-2026-08-03.md) —
+  separación del streaming visual del ASR y el postprocesado AI final-only con
+  commit atómico y fallback al transcript crudo.
+
+
 
 - [`memory/polish-agents-2026-07-29.md`](./memory/polish-agents-2026-07-29.md) —
   limpieza y puesta al día de ficheros agénticos: `progress.md` al día,

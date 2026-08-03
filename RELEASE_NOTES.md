@@ -1,3 +1,12 @@
+# Unreleased
+
+## 🤖 Postprocesado AI final-only
+- Se mantiene la previsualización en streaming del transcriptor para conservar la fluidez durante la grabación.
+- Al terminar, el transcript final se envía una sola vez al modelo de postprocesado y se espera la respuesta completa antes de pegarla.
+- El IME y el popup ya no pegan tokens parciales del LLM. Si el postprocesado está desactivado, falla, se cancela o devuelve una respuesta vacía, se pega la transcripción original.
+
+---
+
 # v0.1.24
 
 Fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app).

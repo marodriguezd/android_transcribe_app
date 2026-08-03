@@ -4,6 +4,15 @@
 
 ## 🟢 Recién completado
 
+- **2026-08-04 — Análisis de viabilidad P1.4/P1.5:** clasificados los
+  checklists según lo ejecutable desde aquí (sin dispositivo físico: host
+  ARM64 móvil, sin KVM/emulador/system-images): P1.4 = 0 pasos ejecutables
+  (solo auditoría estática dirigida o andamiaje de tests); P1.5 = 7
+  escenarios ya cubiertos en JVM, **2 ampliables desde aquí** (DNS fail real
+  con host `.invalid`; connect timeout por seam contra `192.0.2.1`) y 5
+  solo-dispositivo. Plan mañana: añadir los 2 tests y preparar el smoke real.
+  Detalle en
+  [`memory/p14-p15-feasibility-2026-08-04.md`](./memory/p14-p15-feasibility-2026-08-04.md).
 - **2026-08-03 — CI en verde tras el fix del JObject:** el run inicial del
   push `2846494` (30857034745) falló en `Build Debug APK` por un import
   perdido en el refactor P1.1; corregido (`aa08a08`) y verificado con
@@ -70,6 +79,10 @@ dispositivo.
   de OkHttp por seam (`PostProcessorTest`, 8 tests; los valores de producción
   30 s/60 s/60 s se asertan con `buildProductionClient()`). El transcurso
   wall-clock y la red real (DNS/TLS/latencia) quedan para smoke en dispositivo.
+- ⏳ Ampliación JVM pendiente (2026-08-05): 2 tests más en `PostProcessorTest`
+  para cerrar el harness antes del smoke — DNS fail real (host `.invalid` →
+  fallback) y connect timeout por seam contra IP TEST-NET `192.0.2.1` →
+  onError (ver `memory/p14-p15-feasibility-2026-08-04.md`).
 - Probar lifecycle de subtítulos/MediaProjection en Android 10–15 y ROM OEM
   (P1.4, dispositivo).
 - Smoke del postprocesado con proveedor real en dispositivo (P1.5): timeouts

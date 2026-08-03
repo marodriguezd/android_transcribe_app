@@ -216,6 +216,13 @@ exactamente una vez en todos los escenarios; fallback a crudo inmediato en
 DNS/HTTP y ≤ 60 s + margen en timeouts; cero callbacks tardíos; IME nunca
 bloqueado tras fallo o toggle-off.
 
+**Viabilidad (2026-08-04):** clasificación sin dispositivo físico — 7 de 12
+escenarios ya cubiertos en JVM; 2 ampliables en el harness (DNS fail con host
+`.invalid`, connect timeout por seam contra `192.0.2.1` — pendientes); 5
+solo-dispositivo (wall-clock 30 s/60 s, TLS real, broadcast `:ime` + IME no
+bloqueado, superficies concurrentes, fugas, latencia end-to-end). Detalle en
+`memory/p14-p15-feasibility-2026-08-04.md`.
+
 ### P2 — cobertura y calidad del Guantelete
 
 #### P2.1 Rust real, no sólo crate espejo

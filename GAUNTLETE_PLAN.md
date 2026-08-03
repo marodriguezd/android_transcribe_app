@@ -125,12 +125,17 @@ Pendiente: verificación de host ARM64 o su límite documentado en README.
    de esos timeouts y la red real → smoke en dispositivo.
 4. **Subtítulos/MediaProjection (P1.4):** probar Android 10–15, stop desde
    notificación, revocación, `AudioRecord` error, overlay permission y restart
-   (dispositivo).
+   (dispositivo). Viabilidad 2026-08-04: 0 pasos ejecutables sin hardware —
+   mitigación = auditoría estática dirigida y/o andamiaje androidTest
+   (ver `memory/p14-p15-feasibility-2026-08-04.md`).
 5. **Postprocesado en dispositivo (P1.5):** smoke con proveedor
    OpenAI-compatible real: timeouts de producción (30 s connect / 60 s
    read/write), DNS, TLS, latencia, toggle-off en vuelo (broadcast
    `CANCEL_PP` al `:ime`), superficies concurrentes y fallback a texto crudo —
-   checklist completo en la auditoría (§P1.5).
+   checklist completo en la auditoría (§P1.5). Viabilidad 2026-08-04: 7 de 12
+   escenarios ya cubiertos en JVM; **2 tests JVM pendientes** (DNS fail,
+   connect timeout por seam) que cierran el harness antes del smoke; 5 quedan
+   solo-dispositivo.
 
 ## 5. Deuda P2 — cobertura del Guantelete
 

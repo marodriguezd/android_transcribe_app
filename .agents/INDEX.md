@@ -42,6 +42,11 @@ escrito X?" sin navegar a ciegas.
 
 Se rellena conforme se acumulen sesiones de trabajo. Listado en orden cronológico inverso (lo más reciente primero):
 
+- [`memory/p14-p15-feasibility-2026-08-04.md`](./memory/p14-p15-feasibility-2026-08-04.md) —
+  clasificación de los checklists P1.4/P1.5 según qué pasos son ejecutables
+  desde el entorno actual (sin dispositivo físico) y cuáles requieren
+  hardware; plan para añadir 2 tests JVM pendientes (DNS fail, connect
+  timeout) antes del smoke en dispositivo.
 - [`memory/gauntlet-p0-implemented-2026-08-03.md`](./memory/gauntlet-p0-implemented-2026-08-03.md) —
   implementación de los bloqueadores P0.1–P0.4 y P1.1/P1.2 con tests JVM
   verdes; Guantelete sigue abierto pendiente de validación CI/dispositivo.

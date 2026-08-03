@@ -43,6 +43,17 @@ comportamiento de red real (DNS, TLS, latencia del proveedor) → smoke de PP
 con proveedor real en dispositivo (**P1.5** — checklist detallado en la
 auditoría §P1.5).
 
+### Pendientes JVM (viabilidad 2026-08-04)
+
+Antes del smoke, cerrar el harness con **2 tests más** en `PostProcessorTest`
+(ambos ejecutables sin dispositivo): (1) DNS fail real con host `.invalid` →
+`UnknownHostException` → fallback a texto crudo; (2) connect timeout por seam
+con client escalado contra IP TEST-NET `192.0.2.1` → `onError`. El resto de
+P1.5 (wall-clock 30 s/60 s, TLS real, broadcast `CANCEL_PP` al `:ime`, IME no
+bloqueado, superficies concurrentes, fugas, latencia end-to-end) y **todo
+P1.4** requieren dispositivo — ver
+`memory/p14-p15-feasibility-2026-08-04.md`.
+
 ### P2 / CI / dispositivo
 
 - ✅ `assembleDebug` y `lintDebug` validados en CI (2026-08-03, runs

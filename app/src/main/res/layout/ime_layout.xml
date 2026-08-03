@@ -35,6 +35,31 @@
             android:visibility="gone"/>
     </LinearLayout>
 
+    <!-- Live streaming partial transcription (Nemotron etc.): a two-line
+         window that always shows the LATEST words. The ScrollView is
+         auto-scrolled to the bottom on every partial, so the tail of the
+         hypothesis never scrolls out of view the way the old single
+         truncated status line did. Hidden until the first partial arrives. -->
+    <ScrollView
+        android:id="@+id/ime_partial_scroll"
+        android:layout_width="match_parent"
+        android:layout_height="52dp"
+        android:layout_marginBottom="4dp"
+        android:overScrollMode="never"
+        android:scrollbars="none"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/ime_partial_text"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:minLines="2"
+            android:paddingStart="4dp"
+            android:paddingEnd="4dp"
+            android:textColor="?attr/colorOnSurface"
+            android:textAppearance="?attr/textAppearanceBodyLarge"/>
+    </ScrollView>
+
     <!-- Record area: pulsing mic-level glow behind a circular record button -->
     <FrameLayout
         android:id="@+id/ime_record_container"

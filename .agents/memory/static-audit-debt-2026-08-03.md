@@ -166,6 +166,56 @@ Validar stop/restart, revocación desde la notificación, overlay eliminado,
 `AudioRecord` liberado y ausencia de callbacks después de `cleanupNative` en
 Android 10–15 y al menos una ROM OEM.
 
+#### P1.5 Smoke del postprocesado con proveedor real en dispositivo
+
+El harness JVM (P1.3) cubre payload, errores, fallback y timeout por seam con
+valores escalados; el transcurso wall-clock (30 s connect, 60 s read/write) y
+el comportamiento de red real (DNS, TLS, latencia, cortes) sólo son
+verificables en dispositivo.
+
+**Entorno:** dispositivo arm64 físico (API 26–35; idealmente uno stock + una
+ROM OEM), modelo ASR streaming (Nemotron) y no streaming (Whisper/Parakeet),
+proveedor OpenAI-compatible con clave de test (o endpoint local en la misma
+WiFi). Redes: WiFi normal, DNS lento y corte de red (modo avión + WiFi).
+
+**Checklist por superficie (IME, popup, RecognitionService, transcripción de
+archivo):**
+
+- [ ] Éxito: dictado corto y largo → el editor recibe el texto refinado **una
+      sola vez** (sin parciales del LLM, sin duplicados ni texto
+      "Frankenstein").
+- [ ] Fallback a texto crudo ante DNS fail (URL inalcanzable) → inmediato.
+- [ ] Fallback ante HTTP 4xx/5xx del proveedor → inmediato, sin texto parcial.
+- [ ] Fallback ante respuesta JSON inválida o vacía.
+- [ ] Fallback ante **timeout real de read**: proveedor que cuelga > 60 s →
+      texto crudo; registrar latencia start→fallback.
+- [ ] Connect timeout observable: IP no enrutable con DNS que responde →
+      fallback ~30 s.
+- [ ] Toggle-off durante vuelo: desactivar PP en ajustes mientras la petición
+      vuela → broadcast `CANCEL_PP` al `:ime`, gana el texto crudo, cancelación
+      inmediata (sin esperar al timeout) y el IME nunca queda en
+      "Refining..."/"Processing...".
+- [ ] Superficies concurrentes: dictado en IME + fetch de modelos en ajustes a
+      la vez; destruir una superficie no cancela la otra (P0.1).
+- [ ] Cancelación por superficie: cerrar popup / cancelar reconocimiento /
+      destruir Activity en vuelo → sólo se cancela esa llamada.
+- [ ] 10+ dictados consecutivos con PP: sin fugas visibles (logcat GC), sin
+      respuestas OkHttp sin cerrar, sin toasts duplicados.
+- [ ] Rotación/cierre de pantalla durante el vuelo → cero callbacks tardíos
+      (P1.1/P0.1).
+- [ ] Latencia end-to-end registrada: tap-stop → texto final (ASR + 1
+      round-trip del LLM).
+
+**Evidencia a conservar:** versión de app (`versionCode`/`versionName`), ABI,
+API level, ROM; logcat con los TAG `PostProcessor` y `OfflineVoiceInput`;
+capturas antes/después del editor; tiempos medidos por escenario; proveedor y
+modelo LLM usados.
+
+**Aceptación:** las 4 superficies entregan texto (refinado o crudo)
+exactamente una vez en todos los escenarios; fallback a crudo inmediato en
+DNS/HTTP y ≤ 60 s + margen en timeouts; cero callbacks tardíos; IME nunca
+bloqueado tras fallo o toggle-off.
+
 ### P2 — cobertura y calidad del Guantelete
 
 #### P2.1 Rust real, no sólo crate espejo
@@ -232,6 +282,9 @@ Actualizado tras la implementación del 2026-08-03:
       timeout real de OkHttp por seam (P1.3 — `PostProcessorTest`, 8 tests;
       los 30 s/60 s de producción se asertan; el wall-clock y la red real
       quedan para smoke en dispositivo).
+- [ ] Smoke del postprocesado con proveedor real en dispositivo (P1.5):
+      timeouts de producción, DNS/TLS, latencia, toggle-off en vuelo y
+      superficies concurrentes; checklist §P1.5.
 - [x] Markers verificados frente a lecturas concurrentes main/`:ime`
       (MarkerAtomicityTest; temp único por escritura).
 - [x] Strings visibles migradas o excepción documentada (P2.4, 2026-08-03:

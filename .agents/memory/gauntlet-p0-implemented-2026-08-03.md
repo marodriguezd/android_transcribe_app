@@ -123,6 +123,8 @@ caminos de error no lance "not mocked".
 Sigue **ABIERTO**: la implementación P0 y P1.1–P1.3 está hecha y gateada por
 JVM (32 tests, BUILD SUCCESSFUL), pero la regla de cierre exige además CI
 (`assembleDebug`, `lintDebug`, `checkModels`), Rust real/`cargo test` (bloqueado
-por `transcribe-cpp-sys` v0.1.3), P1.4 y smoke test en dispositivo (subtítulos
-start/stop/start, revocación MediaProjection, PP concurrente entre superficies,
-descarga debug truncada). Ver checklist en `static-audit-debt-2026-08-03.md`.
+por `transcribe-cpp-sys` v0.1.3), P1.4/P1.5 y smoke test en dispositivo
+(subtítulos start/stop/start, revocación MediaProjection, PP con proveedor
+real — timeouts 30 s/60 s, DNS/TLS, latencia, toggle-off en vuelo y superficies
+concurrentes — y descarga debug truncada). Ver checklist en
+`static-audit-debt-2026-08-03.md`.

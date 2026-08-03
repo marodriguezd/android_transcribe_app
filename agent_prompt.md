@@ -38,7 +38,8 @@ exactamente una entrega final por sesión). Los valores de producción
 (30 s/60 s/60 s) se asertan en JVM; lo que queda fuera del harness es el
 **transcurso wall-clock** de esos timeouts (esperar 60 s en CI no aporta) y el
 comportamiento de red real (DNS, TLS, latencia del proveedor) → smoke de PP
-concurrente entre superficies en dispositivo.
+con proveedor real en dispositivo (**P1.5** — checklist detallado en la
+auditoría §P1.5).
 
 ### P2 / CI / dispositivo
 
@@ -46,8 +47,9 @@ concurrente entre superficies en dispositivo.
   tests de assemble; el guard de `cargoNdkBuild` sigue siendo obligatorio).
 - `cargo test` real o bloqueo reproducible de `transcribe-cpp-sys` v0.1.3.
 - Smoke test de las seis superficies; especial atención a subtítulos
-  start/stop/start, revocación MediaProjection, PP concurrente entre
-  superficies y descarga debug truncada.
+  start/stop/start, revocación MediaProjection, descarga debug truncada y
+  PP con proveedor real (P1.5: timeouts 30 s/60 s, DNS/TLS, latencia,
+  toggle-off en vuelo y superficies concurrentes).
 - ✅ P2.4 hecho (2026-08-03): strings visibles migradas a los 7 locales (44
   nuevas, gate PASS); excepción documentada: detalles de error de
   `PostProcessor` (sin Context) y strings de protocolo JNI.

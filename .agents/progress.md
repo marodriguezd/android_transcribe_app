@@ -64,6 +64,9 @@ Implementados el 2026-08-03 y gateados por JVM; la validación de CI
   wall-clock y la red real (DNS/TLS/latencia) quedan para smoke en dispositivo.
 - Probar lifecycle de subtítulos/MediaProjection en Android 10–15 y ROM OEM
   (P1.4, dispositivo).
+- Smoke del postprocesado con proveedor real en dispositivo (P1.5): timeouts
+  de producción (30 s/60 s), DNS/TLS, latencia, toggle-off en vuelo y
+  superficies concurrentes (checklist en la auditoría §P1.5).
 - Habilitar `cargo test` real o documentar bloqueo reproducible en CI.
 - Ejecutar `lintDebug`/rustfmt de todo el alcance en CI.
 - Añadir smoke/instrumentation matrix para las seis superficies.

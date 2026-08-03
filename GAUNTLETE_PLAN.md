@@ -121,8 +121,14 @@ su evidencia para cada cambio relevante:
    onError) y los valores de producción (30 s/60 s/60 s) se asertan con
    `buildProductionClient()`. Queda fuera del harness el transcurso wall-clock
    de esos timeouts y la red real → smoke en dispositivo.
-4. **Subtítulos/MediaProjection:** probar Android 10–15, stop desde notificación,
-   revocación, `AudioRecord` error, overlay permission y restart (dispositivo).
+4. **Subtítulos/MediaProjection (P1.4):** probar Android 10–15, stop desde
+   notificación, revocación, `AudioRecord` error, overlay permission y restart
+   (dispositivo).
+5. **Postprocesado en dispositivo (P1.5):** smoke con proveedor
+   OpenAI-compatible real: timeouts de producción (30 s connect / 60 s
+   read/write), DNS, TLS, latencia, toggle-off en vuelo (broadcast
+   `CANCEL_PP` al `:ime`), superficies concurrentes y fallback a texto crudo —
+   checklist completo en la auditoría (§P1.5).
 
 ## 5. Deuda P2 — cobertura del Guantelete
 

@@ -153,6 +153,17 @@ public class RecognizeActivity extends AppCompatActivity {
         runOnUiThread(() -> micLevel.setLevel(level));
     }
 
+    // Called from Rust with live partial hypotheses while recording
+    // (streaming models). Visual-only: the final text replaces it via
+    // onTextTranscribed.
+    public void onPartialText(String text) {
+        runOnUiThread(() -> {
+            if (isRecording && text != null && !text.trim().isEmpty()) {
+                status.setText(text);
+            }
+        });
+    }
+
     // Called from Rust – keep same method name as IME for code reuse
     public void onTextTranscribed(String text) {
         runOnUiThread(() -> {

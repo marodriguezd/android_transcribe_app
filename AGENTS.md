@@ -111,6 +111,12 @@ Post-procesado IA (fork addition): opcional, *off-line-by-default*, refina texto
 - **Validación automatizada:** Ejecutar `./gradlew assembleDebug` o suites de unit test sin nuevos advertencias o fallos + smoke test funcional en dispositivo/emulador.
 - **Java:** Sigue las convenciones de §4.
 - **Rust:** Sigue el estilo inline existente (4 espacios, `rustfmt` por defecto).
+- **Gates automatizados implementados (Guantelete operativo):**
+  - `testDebugUnitTest` en CI (debug + release) → 14 tests JVM verdes (7 de persistencia de `MarkerFileHelper` + 7 preexistentes).
+  - `checkModels` (equivalente a `checkModelCatalog` de Handy-Android): verifica SHA-256 del modelo bundled; **FAIL** cuando el asset está corrupto (demostrado, exit 1), no-op cuando está ausente (debug).
+  - `scripts/check_translations.py`: gate de paridad i18n (excluye `translatable="false"`); 6 locales × 124 strings → PASS.
+  - `lintDebug` (hard gate, debug CI): 0 errores. Los 20 hallazgos legacy se pagaron en 2026-08-03 con guards `Build.VERSION` + `@TargetApi`, `ContextCompat.registerReceiver` con `RECEIVER_NOT_EXPORTED`, `app:tint` + widgets AppCompat explícitos (inflate sin factory AppCompat), `super.onRequestPermissionsResult`, y `tools:ignore="AppLinkUrlError"` documentado en el intent-filter VIEW de `audio/*` (handler de ficheros, no app link — no hay URL que verificar).
+  - Tests Rust `#[cfg(test)]` en `audio` y `corrector`. Verificados vía crate espejo sin deps nativas (host `cargo test` del crate completo está bloqueado por un bug de empaquetado de `transcribe-cpp-sys` v0.1.3 que afecta al upstream; se ejecutan en CI x86_64).
 
 ---
 
@@ -157,6 +163,7 @@ static {
   - `onTextTranscribed(String)` — texto final (post-procesado aplicado si está activo).
   - `onAudioLevel(float)`/`onRmsChanged(float)` — nivel rms 0..1.
   - `onSubtitleText(String, boolean)` — parcial (false) o final (true).
+  - `onPartialText(String)` — hipótesis parcial en vivo de modelos streaming (Nemotron) mientras se graba; visual-only en Java (el texto final llega siempre por `onTextTranscribed`/`onResults`). Las superficies sin streaming envían no-op.
   - `onAutoStop()` — disparo del monitor de endpointing.
   - `onBenchmarkResult(float audioSecs, float computeSecs, String error)`.
 - **Resiliencia del engine:** `transcribe_shared` hace `panic::catch_unwind` + recuperación de `Mutex` envenenado (`unwrap_or_else(|p| p.into_inner())`). Si lo refactorizas, **mantén estas dos capas**.
@@ -176,6 +183,7 @@ Los ajustes son **marker files en `filesDir()`**, no `SharedPreferences`. Ejempl
 | `model_translate` | presente = traducir a inglés (Whisper) |
 | `active_model` | contenido = nombre del GGUF importado en `models/` |
 | `model_threads` | contenido = nº entero; ausente/inválido = automático |
+| `stream_context_right` | contenido = `13`/`6`/`1`/`0` → chunks cache-aware {1.12 s, 560 ms, 160 ms, 80 ms} (Nemotron, `chunk = (right+1) × 80 ms`); ausente/inválido = `13` (default de precisión del modelo). Valores fuera de menú se reintentan con el default del modelo en `run_stream`, no rompen el stream |
 | `custom_words` | contenido = términos correctos, uno por línea (líneas `#` = comentarios); ausente/vacío = corrección fonética desactivada |
 
 Bindings típicos (ver `MainActivity.bindMarkerSwitch`): un `CompoundButton` cuja presencia del file representa el estado.
@@ -295,6 +303,7 @@ No renombrar archivos Rust/Java sin actualizar la entrada JNI (§4.3).
 - ✅ Si rompes un idioma o un locale: la app **transcribe en el dispositivo-locale por defecto** (`App.applyDeviceLanguageIfUnset`) y es opt-out. Cualquier override del usuario debe respetar ese comportamiento (ver `ModelsActivity` + `engine::run`).
 - ✅ Si añades una dependencia Gradle: respeta el bloque `constraints` que alinea `kotlin-stdlib-jdk7/jdk8` a `1.8.22`. Sin esa alineación, builds nuevos rompen con `Duplicate class` por culpa del legacy transitivo de Material.
 - ✅ Si modificas el flujo de subtítulos, preserva el contrato de `onSubtitleText(text, isFinal)`: `isFinal=true` appendea, `isFinal=false` reemplaza hipótesis parcial dentro de la misma ventana.
+- ✅ Si tocas el streaming cache-aware (`run_stream`/`transcribe_stream_shared` en `engine.rs`), preserva: (a) el retry de `att_context_right` fuera del menú del GGUF con el default del modelo (`Error::InvalidArgument` → reintento con `None`), (b) la degradación de hint de idioma, y (c) la telemetría de sesión en el log de Stop (`rtf`, nº de parciales, cadencia media, `att_context_right`) — es la única forma de medir el trade-off WER vs fluidez en dispositivo real vía logcat. Referencia del trade-off publicado: chunks {1120, 560, 320, 160, 80} ms con WER FLEURS a 1.12 s de en 7.91 / es 4.11 / fr 9.03 / it 4.25 / pt 5.48 / de 8.31; la card afirma precisión "competitiva" incluso a 80 ms.
 - ✅ No añadas `unsafe` Rust innecesario fuera de los entry points JNI (`#[no_mangle] pub unsafe extern "system" fn Java_…`).
 
 ### 5.3 Plantilla para tests / nuevos componentes (resumen rápido)

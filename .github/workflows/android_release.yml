@@ -73,6 +73,12 @@ jobs:
       run: |
         echo "$KEYSTORE_BASE64" | base64 --decode > release.keystore
 
+    - name: Check translations (i18n parity gate)
+      run: python3 scripts/check_translations.py
+
+    - name: Run unit tests (hard gate)
+      run: ./gradlew testDebugUnitTest
+
     - name: Build Release APK
       env:
         KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
@@ -80,6 +86,9 @@ jobs:
         STORE_PASS: ${{ secrets.STORE_PASS }}
       run: |
         ./gradlew assembleRelease
+
+    - name: Verify bundled model hash (checkModels gate)
+      run: ./gradlew checkModels
 
     - name: Extract Version Name
       id: extract_version

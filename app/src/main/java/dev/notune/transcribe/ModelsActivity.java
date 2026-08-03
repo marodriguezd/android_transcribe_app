@@ -86,8 +86,8 @@ public class ModelsActivity extends AppCompatActivity {
                     "https://huggingface.co/handy-computer/SenseVoiceSmall-gguf/resolve/main/SenseVoiceSmall-Q8_0.gguf"),
             new ModelLink("Whisper Small", R.string.model_desc_whisper_small, "257 MB",
                     "https://huggingface.co/handy-computer/whisper-small-gguf/resolve/main/whisper-small-Q8_0.gguf"),
-            new ModelLink("Nemotron 3.5 Streaming 0.6B", R.string.model_desc_nemotron, "473 MB",
-                    "https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf/resolve/main/nemotron-3.5-asr-streaming-0.6b-Q4_K_M.gguf"),
+            new ModelLink("Nemotron 3.5 Streaming 0.6B", R.string.model_desc_nemotron, "751 MB",
+                    "https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf/resolve/main/nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf"),
             new ModelLink("Parakeet TDT 0.6B v3 Q8", R.string.model_desc_parakeet_v3_q8, "740 MB",
                     "https://huggingface.co/handy-computer/parakeet-tdt-0.6b-v3-gguf/resolve/main/parakeet-tdt-0.6b-v3-Q8_0.gguf"),
             new ModelLink("Whisper Large-v3-Turbo", R.string.model_desc_whisper_turbo, "845 MB",
@@ -128,6 +128,7 @@ public class ModelsActivity extends AppCompatActivity {
 
         setupLanguageSpinner();
         setupThreadsSpinner();
+        setupStreamLatencySpinner();
 
         com.google.android.material.materialswitch.MaterialSwitch translateSwitch =
                 findViewById(R.id.switch_translate);
@@ -145,9 +146,12 @@ public class ModelsActivity extends AppCompatActivity {
 
     /**
      * Locales offered in the language dropdown. The empty tag is the model's
-     * automatic mode; display names come from {@link Locale#getDisplayName()},
-     * so they follow the device language without needing translations. Tags a
-     * model doesn't support are degraded by the engine at run time.
+     * automatic mode (true auto-detection: the bundled Nemotron model detects
+     * the spoken language per utterance; models without native detection,
+     * like Canary, fall back to the device language in the engine). Display
+     * names come from {@link Locale#getDisplayName()}, so they follow the
+     * device language without needing translations. Tags a model doesn't
+     * support are degraded by the engine at run time.
      */
     private static final String[] LANGUAGE_TAGS = {
             "", "bg-BG", "hr-HR", "cs-CZ", "da-DK", "nl-NL", "en-US", "en-GB",
@@ -159,6 +163,10 @@ public class ModelsActivity extends AppCompatActivity {
 
     private void setupLanguageSpinner() {
         String stored = readConfig("model_language");
+        // "auto" is stored as the marker value but maps to the empty-tag
+        // (Auto) entry; normalize so the initial setSelection matches and the
+        // onItemSelected guard short-circuits (no spurious reload on open).
+        if (stored.isEmpty() || stored.equalsIgnoreCase("auto")) stored = "";
 
         List<String> tags = new ArrayList<>(Arrays.asList(LANGUAGE_TAGS));
         // A value from an older version (free-text field) stays selectable.
@@ -183,10 +191,14 @@ public class ModelsActivity extends AppCompatActivity {
             public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
                 String tag = tags.get(position);
                 if (tag.equals(readConfig("model_language"))) return;
-                // "Auto" resolves to the device's current language so the model
-                // transcribes in the user's system language by default.
-                String value = tag.isEmpty() ? deviceLanguageTag() : tag;
+                // "Auto" selects the model's native automatic detection; the
+                // device language is refreshed as the fallback hint for models
+                // without native detection (Canary-family), resolved in Rust.
+                String value = tag.isEmpty() ? "auto" : tag;
                 writeConfig("model_language", value);
+                if (tag.isEmpty()) {
+                    writeConfig("device_language", deviceLanguageTag());
+                }
                 snackbar(getString(R.string.models_language_saved));
                 statusText.setText(getString(R.string.models_loading));
                 reloadModelNative(ModelsActivity.this);
@@ -203,6 +215,59 @@ public class ModelsActivity extends AppCompatActivity {
     /// the phone's system language.
     private static String deviceLanguageTag() {
         return Locale.getDefault().toLanguageTag();
+    }
+
+    // --- Streaming latency (cache-aware chunk selector) --------------------
+
+    /**
+     * Cache-aware streaming chunk selector, stored in {@code stream_context_right}.
+     * Applies to streaming models (the bundled Nemotron); ignored otherwise.
+     * Values are the model's training menu {13, 6, 1, 0} → chunk sizes
+     * {1.12 s, 560 ms, 160 ms, 80 ms}. 13 (Balanced) is the model's
+     * max-accuracy default; smaller values make partial hypotheses appear
+     * much sooner on slow devices at a small WER cost (see the engine's
+     * per-session rtf/cadence logcat line to measure the trade-off).
+     */
+    private void setupStreamLatencySpinner() {
+        Spinner spinner = findViewById(R.id.spinner_stream_latency);
+        // Absent marker = the engine default (13). Normalizing here prevents
+        // the initial setSelection from firing onItemSelected with "13" != ""
+        // and triggering a needless writeConfig + model reload on every open.
+        String stored = readConfig("stream_context_right");
+        if (stored.isEmpty()) stored = "13";
+
+        List<String> values = new ArrayList<>(Arrays.asList("13", "6", "1", "0"));
+        int[] labelRes = {
+                R.string.models_stream_latency_balanced,
+                R.string.models_stream_latency_fast,
+                R.string.models_stream_latency_faster,
+                R.string.models_stream_latency_lowest,
+        };
+
+        List<String> labels = new ArrayList<>(values.size());
+        for (int i = 0; i < values.size(); i++) {
+            labels.add(getString(labelRes[i]));
+        }
+
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(
+                this, android.R.layout.simple_spinner_item, labels);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spinner.setAdapter(adapter);
+        spinner.setSelection(Math.max(0, values.indexOf(stored)), false);
+        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                String value = values.get(position);
+                if (value.equals(readConfig("stream_context_right"))) return;
+                writeConfig("stream_context_right", value);
+                statusText.setText(getString(R.string.models_loading));
+                reloadModelNative(ModelsActivity.this);
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+            }
+        });
     }
 
     // --- Inference threads --------------------------------------------------

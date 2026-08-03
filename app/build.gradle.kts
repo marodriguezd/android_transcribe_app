@@ -1,4 +1,5 @@
 import java.io.FileInputStream
+import java.io.File
 import java.security.MessageDigest
 
 plugins {
@@ -66,6 +67,14 @@ android {
     // Play Asset Delivery: large model files go into a separate asset pack
     // so the base module stays under the 200 MB Play Store limit.
     assetPacks += listOf(":model_assets")
+
+    testOptions {
+        unitTests {
+            // Lets plain-JUnit tests access the merged R/assets without a device,
+            // matching the Handy-Android guantelete harness (AGENTS.md §3).
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 // For APK builds (assemble/install), asset packs are ignored by AGP so we
@@ -192,15 +201,31 @@ data class ModelFile(val name: String, val sha256: String)
 
 // The bundled GGUF goes into the model_assets asset pack so the base module
 // stays under the Play Store 200 MB compressed-download limit.
+//
+// Default model: Nemotron 3.5 ASR Streaming 0.6B in Q8_0 (the quantization
+// with the best WER/quality trade-off per the handy-computer model card).
+// Cache-aware streaming + native language detection (40 language-locales);
+// the engine falls back to the device-locale hint for Canary-family models
+// without native detection. SHA-256 is the HF LFS oid of the file.
 val modelPackFiles = listOf(
-    ModelFile("canary-180m-flash-Q8_0.gguf",
-        "e13c7f5d0952b056a027cfffec13e3a3a134d1608babed24f983568f141e297c"),
+    ModelFile("nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf",
+        "b94545b313b3223fda7b2857a52681da813935c2127643d1e9ff0c23d988089c"),
 )
 
-val huggingFaceRepo = "https://huggingface.co/handy-computer/canary-180m-flash-gguf/resolve/main"
+val huggingFaceRepo = "https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf/resolve/main"
 
 fun downloadToDir(assetsDir: File, files: List<ModelFile>) {
     assetsDir.mkdirs()
+    // Remove stale GGUF files not in the current list: an app upgrade can
+    // swap the bundled model, and a leftover old file would otherwise be
+    // picked up by the engine's single-GGUF lookup.
+    assetsDir.listFiles()?.forEach { f ->
+        if (f.isFile && f.extension.equals("gguf", ignoreCase = true)
+            && files.none { it.name == f.name }) {
+            println("  - removing stale model asset ${f.name}")
+            f.delete()
+        }
+    }
     files.forEach { model ->
         val destFile = File(assetsDir, model.name)
         if (destFile.exists() && model.sha256.isNotEmpty()) {
@@ -268,6 +293,54 @@ val downloadModels by tasks.registering {
     doLast {
         downloadToDir(packAssetsDir, modelPackFiles)
     }
+}
+
+// QA gate that mirrors Handy-Android's `checkModelCatalog` (AGENTS.md §3
+// "Validación y estilo"). It verifies the SHA-256 of every *present* bundled
+// model asset against the hash declared in `modelPackFiles` and fails the build
+// on any mismatch. When no asset is present (e.g. a plain debug assemble, where
+// `downloadModels` is intentionally skipped to keep the APK small) it is a safe
+// no-op and the runtime download path is responsible for fetching/verifying.
+val checkModels by tasks.registering {
+    description = "QA gate: verify bundled model asset SHA-256 matches declared hash"
+    group = "verification"
+
+    val packAssetsDir = rootProject.file("model_assets/src/main/assets/builtin-model")
+
+    doLast {
+        var checked = 0
+        for (model in modelPackFiles) {
+            val asset = File(packAssetsDir, model.name)
+            if (!asset.exists()) continue
+            checked++
+
+            val digest = MessageDigest.getInstance("SHA-256")
+            FileInputStream(asset).use { fis ->
+                val buf = ByteArray(8192)
+                var n: Int
+                while (fis.read(buf).also { n = it } != -1) {
+                    digest.update(buf, 0, n)
+                }
+            }
+            val hash = digest.digest().joinToString("") { "%02x".format(it) }
+            if (hash != model.sha256) {
+                throw GradleException(
+                    "checkModels: checksum mismatch for ${model.name}\n" +
+                        "  Expected: ${model.sha256}\n" +
+                        "  Got:      $hash"
+                )
+            }
+            println("  checkModels: \u2713 ${model.name} SHA-256 verified")
+        }
+        if (checked == 0) {
+            println("checkModels: no bundled model asset present (verification skipped; runtime downloads verify on first run)")
+        }
+    }
+}
+
+// Run the model-hash gate as part of `check` so CI invokes it alongside tests.
+tasks.named("check") {
+    dependsOn(checkModels)
 }
 
 // Only download the bundled model when the user is actually building a

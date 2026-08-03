@@ -42,8 +42,11 @@ key.
 - **`arm64-v8a` únicamente.** ggml core exige dotprod + fp16 (ARMv8.2,
   ~2018+). `check_cpu_features` aborta limpio en CPUs más viejas.
 - **`minSdk 26` / `targetSdk 35`** (Android 8.0 → 15).
-- **Modelo bundled:** Canary 180M Flash Q8_0 (~209 MB), descargado al
-  primer build con verificación SHA-256.
+- **Modelo bundled:** Nemotron 3.5 ASR Streaming 0.6B Q8_0 (~751 MB),
+  descargado al primer build con verificación SHA-256. Streaming
+  cache-aware + detección automática de idioma (40 language-locales); el
+  hint del locale del dispositivo se mantiene como fallback para modelos
+  sin detección nativa (Canary).
 - **Sin `SharedPreferences` para ajustes cross-process.** Los toggles van
   como marker files en `filesDir()` — ver AGENTS.md §4.5.
 
@@ -65,8 +68,8 @@ key.
 ### Diferido (posible en roadmap, NO ahora)
 
 - Sync entre dispositivos de los ajustes / modelo / prompts.
-- Japonés / coreano / chino contenedor-bundled (sólo Canary; el usuario
-  puede importar otros GGUF compatibles via Settings).
+- Japonés / coreano / chino contenedor-bundled (el usuario puede importar
+  otros GGUF compatibles via Settings; el bundled cubre 40 locales).
 - API pública a apps externas más allá de `RecognizerIntent` y `Intent.SEND`.
 
 ## Superficies funcionales

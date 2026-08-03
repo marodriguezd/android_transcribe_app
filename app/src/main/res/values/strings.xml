@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Offline Voice Input</string>
+    <string name="app_name" translatable="false">Offline Voice Input</string>
     <string name="welcome_title">Voice Input &amp; Subtitles</string>
     <string name="welcome_subtitle">Fully offline, private, and fast.</string>
     
@@ -44,15 +44,15 @@
     <string name="subtitle_lines_4">4 lines</string>
     <string name="subtitle_lines_all">All</string>
 
-    <string name="recognition_service_label">Offline Voice Input</string>
+    <string name="recognition_service_label" translatable="false">Offline Voice Input</string>
 
     <!-- Speech model management (transcribe.cpp GGUF backend) -->
     <string name="models_title">Speech models</string>
     <string name="models_section">Speech model</string>
     <string name="models_active_section">Active model</string>
     <string name="models_desc">The built-in model works out of the box. You can also import any transcribe.cpp GGUF model you\'ve downloaded. The app stays fully offline; downloads happen in your browser. The voice keyboard picks up a model change after it restarts.</string>
-    <string name="models_builtin">Canary 180M Flash</string>
-    <string name="models_builtin_sub">Included in the app · English, Spanish, German, French</string>
+    <string name="models_builtin" translatable="false">Nemotron 3.5 ASR Streaming</string>
+    <string name="models_builtin_sub">Included in the app · 40 language-locales · streaming · auto-detect</string>
     <string name="models_loading">Loading model…</string>
     <string name="models_import">Import model file (.gguf)</string>
     <string name="models_importing">Importing %1$s…</string>
@@ -75,7 +75,7 @@
     <string name="models_delete_confirm">Delete %1$s from the app\'s storage?</string>
     <string name="models_language_section">Language</string>
     <string name="models_language_desc">The language passed to the model. “Auto (device language)” uses your phone\'s current language by default. If speech is transcribed in the wrong language or script, pick your language explicitly. Languages the active model doesn\'t support are ignored.</string>
-    <string name="models_language_auto">Auto (device language)</string>
+    <string name="models_language_auto">Auto (detect language)</string>
     <string name="models_language_saved">Language saved</string>
     <string name="models_translate">Translate to English</string>
     <string name="models_translate_desc">For models that support it (e.g. Whisper): speech in any language becomes English text, including in live subtitles. Ignored by other models.</string>
@@ -83,6 +83,12 @@
     <string name="models_threads_section">CPU threads</string>
     <string name="models_threads_desc">Threads used for transcription. “Automatic” picks a value based on this device\'s CPU. If transcription is slow, try different values; more threads is not always faster.</string>
     <string name="models_threads_auto">Automatic</string>
+    <string name="models_stream_latency_section">Streaming latency</string>
+    <string name="models_stream_latency_desc">Chunk size for streaming models (Nemotron). Smaller chunks show live partial results sooner while you speak, at a small accuracy cost. “Balanced” is the model\'s default.</string>
+    <string name="models_stream_latency_balanced">Balanced (1.12 s)</string>
+    <string name="models_stream_latency_fast">Fast (560 ms)</string>
+    <string name="models_stream_latency_faster">Faster (160 ms)</string>
+    <string name="models_stream_latency_lowest">Lowest (80 ms)</string>
 
     <string name="section_benchmark">Benchmark</string>
     <string name="desc_benchmark">Measures how fast the active model transcribes on this device, using a built-in English test recording (11 s).</string>
@@ -152,5 +158,5 @@
     <string name="debug_model_retry">Retry</string>
     <string name="debug_model_cancelled">Model download cancelled</string>
     <string name="debug_model_no_space">Not enough free storage to download the model</string>
-    <string name="debug_model_size" translatable="false">209 MB</string>
+    <string name="debug_model_size" translatable="false">751 MB</string>
 </resources>

@@ -63,8 +63,22 @@ jobs:
         restore-keys: |
           ${{ runner.os }}-gradle-
 
+    - name: Check translations (i18n parity gate)
+      run: python3 scripts/check_translations.py
+
+    # IMPORTANT: keep the two invocations separate. `app/build.gradle.kts`
+    # skips wiring cargoNdkBuild to preBuild whenever "test"/"lint" appears
+    # in the task list (thermal protection); a combined
+    # `testDebugUnitTest assembleDebug` would therefore assemble an APK
+    # without the Rust .so and crash at launch.
+    - name: Run unit tests (hard gate)
+      run: ./gradlew testDebugUnitTest
+
     - name: Build Debug APK
       run: ./gradlew assembleDebug
+
+    - name: Lint (hard gate)
+      run: ./gradlew lintDebug
 
     - name: Extract Version Name
       id: version

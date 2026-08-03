@@ -361,6 +361,7 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == PERM_REQ_CODE) {
             updateVoiceInputStatus();
         }
@@ -536,18 +537,18 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
 
-            // Rough sanity check: the model is ~209 MB; leave extra headroom.
-            long requiredBytes = 220L * 1024 * 1024;
+            // Rough sanity check: the model is ~751 MB; leave extra headroom.
+            long requiredBytes = 800L * 1024 * 1024;
             if (getFilesDir().getUsableSpace() < requiredBytes) {
                 runOnUiThread(() -> onModelDownloadFailed(getString(R.string.debug_model_no_space)));
                 return;
             }
 
-            File dest = new File(modelsDir, "canary-180m-flash-Q8_0.gguf");
-            File tmp = new File(modelsDir, "canary-180m-flash-Q8_0.gguf.tmp");
-            String url = "https://huggingface.co/handy-computer/canary-180m-flash-gguf/resolve/main/canary-180m-flash-Q8_0.gguf?download=true";
+            File dest = new File(modelsDir, "nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf");
+            File tmp = new File(modelsDir, "nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf.tmp");
+            String url = "https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf/resolve/main/nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf?download=true";
 
-            // Mobile networks can be slow for a 209 MB file; give generous timeouts.
+            // Mobile networks can be slow for a 751 MB file; give generous timeouts.
             OkHttpClient client = new OkHttpClient.Builder()
                     .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
                     .readTimeout(180, java.util.concurrent.TimeUnit.SECONDS)
@@ -573,7 +574,7 @@ public class MainActivity extends AppCompatActivity {
                 // Mark this downloaded file as the active imported model.
                 try (FileOutputStream fos = new FileOutputStream(
                         new File(getFilesDir(), "active_model"))) {
-                    fos.write("canary-180m-flash-Q8_0.gguf".getBytes(StandardCharsets.UTF_8));
+                    fos.write("nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf".getBytes(StandardCharsets.UTF_8));
                 }
 
                 // Notify whichever MainActivity is currently in the foreground

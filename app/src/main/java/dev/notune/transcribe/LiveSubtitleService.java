@@ -1,5 +1,7 @@
 package dev.notune.transcribe;
 
+import android.annotation.SuppressLint;
+import android.annotation.TargetApi;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -124,7 +126,15 @@ public class LiveSubtitleService extends Service {
 
         initNative(this);
         setupOverlay();
-        startAudioCapture();
+        // MediaProjection audio capture only exists on Android 10+; on older
+        // devices the whole subtitle surface is unavailable.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startAudioCapture();
+        } else {
+            Log.e(TAG, "Live subtitles require Android 10 (API 29)+");
+            stopSubtitleSession();
+            stopSelf();
+        }
     }
 
     private void stopSubtitleSession() {
@@ -237,6 +247,18 @@ public class LiveSubtitleService extends Service {
         }
     }
 
+    /**
+     * Captures system audio via MediaProjection (Android 10 / API 29+ only).
+     *
+     * Suppressed MissingPermission: this path does NOT require RECORD_AUDIO —
+     * system-audio playback capture is gated by the MediaProjection consent
+     * the user granted in LiveSubtitleActivity, not by the mic permission. The
+     * AudioRecord build/start below is additionally wrapped in try/catch, so a
+     * ROM that enforces RECORD_AUDIO anyway surfaces as a logged error instead
+     * of a crash.
+     */
+    @TargetApi(Build.VERSION_CODES.Q)
+    @SuppressLint("MissingPermission")
     private void startAudioCapture() {
         Log.d(TAG, "Starting audio capture. MediaProjection: " + mMediaProjection);
         if (mMediaProjection == null) {

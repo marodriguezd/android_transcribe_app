@@ -15,14 +15,15 @@ import java.util.Locale;
  * Material You dynamic color on Android 12+. Runs in every process (including the
  * ":ime" keyboard process).
  *
- * Also defaults the transcription language to the device's current language on
- * first run: an empty language left the model with no hint, so it defaulted to
- * English for every input language. With this, speech is transcribed in the
- * phone's system language by default, and the user can still override it in
- * ModelsActivity's language dropdown.
+ * Also defaults the transcription language to automatic detection on first run:
+ * the bundled Nemotron 3.5 ASR model detects the spoken language natively across
+ * 40 language-locales. The device's current language is kept in a separate
+ * marker (`device_language`) used by the engine as the fallback hint for models
+ * without native detection (e.g. Canary) — the old device-locale default.
  */
 public class App extends Application {
     private static final String LANGUAGE_FILE = "model_language";
+    private static final String DEVICE_LANGUAGE_FILE = "device_language";
 
     @Override
     public void onCreate() {
@@ -36,13 +37,16 @@ public class App extends Application {
         SettingsManager.migrateIfNeeded(this);
     }
 
-    /// Writes the device's current language (BCP-47 tag, e.g. "es-ES",
-    /// "en-US", "fr-FR") as the transcription language the first time the app
-    /// runs, when no language has been chosen yet.
+    /// Writes "auto" as the transcription language the first time the app
+    /// runs, when no language has been chosen yet (the bundled model detects
+    /// the language natively). The device locale (BCP-47 tag, e.g. "es-ES",
+    /// "en-US", "fr-FR") goes to `device_language`, the engine's fallback
+    /// hint for models without native detection.
     private void applyDeviceLanguageIfUnset() {
         File f = new File(getFilesDir(), LANGUAGE_FILE);
         if (f.exists()) return;
-        writeConfig(LANGUAGE_FILE, Locale.getDefault().toLanguageTag());
+        writeConfig(LANGUAGE_FILE, "auto");
+        writeConfig(DEVICE_LANGUAGE_FILE, Locale.getDefault().toLanguageTag());
     }
 
     private void writeConfig(String name, String value) {

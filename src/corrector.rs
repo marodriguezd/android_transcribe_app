@@ -200,28 +200,102 @@ fn phonetic_key(input: &str) -> String {
 
         // Digraphs/trigraphs first (first match wins).
         match (c, n1, n2) {
-            ('c', 'h', _) => { out.push('x'); i += 2; }                  // ch → x
-            ('l', 'l', _) => { out.push('y'); i += 2; }                  // ll → y
-            ('q', 'u', _) => { out.push('k'); i += 2; }                  // qu → k
-            ('g', 'u', 'e') | ('g', 'u', 'i') => { out.push('g'); out.push(n2); i += 3; } // gue/gui
-            ('g', 'ü', _) => { out.push('g'); out.push('w'); out.push(n2); i += 3; }      // güe/güi
-            ('p', 'h', _) => { out.push('f'); i += 2; }                  // ph → f
-            ('g', 'h', _) => { out.push('f'); i += 2; }                  // gh → f
-            ('k', 'n', _) => { out.push('n'); i += 2; }                  // kn → n
-            ('w', 'r', _) => { out.push('r'); i += 2; }                  // wr → r
-            ('s', 'h', _) => { out.push('s'); i += 2; }                  // sh → s
-            ('t', 'h', _) => { out.push('d'); i += 2; }                  // th → d
-            ('w', 'h', _) => { out.push('w'); i += 2; }                  // wh → w
-            ('c', 'e', _) | ('c', 'i', _) => { out.push('s'); out.push(n1); i += 2; }      // ce/ci → se/si
-            ('c', 'a', _) | ('c', 'o', _) | ('c', 'u', _) => { out.push('k'); out.push(n1); i += 2; } // c(a/o/u) → k
-            ('c', 'y', _) => { out.push('s'); out.push('y'); i += 2; }   // cy → sy
-            ('g', 'e', _) | ('g', 'i', _) | ('j', 'e', _) | ('j', 'i', _) => { out.push('h'); out.push(n1); i += 2; } // g/j + e/i → h
-            ('x', _, _) => { out.push('k'); out.push('s'); i += 1; }     // x → ks
-            ('v', _, _) => { out.push('b'); i += 1; }                    // v → b
-            ('z', _, _) => { out.push('s'); i += 1; }                    // z → s
-            ('ñ', _, _) => { out.push('n'); out.push('y'); i += 1; }     // ñ → ny
-            ('h', _, _) => { i += 1; }                                   // silent h
-            _ => { out.push(c); i += 1; }
+            ('c', 'h', _) => {
+                out.push('x');
+                i += 2;
+            } // ch → x
+            ('l', 'l', _) => {
+                out.push('y');
+                i += 2;
+            } // ll → y
+            ('q', 'u', _) => {
+                out.push('k');
+                i += 2;
+            } // qu → k
+            ('g', 'u', 'e') | ('g', 'u', 'i') => {
+                out.push('g');
+                out.push(n2);
+                i += 3;
+            } // gue/gui
+            ('g', 'ü', _) => {
+                out.push('g');
+                out.push('w');
+                out.push(n2);
+                i += 3;
+            } // güe/güi
+            ('p', 'h', _) => {
+                out.push('f');
+                i += 2;
+            } // ph → f
+            ('g', 'h', _) => {
+                out.push('f');
+                i += 2;
+            } // gh → f
+            ('k', 'n', _) => {
+                out.push('n');
+                i += 2;
+            } // kn → n
+            ('w', 'r', _) => {
+                out.push('r');
+                i += 2;
+            } // wr → r
+            ('s', 'h', _) => {
+                out.push('s');
+                i += 2;
+            } // sh → s
+            ('t', 'h', _) => {
+                out.push('d');
+                i += 2;
+            } // th → d
+            ('w', 'h', _) => {
+                out.push('w');
+                i += 2;
+            } // wh → w
+            ('c', 'e', _) | ('c', 'i', _) => {
+                out.push('s');
+                out.push(n1);
+                i += 2;
+            } // ce/ci → se/si
+            ('c', 'a', _) | ('c', 'o', _) | ('c', 'u', _) => {
+                out.push('k');
+                out.push(n1);
+                i += 2;
+            } // c(a/o/u) → k
+            ('c', 'y', _) => {
+                out.push('s');
+                out.push('y');
+                i += 2;
+            } // cy → sy
+            ('g', 'e', _) | ('g', 'i', _) | ('j', 'e', _) | ('j', 'i', _) => {
+                out.push('h');
+                out.push(n1);
+                i += 2;
+            } // g/j + e/i → h
+            ('x', _, _) => {
+                out.push('k');
+                out.push('s');
+                i += 1;
+            } // x → ks
+            ('v', _, _) => {
+                out.push('b');
+                i += 1;
+            } // v → b
+            ('z', _, _) => {
+                out.push('s');
+                i += 1;
+            } // z → s
+            ('ñ', _, _) => {
+                out.push('n');
+                out.push('y');
+                i += 1;
+            } // ñ → ny
+            ('h', _, _) => {
+                i += 1;
+            } // silent h
+            _ => {
+                out.push(c);
+                i += 1;
+            }
         }
     }
     collapse_duplicates(&out)
@@ -385,7 +459,13 @@ fn correct(text: &str, dict: &Dictionary) -> String {
     let word_indices: Vec<usize> = segments
         .iter()
         .enumerate()
-        .filter_map(|(i, s)| if matches!(s, Segment::Word(_)) { Some(i) } else { None })
+        .filter_map(|(i, s)| {
+            if matches!(s, Segment::Word(_)) {
+                Some(i)
+            } else {
+                None
+            }
+        })
         .collect();
     let words: Vec<String> = word_indices
         .iter()
@@ -529,14 +609,52 @@ mod tests {
     #[test]
     fn multi_word_term_matched() {
         let mut multi = HashMap::new();
-        multi.insert(2, vec![Term {
-            text: "New York".to_string(),
-            key: phonetic_key("New York"),
-        }]);
+        multi.insert(
+            2,
+            vec![Term {
+                text: "New York".to_string(),
+                key: phonetic_key("New York"),
+            }],
+        );
         let d = Dictionary {
             single: Vec::new(),
             multi,
         };
         assert_eq!(correct("I live in new york", &d), "I live in New York");
+    }
+
+    #[test]
+    fn phonetic_key_is_case_folded() {
+        // The encoder lowercases first, so casing of the input never matters.
+        assert_eq!(phonetic_key("Madrid"), phonetic_key("madrid"));
+        assert_eq!(phonetic_key("BARCELONA"), phonetic_key("Barcelona"));
+    }
+
+    #[test]
+    fn apply_case_upper_original_uppers_term() {
+        assert_eq!(apply_case("madrid", "MADRID"), "MADRID");
+    }
+
+    #[test]
+    fn apply_case_mixed_keeps_term_casing() {
+        assert_eq!(apply_case("Madrid", "Mad"), "Madrid");
+    }
+
+    #[test]
+    fn apply_case_no_letters_returns_term() {
+        // Digits/punctuation only → original has no upper letters → term verbatim.
+        assert_eq!(apply_case("madrid", "123"), "madrid");
+    }
+
+    #[test]
+    fn word_not_in_dictionary_is_preserved() {
+        let d = dict_single(&["Madrid"]);
+        assert_eq!(correct("café", &d), "café");
+    }
+
+    #[test]
+    fn empty_input_passthrough() {
+        let d = dict_single(&["Madrid"]);
+        assert_eq!(correct("", &d), "");
     }
 }

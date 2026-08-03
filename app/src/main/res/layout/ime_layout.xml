@@ -23,6 +23,8 @@
             android:text="Tap to speak"
             android:textColor="?attr/colorOnSurfaceVariant"
             android:textAppearance="?attr/textAppearanceBodyMedium"
+            android:singleLine="true"
+            android:ellipsize="end"
             android:paddingStart="4dp"/>
 
         <ProgressBar
@@ -81,20 +83,20 @@
         android:baselineAligned="false"
         android:paddingTop="8dp">
 
-        <ImageView
+        <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/ime_switch_keyboard"
             android:layout_width="52dp"
             android:layout_height="44dp"
             android:src="@drawable/ic_keyboard_switch"
             android:scaleType="centerInside"
             android:background="@drawable/bg_ime_key"
-            android:tint="?attr/colorOnSurfaceVariant"
+            app:tint="?attr/colorOnSurfaceVariant"
             android:clickable="true"
             android:focusable="true"
             android:layout_marginEnd="8dp"
             android:contentDescription="Switch keyboard"/>
 
-        <ImageView
+        <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/ime_space"
             android:layout_width="0dp"
             android:layout_height="44dp"
@@ -102,33 +104,33 @@
             android:src="@drawable/ic_space"
             android:scaleType="centerInside"
             android:background="@drawable/bg_ime_key"
-            android:tint="?attr/colorOnSurfaceVariant"
+            app:tint="?attr/colorOnSurfaceVariant"
             android:clickable="true"
             android:focusable="true"
             android:layout_marginEnd="8dp"
             android:contentDescription="Space"/>
 
-        <ImageView
+        <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/ime_enter"
             android:layout_width="64dp"
             android:layout_height="44dp"
             android:src="@drawable/ic_enter"
             android:scaleType="centerInside"
             android:background="@drawable/bg_ime_key"
-            android:tint="?attr/colorOnSurfaceVariant"
+            app:tint="?attr/colorOnSurfaceVariant"
             android:clickable="true"
             android:focusable="true"
             android:layout_marginEnd="8dp"
             android:contentDescription="Enter"/>
 
-        <ImageView
+        <androidx.appcompat.widget.AppCompatImageView
             android:id="@+id/ime_backspace"
             android:layout_width="64dp"
             android:layout_height="44dp"
             android:src="@drawable/ic_backspace"
             android:scaleType="centerInside"
             android:background="@drawable/bg_ime_key"
-            android:tint="?attr/colorOnSurfaceVariant"
+            app:tint="?attr/colorOnSurfaceVariant"
             android:clickable="true"
             android:focusable="true"
             android:contentDescription="Backspace"/>

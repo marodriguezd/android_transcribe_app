@@ -46,7 +46,7 @@
     <string name="models_title">Речевые модели</string>
     <string name="models_section">Речевая модель</string>
     <string name="models_active_section">Активная модель</string>
-    <string name="models_builtin_sub">Встроена в приложение · английский, испанский, немецкий, французский</string>
+    <string name="models_builtin_sub">Встроена в приложение · 40 языков/регионов · стриминг · автоопределение</string>
     <string name="model_desc_parakeet110m">Только английский, маленькая и быстрая</string>
     <string name="model_desc_sensevoice">Английский, китайский, кантонский, японский, корейский; быстрая</string>
     <string name="model_desc_whisper_small">99 языков, компактная; переводит на английский</string>
@@ -70,7 +70,7 @@
     <string name="models_delete_confirm">Удалить %1$s из хранилища приложения?</string>
     <string name="models_language_section">Язык</string>
     <string name="models_language_desc">Язык, передаваемый модели. «Автоматически» позволяет модели решать сама. Если речь распознаётся не на том языке или не в том алфавите, выберите язык явно. Языки, не поддерживаемые активной моделью, игнорируются.</string>
-    <string name="models_language_auto">Автоматически</string>
+    <string name="models_language_auto">Авто (определять язык)</string>
     <string name="models_language_saved">Язык сохранён</string>
     <string name="models_translate">Переводить на английский</string>
     <string name="models_translate_desc">Для моделей с поддержкой перевода (например, Whisper): речь на любом языке становится английским текстом, в том числе в субтитрах. Остальные модели игнорируют эту настройку.</string>
@@ -78,6 +78,12 @@
     <string name="models_threads_section">Потоки ЦП</string>
     <string name="models_threads_desc">Потоки, используемые для распознавания. «Автоматически» подбирает значение под процессор этого устройства. Если распознавание медленное, попробуйте другие значения; больше потоков не всегда быстрее.</string>
     <string name="models_threads_auto">Автоматически</string>
+    <string name="models_stream_latency_section">Задержка стриминга</string>
+    <string name="models_stream_latency_desc">Размер сегмента для стриминговых моделей (Nemotron). Меньшие сегменты показывают промежуточные результаты раньше, ценой небольшой потери точности. «Сбалансированный» — значение по умолчанию модели.</string>
+    <string name="models_stream_latency_balanced">Сбалансированный (1,12 с)</string>
+    <string name="models_stream_latency_fast">Быстрый (560 мс)</string>
+    <string name="models_stream_latency_faster">Быстрее (160 мс)</string>
+    <string name="models_stream_latency_lowest">Минимальный (80 мс)</string>
 
     <string name="section_benchmark">Тест скорости</string>
     <string name="desc_benchmark">Измеряет скорость распознавания активной модели на этом устройстве по встроенной тестовой записи на английском (11 с).</string>
@@ -143,5 +149,5 @@
     <string name="debug_model_retry">Повторить</string>
     <string name="debug_model_cancelled">Загрузка модели отменена</string>
     <string name="debug_model_no_space">Недостаточно свободного места для загрузки модели</string>
-    <string name="debug_model_size" translatable="false">209 MB</string>
+    <string name="debug_model_size" translatable="false">751 MB</string>
 </resources>

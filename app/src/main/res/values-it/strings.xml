@@ -46,7 +46,7 @@
     <string name="models_title">Modelli vocali</string>
     <string name="models_section">Modello vocale</string>
     <string name="models_active_section">Modello attivo</string>
-    <string name="models_builtin_sub">Incluso nell\'app · inglese, spagnolo, tedesco, francese</string>
+    <string name="models_builtin_sub">Incluso nell\'app · 40 lingue/regioni · streaming · rilevamento automatico</string>
     <string name="model_desc_parakeet110m">Solo inglese, piccolo e veloce</string>
     <string name="model_desc_sensevoice">Inglese, cinese, cantonese, giapponese, coreano; veloce</string>
     <string name="model_desc_whisper_small">99 lingue, compatto; traduce in inglese</string>
@@ -70,7 +70,7 @@
     <string name="models_delete_confirm">Eliminare %1$s dall\'archivio dell\'app?</string>
     <string name="models_language_section">Lingua</string>
     <string name="models_language_desc">La lingua passata al modello. «Automatico» lascia decidere al modello. Se il parlato viene trascritto nella lingua o nell\'alfabeto sbagliato, scegli la tua lingua esplicitamente. Le lingue non supportate dal modello attivo vengono ignorate.</string>
-    <string name="models_language_auto">Automatico</string>
+    <string name="models_language_auto">Auto (rileva lingua)</string>
     <string name="models_language_saved">Lingua salvata</string>
     <string name="models_translate">Traduci in inglese</string>
     <string name="models_translate_desc">Per i modelli che lo supportano (es. Whisper): il parlato in qualsiasi lingua diventa testo inglese, anche nei sottotitoli in tempo reale. Gli altri modelli lo ignorano.</string>
@@ -78,6 +78,12 @@
     <string name="models_threads_section">Thread CPU</string>
     <string name="models_threads_desc">Thread usati per la trascrizione. «Automatico» sceglie un valore in base alla CPU di questo dispositivo. Se la trascrizione è lenta, prova altri valori; più thread non è sempre più veloce.</string>
     <string name="models_threads_auto">Automatico</string>
+    <string name="models_stream_latency_section">Latenza streaming</string>
+    <string name="models_stream_latency_desc">Dimensione dei segmenti per i modelli di streaming (Nemotron). Segmenti più piccoli mostrano i risultati parziali in diretta prima, a costo di un po\' di precisione. «Bilanciato» è il valore predefinito del modello.</string>
+    <string name="models_stream_latency_balanced">Bilanciato (1,12 s)</string>
+    <string name="models_stream_latency_fast">Veloce (560 ms)</string>
+    <string name="models_stream_latency_faster">Più veloce (160 ms)</string>
+    <string name="models_stream_latency_lowest">Minima (80 ms)</string>
 
     <string name="section_benchmark">Benchmark</string>
     <string name="desc_benchmark">Misura la velocità di trascrizione del modello attivo su questo dispositivo usando una registrazione di prova in inglese integrata (11 s).</string>
@@ -143,5 +149,5 @@
     <string name="debug_model_retry">Riprova</string>
     <string name="debug_model_cancelled">Download del modello annullato</string>
     <string name="debug_model_no_space">Spazio di archiviazione insufficiente per scaricare il modello</string>
-    <string name="debug_model_size" translatable="false">209 MB</string>
+    <string name="debug_model_size" translatable="false">751 MB</string>
 </resources>

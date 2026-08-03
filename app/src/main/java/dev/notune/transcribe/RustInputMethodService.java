@@ -1,5 +1,6 @@
 package dev.notune.transcribe;
 
+import android.annotation.TargetApi;
 import android.inputmethodservice.InputMethodService;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -24,6 +25,7 @@ import android.content.res.ColorStateList;
 import android.view.ContextThemeWrapper;
 import java.io.File;
 
+import androidx.core.content.ContextCompat;
 import com.google.android.material.color.DynamicColors;
 import com.google.android.material.color.MaterialColors;
 
@@ -133,12 +135,13 @@ public class RustInputMethodService extends InputMethodService {
         UserDictionaryHelper.syncSystemUserDictionaryAsync(this);
         // Listen for cross-process post-processing cancellation from the main
         // process so we can abort in-flight OkHttp calls immediately.
+        // RECEIVER_NOT_EXPORTED: only the main process (same app uid) sends
+        // CANCEL_PP; other apps must not be able to trigger a PP cancel.
+        // ContextCompat picks the flags-aware API on 33+ and the plain
+        // registerReceiver below it, silencing UnspecifiedRegisterReceiverFlag.
         IntentFilter cancelFilter = new IntentFilter(PostProcessor.CANCEL_ACTION);
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(cancelReceiver, cancelFilter, Context.RECEIVER_NOT_EXPORTED);
-        } else {
-            registerReceiver(cancelReceiver, cancelFilter);
-        }
+        ContextCompat.registerReceiver(this, cancelReceiver, cancelFilter,
+                ContextCompat.RECEIVER_NOT_EXPORTED);
     }
 
     @Override
@@ -182,7 +185,7 @@ public class RustInputMethodService extends InputMethodService {
                     stopRecording();
                     updateRecordButtonUI(false);
                 } else {
-                    switchToPreviousInputMethod();
+                    switchToPreviousInputMethodSafe();
                 }
             });
 
@@ -432,6 +435,17 @@ public class RustInputMethodService extends InputMethodService {
         }
     }
 
+    /**
+     * Switches to the previously used input method. No-op on API < 28, where
+     * {@link #switchToPreviousInputMethod()} does not exist (minSdk is 26).
+     */
+    @TargetApi(Build.VERSION_CODES.P)
+    private void switchToPreviousInputMethodSafe() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            switchToPreviousInputMethod();
+        }
+    }
+
     @Override
     public void onDestroy() {
         super.onDestroy();
@@ -475,7 +489,7 @@ public class RustInputMethodService extends InputMethodService {
             updateUiState();
             if (pendingSwitchBack && status.startsWith("Error")) {
                 pendingSwitchBack = false;
-                switchToPreviousInputMethod();
+                switchToPreviousInputMethodSafe();
             }
             if (pauseAudioActive && status != null && status.startsWith("Error")) {
                 audioPauser.abandon(this);
@@ -519,6 +533,21 @@ public class RustInputMethodService extends InputMethodService {
         }
     }
 
+    // Called from Rust with live partial hypotheses while recording
+    // (streaming models). Visual-only (per design): the partial text is shown
+    // in the keyboard's status line; the editor receives only the final text
+    // via onTextTranscribed, so there is no risk of Frankenstein text from
+    // revising hypotheses mid-utterance.
+    public void onPartialText(String text) {
+        mainHandler.post(() -> {
+            if (isRecording && statusView != null && text != null && !text.trim().isEmpty()) {
+                // Keep the single-line status row from growing unboundedly.
+                String shown = text.length() > 80 ? text.substring(0, 80) + "…" : text;
+                statusView.setText(shown);
+            }
+        });
+    }
+
     // Called from Rust
     public void onTextTranscribed(String text) {
         mainHandler.post(() -> {
@@ -532,7 +561,7 @@ public class RustInputMethodService extends InputMethodService {
                 }
                 if (pendingSwitchBack) {
                     pendingSwitchBack = false;
-                    switchToPreviousInputMethod();
+                    switchToPreviousInputMethodSafe();
                 }
                 return;
             }
@@ -603,7 +632,7 @@ public class RustInputMethodService extends InputMethodService {
         if (statusView != null) statusView.setText("Tap to Record");
         if (pendingSwitchBack) {
             pendingSwitchBack = false;
-            switchToPreviousInputMethod();
+            switchToPreviousInputMethodSafe();
         }
     }
 
@@ -628,7 +657,7 @@ public class RustInputMethodService extends InputMethodService {
         if (statusView != null) statusView.setText("Tap to Record");
         if (pendingSwitchBack) {
             pendingSwitchBack = false;
-            switchToPreviousInputMethod();
+            switchToPreviousInputMethodSafe();
         }
     }
 

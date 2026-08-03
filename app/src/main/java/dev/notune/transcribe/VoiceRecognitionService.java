@@ -151,6 +151,24 @@ public class VoiceRecognitionService extends RecognitionService {
         });
     }
 
+    /**
+     * Live partial hypotheses from a streaming model while the user is
+     * speaking, surfaced to the calling keyboard via
+     * {@link Callback#partialResults}. Only the final text goes through the
+     * AI post-processor (see onResults).
+     */
+    public void onPartialText(String text) {
+        mainHandler.post(() -> {
+            Callback cb = mCallback;
+            if (cb == null || text == null || text.trim().isEmpty()) return;
+            ArrayList<String> hypotheses = new ArrayList<>();
+            hypotheses.add(text);
+            Bundle bundle = new Bundle();
+            bundle.putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, hypotheses);
+            try { cb.partialResults(bundle); } catch (RemoteException ignored) {}
+        });
+    }
+
     public void onResults(String text) {
         mainHandler.post(() -> {
             Callback cb = mCallback;

@@ -6,14 +6,14 @@ An offline, privacy-focused speech-to-text tool for Android, built with Rust. Ta
 alt="Get it on GitHub"
 height="80">](https://github.com/marodriguezd/android_transcribe_app/releases/latest)
 
-> This is a fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app). It defaults to the Canary 180M Flash model and adds an optional AI post-processing layer (clean up transcriptions with any OpenAI-compatible LLM). Get releases from [this repo's releases page](https://github.com/marodriguezd/android_transcribe_app/releases/latest).
+> This is a fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app). It defaults to the multilingual, streaming Nemotron 3.5 ASR model (Q8_0) and adds an optional AI post-processing layer (clean up transcriptions with any OpenAI-compatible LLM). Get releases from [this repo's releases page](https://github.com/marodriguezd/android_transcribe_app/releases/latest).
 
 > **For AI assistants:** if you are an automated coding agent about to modify code in this repo, **read [`AGENTS.md`](AGENTS.md) first**. It defines the JNI contract, marker-file settings convention, build wiring rules (cargo-ndk, ABI filter, `outputs.upToDateWhen`), and a strict do/don't list. This README is the human-facing project page (features, prerequisites, screenshots, acknowledgments); implementation rules live next door.
 
 ## Features
 
 - **Voice input in any app:** Tap the microphone on the keyboard you already use (SwiftKey, etc.) or a website's voice search, and your speech is transcribed straight into the text field. The app registers as your device's speech-to-text provider.
-- **100% offline & private:** The Canary 180M Flash model runs entirely on-device — no audio ever leaves your phone, and no network is required. (The optional AI post-processing layer is the only feature that talks to the network, and only if you enable it.)
+- **100% offline & private:** The bundled Nemotron 3.5 ASR model runs entirely on-device — no audio ever leaves your phone, and no network is required. (The optional AI post-processing layer is the only feature that talks to the network, and only if you enable it.)
 - **Live Subtitles:** Real-time captions for any audio/video playing on your device.
 - **Optional voice keyboard:** A built-in keyboard you can switch to for voice input wherever you prefer it.
 - **Supported Languages (built-in model):** English, Spanish, German, French. Import a different GGUF model (see below) for other languages.
@@ -77,7 +77,9 @@ This relies on the undocumented `PROJECT_MEDIA` app-op; on some OEM builds it ma
 
 ### Custom speech models
 
-The built-in Canary 180M Flash model works out of the box. Under **Manage speech models** you can additionally import any [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) GGUF model: download a `.gguf` file in your browser (the in-app *Where to get models* dialog lists direct links, e.g. a tiny 135 MB English-only Parakeet, the multilingual Nemotron 3.5 streaming model with punctuation, or Whisper large-v3-turbo), then import it via the system file picker and select it. Importing model files needs no internet permission — files are simply copied into the app's private storage. An optional language hint (e.g. `en-US`, or `auto`) can be set for imported models.
+The built-in Nemotron 3.5 ASR Streaming model works out of the box — it transcribes 40 language-locales with automatic language detection and live partial hypotheses while you speak. Under **Manage speech models** you can additionally import any [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) GGUF model: download a `.gguf` file in your browser (the in-app *Where to get models* dialog lists direct links, e.g. a tiny 135 MB English-only Parakeet, Whisper large-v3-turbo, or a Canary model), then import it via the system file picker and select it. Importing model files needs no internet permission — files are simply copied into the app's private storage. An optional language hint (e.g. `en-US`, or `auto`) can be set for imported models; models without native language detection (like Canary) fall back to the device's language when set to automatic.
+
+For streaming models, *Manage speech models* also exposes a **Streaming latency** selector (chunk sizes 1.12 s / 560 ms / 160 ms / 80 ms). The default (1.12 s) matches the model's best accuracy; smaller chunks show live partial results noticeably sooner while you speak — handy on slower phones — at a small accuracy cost. The engine logs per-session fluidity telemetry (`rtf`, partial count, mean cadence, chunk selector) so you can measure the trade-off on your own device via `logcat`.
 
 ## Prerequisites
 
@@ -132,7 +134,7 @@ export STORE_PASS=yourpassword
 
 ### Model Assets
 
-The built-in Canary 180M Flash GGUF model (~209 MB, Q8_0) is automatically downloaded from HuggingFace during the first build via a Gradle task. The checksum is verified with SHA-256. No manual download is needed.
+The built-in Nemotron 3.5 ASR Streaming GGUF model (~751 MB, Q8_0) is automatically downloaded from HuggingFace during the first build via a Gradle task. The checksum is verified with SHA-256. No manual download is needed.
 
 ## Project Structure
 
@@ -156,8 +158,8 @@ The built-in Canary 180M Flash GGUF model (~209 MB, Q8_0) is automatically downl
 ## Acknowledgments
 
 - **Original project:** [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app) — this repo is a fork.
-- **Speech Model:** [Canary 180M Flash](https://huggingface.co/nvidia/canary-180m-flash) by NVIDIA.
-    - GGUF conversion by [handy-computer](https://huggingface.co/handy-computer/canary-180m-flash-gguf).
+- **Speech Model:** [Nemotron 3.5 ASR Streaming 0.6B](https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b) by NVIDIA (cache-aware streaming, 40 language-locales, auto-detect).
+    - GGUF conversion by [handy-computer](https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf).
     - Licensed under [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/).
 - **Inference Backend:** [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) by CJ Pais / Handy Computer.
 

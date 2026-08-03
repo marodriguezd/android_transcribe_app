@@ -49,6 +49,9 @@ const ERROR_NO_MATCH: i32 = 7;
 /// (the stream's callback holds an `Arc<Endpoint>`).
 struct Endpoint {
     audio_buffer: Mutex<Vec<f32>>,
+    /// Total samples ever pushed (monotonic, unlike the drained buffer) —
+    /// used for the minimum-audio check before transcribing.
+    total_pushed: AtomicUsize,
     last_voice: Mutex<Instant>,
     noise_floor: Mutex<f32>,
     last_level_sent: Mutex<Instant>,
@@ -56,6 +59,14 @@ struct Endpoint {
     finalized: AtomicBool,
     cancelled: AtomicBool,
     started_at: Instant,
+    /// Command channel to the streaming pump (created per session).
+    stream_cmd_tx: Mutex<Option<crossbeam_channel::Sender<crate::engine::StreamCmd>>>,
+    /// True while the streaming pump is actively streaming (so finalize
+    /// routes to the pump instead of the whole-buffer path).
+    streaming_active: AtomicBool,
+    /// Serializes the finalize-vs-pump-start decision so exactly one path
+    /// delivers the transcription.
+    stream_lock: Mutex<()>,
     jvm: Arc<jni::JavaVM>,
     target: GlobalRef,
 }
@@ -83,13 +94,12 @@ fn call_error(env: &mut JNIEnv, obj: &JObject, code: i32) {
 
 fn call_results(env: &mut JNIEnv, obj: &JObject, text: &str) {
     if let Ok(jtxt) = env.new_string(text) {
-        let _ = env.call_method(
-            obj,
-            "onResults",
-            "(Ljava/lang/String;)V",
-            &[(&jtxt).into()],
-        );
+        let _ = env.call_method(obj, "onResults", "(Ljava/lang/String;)V", &[(&jtxt).into()]);
     }
+}
+
+fn call_partial(env: &mut JNIEnv, obj: &JObject, text: &str) {
+    crate::jni_util::notify_partial(env, obj, text);
 }
 
 // --- JNI entry points ---------------------------------------------------------
@@ -152,6 +162,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
     let now = Instant::now();
     let shared = Arc::new(Endpoint {
         audio_buffer: Mutex::new(Vec::new()),
+        total_pushed: AtomicUsize::new(0),
         last_voice: Mutex::new(now),
         noise_floor: Mutex::new(0.0),
         last_level_sent: Mutex::new(now),
@@ -159,6 +170,9 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
         finalized: AtomicBool::new(false),
         cancelled: AtomicBool::new(false),
         started_at: now,
+        stream_cmd_tx: Mutex::new(None),
+        streaming_active: AtomicBool::new(false),
+        stream_lock: Mutex::new(()),
         jvm: jvm.clone(),
         target,
     });
@@ -215,6 +229,15 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
     let mon_stream = stream_holder.clone();
     std::thread::spawn(move || endpoint_monitor(mon_shared, mon_stream));
 
+    // Streaming pump (Nemotron-family models): feeds the captured audio into
+    // a cache-aware transcribe.cpp stream and reports partial hypotheses via
+    // onPartialText. Exits silently for models without native streaming, in
+    // which case finalize uses the whole-buffer path as before.
+    let (cmd_tx, cmd_rx) = crossbeam_channel::unbounded::<crate::engine::StreamCmd>();
+    *shared.stream_cmd_tx.lock().unwrap() = Some(cmd_tx);
+    let pump_shared = shared.clone();
+    std::thread::spawn(move || streaming_pump(pump_shared, cmd_rx));
+
     *SESSION.lock().unwrap() = Some(Session {
         shared,
         stream: stream_holder,
@@ -228,7 +251,11 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
     _env: JNIEnv,
     _class: JClass,
 ) {
-    let session = SESSION.lock().unwrap().as_ref().map(|s| (s.shared.clone(), s.stream.clone()));
+    let session = SESSION
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|s| (s.shared.clone(), s.stream.clone()));
     if let Some((shared, stream)) = session {
         std::thread::spawn(move || finalize(shared, stream));
     }
@@ -266,6 +293,7 @@ fn audio_callback(shared: &Arc<Endpoint>, data: &[f32]) {
     }
 
     shared.audio_buffer.lock().unwrap().extend_from_slice(data);
+    shared.total_pushed.fetch_add(data.len(), Ordering::SeqCst);
 
     // RMS -> smoothed level in 0..1 (same scaling as voice_session).
     let mut sum = 0.0f32;
@@ -330,8 +358,99 @@ fn endpoint_monitor(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>
     }
 }
 
+/// Feeds the recording into a cache-aware streaming run and delivers partial
+/// hypotheses via `onPartialText` and the final text via `onResults` (or an
+/// error code). Exits without delivering anything when the model has no
+/// native streaming — `finalize` then falls back to the whole-buffer path.
+fn streaming_pump(
+    shared: Arc<Endpoint>,
+    rx: crossbeam_channel::Receiver<crate::engine::StreamCmd>,
+) {
+    // Wait for the engine (a session can start while it is still loading).
+    let engine_arc = loop {
+        if let Some(e) = engine::get_engine() {
+            break e;
+        }
+        if shared.finalized.load(Ordering::SeqCst) || shared.cancelled.load(Ordering::SeqCst) {
+            return;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    };
+
+    // Serialize the start decision with finalize/cancel so exactly one path
+    // delivers the transcription (see finalize).
+    {
+        let _guard = shared.stream_lock.lock().unwrap_or_else(|p| p.into_inner());
+        if shared.finalized.load(Ordering::SeqCst) || shared.cancelled.load(Ordering::SeqCst) {
+            return;
+        }
+        let is_streaming = engine_arc
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .supports_streaming();
+        if !is_streaming {
+            return; // finalize falls back to the whole-buffer path
+        }
+        shared.streaming_active.store(true, Ordering::SeqCst);
+    }
+
+    let mut env = match shared.jvm.attach_current_thread() {
+        Ok(e) => e,
+        Err(_) => return,
+    };
+    let target = shared.target.as_obj();
+
+    // Everything drained stays here so a failed/mid-stream fallback can
+    // re-transcribe the whole recording offline (no text lost).
+    let mut local: Vec<f32> = Vec::new();
+
+    let result = {
+        let shared_ref = &shared;
+        let mut drain = || {
+            let chunk: Vec<f32> = {
+                let mut b = shared_ref
+                    .audio_buffer
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner());
+                std::mem::take(&mut *b)
+            };
+            local.extend_from_slice(&chunk);
+            chunk
+        };
+        let mut partial = |text: &str| call_partial(&mut env, target, text);
+        engine::transcribe_stream_shared(&engine_arc, &rx, &mut drain, &mut partial)
+    };
+    shared.streaming_active.store(false, Ordering::SeqCst);
+
+    match result {
+        Ok(text) if !text.trim().is_empty() => call_results(&mut env, target, &text),
+        Ok(_) => call_error(&mut env, target, ERROR_NO_MATCH),
+        Err(msg) if msg == "Canceled" => {}
+        Err(msg) => {
+            // The stream could not run (e.g. begin failed): fall back to the
+            // whole-buffer transcription so no text is lost.
+            if local.is_empty() {
+                log::error!("Streaming failed: {}", msg);
+                call_error(&mut env, target, ERROR_SERVER);
+            } else {
+                match engine::transcribe_shared(&engine_arc, local) {
+                    Ok(text) if !text.trim().is_empty() => call_results(&mut env, target, &text),
+                    Ok(_) => call_error(&mut env, target, ERROR_NO_MATCH),
+                    Err(e) => {
+                        log::error!("Transcription failed: {}", e);
+                        call_error(&mut env, target, ERROR_SERVER);
+                    }
+                }
+            }
+        }
+    }
+    clear_session(&shared);
+}
+
 /// Stop capture, run the model on the buffered audio and deliver results/error.
 /// Idempotent: only the first caller (monitor or explicit stop) does the work.
+/// With a streaming model active, signals the pump instead (it finalizes and
+/// delivers, so exactly one path reports results).
 fn finalize(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>>) {
     if shared
         .finalized
@@ -344,21 +463,24 @@ fn finalize(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>>) {
     // Stop the microphone (also drops the audio callback's Arc<Endpoint>).
     *stream.lock().unwrap() = None;
 
-    let buffer = shared.audio_buffer.lock().unwrap().clone();
-    let speech = shared.speech_started.load(Ordering::SeqCst);
-
     let mut env = match shared.jvm.attach_current_thread() {
         Ok(e) => e,
         Err(_) => return,
     };
     let target = shared.target.as_obj();
 
+    let speech = shared.speech_started.load(Ordering::SeqCst);
     if speech {
         call_void(&mut env, target, "onEndOfSpeech");
     }
 
-    // ~0.2s minimum of audio to bother transcribing.
-    if buffer.len() < 3200 {
+    // ~0.2s minimum of audio to bother transcribing (total pushed, not the
+    // drained buffer, which the pump consumes as it goes).
+    if shared.total_pushed.load(Ordering::SeqCst) < 3200 {
+        // Abort the streaming pump (if any) so it delivers nothing.
+        if let Some(tx) = shared.stream_cmd_tx.lock().unwrap().clone() {
+            let _ = tx.send(crate::engine::StreamCmd::Cancel);
+        }
         call_error(&mut env, target, ERROR_NO_MATCH);
         clear_session(&shared);
         return;
@@ -372,6 +494,20 @@ fn finalize(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>>) {
         }
     }
 
+    {
+        let _guard = shared.stream_lock.lock().unwrap_or_else(|p| p.into_inner());
+        if shared.streaming_active.load(Ordering::SeqCst) {
+            // Streaming pump owns the transcription: signal end of input; the
+            // pump finalizes, delivers the results and clears the session.
+            if let Some(tx) = shared.stream_cmd_tx.lock().unwrap().clone() {
+                let _ = tx.send(crate::engine::StreamCmd::Stop);
+            }
+            return;
+        }
+    }
+
+    // Whole-buffer path (non-streaming models, or the pump never started).
+    let buffer = shared.audio_buffer.lock().unwrap().clone();
     match engine::get_engine() {
         Some(eng_arc) => {
             let res = engine::transcribe_shared(&eng_arc, buffer);

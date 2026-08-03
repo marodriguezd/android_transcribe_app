@@ -22,6 +22,12 @@ const ACTIVE_MODEL_FILE: &str = "active_model";
 /// File in filesDir with an optional language hint — a locale like `en-US`
 /// or `auto`. Absent or empty = let the model autodetect.
 const MODEL_LANGUAGE_FILE: &str = "model_language";
+/// File in filesDir with the device's BCP-47 locale, written by `App` on first
+/// run. Used as the language hint when the user's choice is automatic but the
+/// active model has no native language detection (Canary-family models): that
+/// preserves the old "transcribe in the phone's system language" default.
+/// Models with native detection (Nemotron) just auto-detect instead.
+const DEVICE_LANGUAGE_FILE: &str = "device_language";
 /// Marker file in filesDir: when present, models that support translation
 /// (e.g. Whisper) translate speech to English instead of transcribing it.
 /// Ignored by models without translation support.
@@ -29,6 +35,13 @@ const MODEL_TRANSLATE_FILE: &str = "model_translate";
 /// Optional file in filesDir with the CPU thread count for inference.
 /// Absent/invalid/0 = default (all cores).
 const MODEL_THREADS_FILE: &str = "model_threads";
+/// Optional file in filesDir with the cache-aware streaming chunk selector
+/// (Nemotron-family models): one of {13, 6, 1, 0}, mapping to chunk sizes
+/// {1.12 s, 560 ms, 160 ms, 80 ms} (chunk = (right + 1) × 80 ms at the
+/// 80 ms encoder frame rate). Absent/invalid = 13, the model's
+/// max-accuracy default. Lower values trade a little WER for substantially
+/// earlier and livelier partial hypotheses on slow devices.
+const STREAM_CONTEXT_RIGHT_FILE: &str = "stream_context_right";
 
 /// Longest audio passed to the model in one run (60 s). Offline conformer
 /// models use full self-attention, whose cost grows quadratically with input
@@ -38,15 +51,45 @@ const MAX_RUN_SAMPLES: usize = 60 * 16_000;
 /// When splitting, search this far back from the hard boundary for the
 /// quietest point so words aren't cut mid-syllable.
 const SPLIT_SEARCH_SAMPLES: usize = 10 * 16_000;
+/// How often the streaming run drains the caller's audio buffer (~300 ms).
+/// Small enough that stop→finalize latency stays low, large enough that the
+/// feed calls stay cheap; partial hypotheses change roughly once per stream
+/// chunk (1.12 s at the default att_context_right=13; proportionally more
+/// often with smaller chunks — see stream_context_right in do_load).
+const STREAM_TICK_MS: u64 = 300;
+
+/// Commands fed to an active streaming run (see [`Engine::run_stream`]).
+pub enum StreamCmd {
+    /// A chunk of 16 kHz mono f32 audio captured since the previous tick.
+    Audio(Vec<f32>),
+    /// End of input: flush the stream and return the final text.
+    Stop,
+    /// Abandon the stream and deliver nothing.
+    Cancel,
+}
 
 /// A loaded transcribe.cpp session plus the options applied to every run.
 pub struct Engine {
     session: transcribe_cpp::Session,
     language: Option<String>,
+    /// Device-locale fallback hint for models without native language
+    /// detection when the user's hint is automatic/absent (Canary-family).
+    device_lang: Option<String>,
     task: transcribe_cpp::Task,
     /// Family-specific decode options attached to every run; `None` for
     /// models that don't take the whisper run extension.
     run_ext: Option<transcribe_cpp::RunExtension>,
+    /// Family-specific streaming extension, set when the loaded model
+    /// supports native cache-aware streaming (e.g. Nemotron 3.5 ASR).
+    stream_ext: Option<transcribe_cpp::StreamExtension>,
+    /// Whether the loaded model supports native streaming (GGUF KV).
+    supports_streaming: bool,
+    /// Whether the loaded model has native language detection (GGUF KV).
+    native_lang_detect: bool,
+    /// Cache-aware streaming chunk selector (Nemotron-family), from the
+    /// `stream_context_right` marker. `Some(13)` (default) is the model's
+    /// max-accuracy entry; smaller values trade WER for partial-latency.
+    stream_ctx_right: Option<i32>,
     /// Status reported once loading succeeded; carries a warning when the
     /// translate setting can't do what the user expects with this model.
     ready_status: &'static str,
@@ -60,8 +103,10 @@ impl Engine {
     fn load(
         model_path: &Path,
         language: Option<String>,
+        device_lang: Option<String>,
         translate: bool,
         threads: i32,
+        stream_ctx_right: Option<i32>,
         lang_file: &Path,
     ) -> Result<Engine, String> {
         if !model_path.is_file() {
@@ -111,11 +156,40 @@ impl Engine {
             None
         };
 
+        // Streaming + language-detection capabilities come from GGUF KV
+        // (Nemotron 3.5 ASR: both true; Canary 180M Flash: both false). The
+        // cache-aware parakeet stream extension is what run_stream uses.
+        let caps = model.capabilities();
+        let supports_streaming = caps.supports_streaming;
+        let native_lang_detect = caps.supports_language_detect;
+        let stream_ext = if supports_streaming
+            && model.accepts_ext(
+                transcribe_cpp::ExtSlot::Stream,
+                transcribe_cpp::sys::TRANSCRIBE_EXT_KIND_PARAKEET_STREAM,
+            ) {
+            // Cache-aware streaming (Nemotron-family). att_context_right
+            // picks the operating point from the model's training menu;
+            // chunk = (right + 1) × 80 ms, so the documented menu {13, 6, 1, 0}
+            // yields {1.12 s, 560 ms, 160 ms, 80 ms} chunks. 13 is the
+            // model's max-accuracy default and partial hypotheses arrive
+            // roughly once per chunk. Smaller values trade a little WER for
+            // much earlier, livelier partials on slow devices (configurable
+            // via the stream_context_right marker — see ModelsActivity).
+            Some(transcribe_cpp::StreamExtension::ParakeetStream(
+                transcribe_cpp::ParakeetStreamOptions {
+                    att_context_right: stream_ctx_right,
+                },
+            ))
+        } else {
+            None
+        };
+
         log::info!(
-            "engine: {} threads, task {:?}, single-pass decode: {}",
+            "engine: {} threads, task {:?}, single-pass decode: {}, streaming: {}",
             threads,
             task,
-            run_ext.is_some()
+            run_ext.is_some(),
+            supports_streaming
         );
         let options = transcribe_cpp::SessionOptions {
             n_threads: threads,
@@ -125,11 +199,49 @@ impl Engine {
         Ok(Engine {
             session,
             language,
+            device_lang,
             task,
             run_ext,
+            stream_ext,
+            supports_streaming,
+            native_lang_detect,
+            stream_ctx_right,
             ready_status,
             lang_file: lang_file.to_path_buf(),
         })
+    }
+
+    /// Re-reads the `model_language` hint file and resolves the effective hint
+    /// for the next run/stream. An explicit locale always wins; automatic or
+    /// absent resolves to the model's native language detection when the model
+    /// has one (Nemotron), otherwise to the device-locale fallback (Canary —
+    /// the old default behavior). Re-read on every run so a language change
+    /// applies immediately in any process (e.g. the `:ime` keyboard) without
+    /// a manual model reload.
+    fn effective_language(&mut self) -> Option<String> {
+        if let Ok(raw) = std::fs::read_to_string(&self.lang_file) {
+            let s = raw.trim();
+            let new_lang = if s.is_empty() || s.eq_ignore_ascii_case("auto") {
+                None
+            } else {
+                Some(s.to_string())
+            };
+            if new_lang != self.language {
+                self.language = new_lang;
+            }
+        }
+        match (&self.language, self.native_lang_detect) {
+            (Some(l), _) => Some(l.clone()),
+            (None, true) => None,
+            (None, false) => self.device_lang.clone(),
+        }
+    }
+
+    /// Whether the loaded model supports native cache-aware streaming
+    /// (Nemotron-family). Dictation surfaces use this to pick the streaming
+    /// pump over the whole-buffer path.
+    pub fn supports_streaming(&self) -> bool {
+        self.supports_streaming
     }
 
     /// Transcribes 16 kHz mono f32 samples to text. Input longer than
@@ -167,52 +279,182 @@ impl Engine {
     /// One model run. A rejected language hint is degraded instead of
     /// failing the transcription: `de-DE` retries as `de`, then as no hint
     /// (each model knows a different set of tags — e.g. Parakeet v3 takes
-    /// locales/short codes, English-only models take none). The degraded
-    /// value is kept so later runs skip the rejected attempts.
+    /// locales/short codes, English-only models take none).
     fn run(&mut self, samples: &[f32]) -> Result<String, String> {
-        // Re-read the language hint on every run so a language change applies
-        // immediately in any process (e.g. the `:ime` keyboard) without a
-        // manual model reload. The spinner writes `model_language`; the app's
-        // default writes the device locale. "auto"/empty = no hint.
-        if let Ok(raw) = std::fs::read_to_string(&self.lang_file) {
-            let s = raw.trim();
-            let new_lang = if s.is_empty() || s.eq_ignore_ascii_case("auto") {
-                None
-            } else {
-                Some(s.to_string())
-            };
-            if new_lang != self.language {
-                self.language = new_lang;
-            }
-        }
+        // Re-read the hint on every run (see effective_language). The hint is
+        // degraded locally per run; the marker file stays the source of truth.
+        let mut hint = self.effective_language();
         loop {
             let opts = transcribe_cpp::RunOptions {
-                language: self.language.clone(),
+                language: hint.clone(),
                 task: self.task,
                 family: self.run_ext.clone(),
                 ..Default::default()
             };
             match self.session.run(samples, &opts) {
                 Ok(t) => return Ok(t.text),
-                Err(transcribe_cpp::Error::Unsupported(msg)) if self.language.is_some() => {
-                    let lang = self.language.take().unwrap();
-                    self.language = lang.split_once('-').map(|(primary, _)| primary.to_string());
+                Err(transcribe_cpp::Error::Unsupported(msg)) if hint.is_some() => {
+                    let lang = hint.take().unwrap();
+                    hint = lang.split_once('-').map(|(primary, _)| primary.to_string());
                     log::warn!(
                         "language hint '{}' rejected ({}); retrying with {:?}",
                         lang,
                         msg,
-                        self.language
+                        hint
                     );
                 }
                 Err(e) => return Err(e.to_string()),
             }
         }
     }
+
+    /// Runs a cache-aware streaming session (Nemotron-family models): audio
+    /// chunks arrive via [`StreamCmd::Audio`] pulled by `drain`, partial
+    /// hypotheses are reported through `on_partial` (committed + tentative
+    /// display text), and the final text is returned when [`StreamCmd::Stop`]
+    /// arrives. [`StreamCmd::Cancel`] abandons the stream and returns
+    /// `Err("Canceled")`. A rejected language hint is degraded like `run`;
+    /// a requested `att_context_right` that is not in the model's menu is
+    /// retried once with the model default; a failed begin leaves the
+    /// session idle so retrying is safe.
+    ///
+    /// The engine mutex is held for the whole recording, so other surfaces
+    /// block while a stream is active — the C library allows only one active
+    /// stream per model anyway.
+    ///
+    /// Logs per-session fluidity telemetry (audio secs, wall secs, RTF,
+    /// partial count, mean partial cadence, active chunk selector) so the
+    /// WER-vs-fluidity trade-off can be measured on-device via logcat.
+    fn run_stream(
+        &mut self,
+        rx: &crossbeam_channel::Receiver<StreamCmd>,
+        drain: &mut dyn FnMut() -> Vec<f32>,
+        on_partial: &mut dyn FnMut(&str),
+    ) -> Result<String, String> {
+        if !self.supports_streaming {
+            return Err("this model does not support streaming".to_string());
+        }
+        let mut hint = self.effective_language();
+        let mut ctx_retried = false;
+        let mut stream = loop {
+            let run_opts = transcribe_cpp::RunOptions {
+                language: hint.clone(),
+                task: self.task,
+                family: self.run_ext.clone(),
+                ..Default::default()
+            };
+            let stream_opts = transcribe_cpp::StreamOptions {
+                family: self.stream_ext.clone(),
+                ..Default::default()
+            };
+            match self.session.stream(&run_opts, &stream_opts) {
+                Ok(s) => break s,
+                Err(transcribe_cpp::Error::Unsupported(msg)) if hint.is_some() => {
+                    let lang = hint.take().unwrap();
+                    hint = lang.split_once('-').map(|(primary, _)| primary.to_string());
+                    log::warn!(
+                        "language hint '{}' rejected ({}); retrying with {:?}",
+                        lang,
+                        msg,
+                        hint
+                    );
+                }
+                // The requested att_context_right may not exist in this
+                // model's training menu (e.g. an imported GGUF whose menu
+                // differs from the bundled Nemotron's): retry once with the
+                // model default instead of failing the whole stream. Narrowed
+                // to InvalidArgument so genuine begin failures (backend, OOM)
+                // are surfaced immediately, not masked by a wasted retry.
+                Err(transcribe_cpp::Error::InvalidArgument(_)) if !ctx_retried => {
+                    ctx_retried = true;
+                    self.stream_ext = self.stream_ext.take().map(|ext| match ext {
+                        transcribe_cpp::StreamExtension::ParakeetStream(mut opts) => {
+                            opts.att_context_right = None;
+                            transcribe_cpp::StreamExtension::ParakeetStream(opts)
+                        }
+                        other => other,
+                    });
+                    log::warn!(
+                        "parakeet stream begin rejected ({}); retrying with the model default att_context_right",
+                        e
+                    );
+                }
+                Err(e) => return Err(format!("stream begin: {}", e)),
+            }
+        };
+
+        let mut total_fed: usize = 0;
+        let started = std::time::Instant::now();
+        let mut partial_count: usize = 0;
+        let mut last_partial = started;
+        let mut cadence_ms: u64 = 0;
+        loop {
+            // Feed whatever audio accumulated since the last tick.
+            let chunk = drain();
+            if !chunk.is_empty() {
+                total_fed += chunk.len();
+                stream
+                    .feed(&chunk)
+                    .map_err(|e| format!("stream feed: {}", e))?;
+                let text = stream.text();
+                let shown = text.display();
+                if !shown.trim().is_empty() {
+                    // Fluidity telemetry: partial cadence (mean gap between
+                    // consecutive partial hypotheses) reported in the stop
+                    // log line below.
+                    let now = std::time::Instant::now();
+                    if partial_count > 0 {
+                        cadence_ms += now.duration_since(last_partial).as_millis() as u64;
+                    }
+                    last_partial = now;
+                    partial_count += 1;
+                    on_partial(shown.trim());
+                }
+            }
+            // Handle control commands: Stop finalizes, Cancel abandons.
+            match rx.try_recv() {
+                Ok(StreamCmd::Stop) => {
+                    stream
+                        .finalize()
+                        .map_err(|e| format!("stream finalize: {}", e))?;
+                    let t = stream.text();
+                    let final_text = t.display().trim().to_string();
+                    let audio_secs = total_fed as f64 / 16_000.0;
+                    let wall_secs = started.elapsed().as_secs_f64();
+                    let rtf = if audio_secs > 0.0 {
+                        wall_secs / audio_secs
+                    } else {
+                        0.0
+                    };
+                    let avg_cadence = if partial_count > 1 {
+                        cadence_ms as f64 / (partial_count - 1) as f64
+                    } else {
+                        0.0
+                    };
+                    log::info!(
+                        "streamed {:.1}s audio in {:.2}s (rtf={:.2}, partials={}, cadence={:.0}ms, att_context_right={:?})",
+                        audio_secs,
+                        wall_secs,
+                        rtf,
+                        partial_count,
+                        avg_cadence,
+                        self.stream_ctx_right
+                    );
+                    return Ok(final_text);
+                }
+                Ok(StreamCmd::Cancel) => {
+                    stream.reset();
+                    return Err("Canceled".to_string());
+                }
+                _ => {}
+            }
+            std::thread::sleep(std::time::Duration::from_millis(STREAM_TICK_MS));
+        }
+    }
 }
 
 /// Holds the loaded engine singleton.
-static GLOBAL_ENGINE: Lazy<Mutex<Option<Arc<Mutex<Engine>>>>> =
-    Lazy::new(|| Mutex::new(None));
+static GLOBAL_ENGINE: Lazy<Mutex<Option<Arc<Mutex<Engine>>>>> = Lazy::new(|| Mutex::new(None));
 
 /// Loading coordination state + condvar for waiters.
 static LOAD_STATE: Lazy<(Mutex<LoadState>, Condvar)> =
@@ -244,7 +486,9 @@ pub fn transcribe_shared(engine: &Arc<Mutex<Engine>>, samples: Vec<f32>) -> Resu
     let audio_secs = samples.len() as f64 / 16_000.0;
     let started = std::time::Instant::now();
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let mut guard = engine.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let mut guard = engine
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         guard.transcribe(samples)
     }))
     .unwrap_or_else(|_| {
@@ -271,6 +515,39 @@ pub fn transcribe_shared(engine: &Arc<Mutex<Engine>>, samples: Vec<f32>) -> Resu
         started.elapsed().as_secs_f64()
     );
     result
+}
+
+/// Runs a streaming transcription on the shared engine (see
+/// [`Engine::run_stream`]) with the same two hardening layers as
+/// [`transcribe_shared`]: a panic anywhere in the engine stack is caught and
+/// surfaced as a normal error, and a lock poisoned by an earlier panic is
+/// recovered. The final text goes through the phonetic corrector; partial
+/// hypotheses are delivered raw.
+pub fn transcribe_stream_shared(
+    engine: &Arc<Mutex<Engine>>,
+    rx: &crossbeam_channel::Receiver<StreamCmd>,
+    drain: &mut dyn FnMut() -> Vec<f32>,
+    on_partial: &mut dyn FnMut(&str),
+) -> Result<String, String> {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let mut guard = engine
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        guard.run_stream(rx, drain, on_partial)
+    }))
+    .unwrap_or_else(|_| {
+        log::error!("streaming transcription panicked; reporting as error");
+        Err("transcription failed unexpectedly, please try again".to_string())
+    });
+    result.map(|text| {
+        std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::corrector::correct_if_enabled(&text)
+        }))
+        .unwrap_or_else(|_| {
+            log::error!("corrector panicked; returning raw transcript");
+            text
+        })
+    })
 }
 
 pub fn is_engine_loaded() -> bool {
@@ -480,11 +757,28 @@ fn do_load(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
     // the model doesn't know is degraded per run — see Engine::run.
     let language = read_config(&files_dir.join(MODEL_LANGUAGE_FILE))
         .filter(|l| !l.eq_ignore_ascii_case("auto"));
+    // Device-locale fallback for models without native detection (Canary).
+    let device_lang = read_config(&files_dir.join(DEVICE_LANGUAGE_FILE));
     let translate = files_dir.join(MODEL_TRANSLATE_FILE).exists();
     let threads = read_config(&files_dir.join(MODEL_THREADS_FILE))
         .and_then(|s| s.parse::<i32>().ok())
         .filter(|&n| n > 0)
         .unwrap_or_else(performance_core_count);
+    // Cache-aware streaming chunk selector (Nemotron-family). Only the
+    // documented menu {13, 6, 1, 0} is valid; anything else falls back to 13
+    // (the max-accuracy default). A value the *imported* model doesn't have
+    // in its own menu is retried with the model default in run_stream rather
+    // than failing the stream.
+    let stream_ctx_right = match read_config(&files_dir.join(STREAM_CONTEXT_RIGHT_FILE)) {
+        Some(raw) => match raw.parse::<i32>() {
+            Ok(v) if matches!(v, 13 | 6 | 1 | 0) => Some(v),
+            _ => {
+                log::warn!("invalid stream_context_right '{raw}'; using default (13)");
+                Some(13)
+            }
+        },
+        None => Some(13),
+    };
 
     // Publish filesDir so the corrector can locate the custom-words marker
     // file. Done here (before the imported-model attempt) so the corrector
@@ -495,7 +789,15 @@ fn do_load(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
     if let Some(name) = read_config(&files_dir.join(ACTIVE_MODEL_FILE)) {
         let path = files_dir.join("models").join(&name);
         notify_status(env, context, &format!("Loading model {}...", name));
-        match Engine::load(&path, language.clone(), translate, threads, &files_dir.join(MODEL_LANGUAGE_FILE)) {
+        match Engine::load(
+            &path,
+            language.clone(),
+            device_lang.clone(),
+            translate,
+            threads,
+            stream_ctx_right,
+            &files_dir.join(MODEL_LANGUAGE_FILE),
+        ) {
             Ok(engine) => {
                 let status = engine.ready_status;
                 *GLOBAL_ENGINE.lock().unwrap() = Some(Arc::new(Mutex::new(engine)));
@@ -524,7 +826,15 @@ fn do_load(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
 
     notify_status(env, context, "Loading model...");
 
-    match Engine::load(&path, language, translate, threads, &files_dir.join(MODEL_LANGUAGE_FILE)) {
+    match Engine::load(
+        &path,
+        language,
+        device_lang,
+        translate,
+        threads,
+        stream_ctx_right,
+        &files_dir.join(MODEL_LANGUAGE_FILE),
+    ) {
         Ok(engine) => {
             let status = engine.ready_status;
             *GLOBAL_ENGINE.lock().unwrap() = Some(Arc::new(Mutex::new(engine)));

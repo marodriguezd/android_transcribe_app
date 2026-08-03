@@ -44,6 +44,18 @@ public class MainActivity extends AppCompatActivity {
     private static final int PERM_REQ_CODE = 101;
     private static final int REQ_VOICE_TEST = 202;
 
+    /**
+     * Debug-model identity (P0.3). Must match {@code modelPackFiles} in
+     * {@code app/build.gradle.kts}: the runtime download only activates the
+     * model after verifying this exact SHA-256, so a truncated or corrupted
+     * file can never become the active model (same guarantee the release
+     * build's {@code checkModels} gate enforces for the bundled asset).
+     */
+    private static final String DEBUG_MODEL_NAME =
+            "nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf";
+    private static final String DEBUG_MODEL_SHA256 =
+            "b94545b313b3223fda7b2857a52681da813935c2127643d1e9ff0c23d988089c";
+
     // Debug builds download the model on first run. Guard against multiple
     // concurrent downloads (e.g. after a configuration change the Activity is
     // recreated but the background thread keeps running).
@@ -448,7 +460,7 @@ public class MainActivity extends AppCompatActivity {
             }
             offset += 8 + chunkSize + (chunkSize & 1);
         }
-        throw new IOException("no data chunk in " + name);
+        throw new IOException(getString(R.string.bench_no_data_chunk, name));
     }
 
     // Called from Rust
@@ -533,7 +545,8 @@ public class MainActivity extends AppCompatActivity {
             try {
             File modelsDir = new File(getFilesDir(), "models");
             if (!modelsDir.exists() && !modelsDir.mkdirs()) {
-                runOnUiThread(() -> onModelDownloadFailed("Cannot create models directory"));
+                runOnUiThread(() -> onModelDownloadFailed(
+                        getString(R.string.debug_model_cannot_create_dir)));
                 return;
             }
 
@@ -544,9 +557,13 @@ public class MainActivity extends AppCompatActivity {
                 return;
             }
 
-            File dest = new File(modelsDir, "nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf");
-            File tmp = new File(modelsDir, "nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf.tmp");
-            String url = "https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf/resolve/main/nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf?download=true";
+            File dest = new File(modelsDir, DEBUG_MODEL_NAME);
+            File tmp = new File(modelsDir, DEBUG_MODEL_NAME + ".tmp");
+            // A leftover .tmp from an interrupted download must never block a
+            // fresh attempt (rename would fail over an existing file).
+            if (tmp.exists()) tmp.delete();
+            String url = "https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf/resolve/main/"
+                    + DEBUG_MODEL_NAME + "?download=true";
 
             // Mobile networks can be slow for a 751 MB file; give generous timeouts.
             OkHttpClient client = new OkHttpClient.Builder()
@@ -557,7 +574,8 @@ public class MainActivity extends AppCompatActivity {
             Request request = new Request.Builder().url(url).build();
             try (Response response = client.newCall(request).execute()) {
                 if (!response.isSuccessful() || response.body() == null) {
-                    throw new IOException("HTTP " + response.code());
+                    throw new IOException(getString(R.string.debug_model_http_error,
+                            response.code()));
                 }
                 try (InputStream is = response.body().byteStream();
                      FileOutputStream fos = new FileOutputStream(tmp)) {
@@ -567,15 +585,26 @@ public class MainActivity extends AppCompatActivity {
                         fos.write(buffer, 0, read);
                     }
                 }
-                if (!tmp.renameTo(dest)) {
-                    throw new IOException("Failed to rename downloaded model file");
+
+                // Verify the download BEFORE it can become the active model
+                // (P0.3): a truncated or altered file is deleted and reported,
+                // never activated — matching the release build's checkModels
+                // guarantee.
+                String actualHash = FileSha256.sha256Hex(tmp);
+                if (!DEBUG_MODEL_SHA256.equalsIgnoreCase(actualHash)) {
+                    tmp.delete();
+                    throw new IOException(getString(R.string.debug_model_checksum_mismatch,
+                            DEBUG_MODEL_SHA256, actualHash));
                 }
 
-                // Mark this downloaded file as the active imported model.
-                try (FileOutputStream fos = new FileOutputStream(
-                        new File(getFilesDir(), "active_model"))) {
-                    fos.write("nemotron-3.5-asr-streaming-0.6b-Q8_0.gguf".getBytes(StandardCharsets.UTF_8));
+                if (!tmp.renameTo(dest)) {
+                    throw new IOException(getString(R.string.debug_model_rename_failed));
                 }
+
+                // Mark this downloaded file as the active imported model
+                // atomically (temp + rename), the same way every other
+                // cross-process marker is written (P1.2).
+                MarkerFileHelper.writeString(this, "active_model", DEBUG_MODEL_NAME);
 
                 // Notify whichever MainActivity is currently in the foreground
                 // (resolved at completion, NOT the captured MainActivity.this
@@ -612,7 +641,8 @@ public class MainActivity extends AppCompatActivity {
                 // next onResume() sees no bundled/imported model and re-shows
                 // the initial download dialog — a graceful fallback rather
                 // than a silent loss of the failure reason for one cycle.
-                final String reason = e.getMessage() != null ? e.getMessage() : "unknown";
+                final String reason = e.getMessage() != null ? e.getMessage()
+                        : getString(R.string.debug_model_unknown_reason);
                 final MainActivity ui = sActiveInstance;
                 if (ui != null) {
                     // Symmetric with the success path: liveness is checked on

@@ -42,6 +42,9 @@ escrito X?" sin navegar a ciegas.
 
 Se rellena conforme se acumulen sesiones de trabajo. Listado en orden cronológico inverso (lo más reciente primero):
 
+- [`memory/gauntlet-p0-implemented-2026-08-03.md`](./memory/gauntlet-p0-implemented-2026-08-03.md) —
+  implementación de los bloqueadores P0.1–P0.4 y P1.1/P1.2 con tests JVM
+  verdes; Guantelete sigue abierto pendiente de validación CI/dispositivo.
 - [`memory/static-audit-debt-2026-08-03.md`](./memory/static-audit-debt-2026-08-03.md) —
   auditoría estática integral, deuda P0/P1/P2, criterios de aceptación y
   taxonomía de evidencia; estado del Guantelete abierto.

@@ -1,5 +1,57 @@
 # Unreleased
 
+## 🔒 Robustez del postprocesado, subtítulos, modelos y toolchain
+
+### 🤖 Postprocesado aislado por superficie
+- La cancelación del postprocesado ya es **por superficie y sesión**: cerrar la
+  pantalla del popup, cancelar un reconocimiento o destruir una Activity ya no
+  interrumpe una petición legítima de otra superficie (IME, servicio de
+  reconocimiento, transcripción de archivo, ajustes).
+- El `cancelAll` global queda reservado para los eventos realmente globales:
+  apagar el postprocesado en ajustes (con broadcast al proceso del teclado) y
+  la destrucción del servicio del IME.
+- El contrato HTTP queda blindado por tests JVM con servidor controlado
+  (MockWebServer): payload `/chat/completions` con `stream:false`, transcript
+  inyectado una sola vez, errores HTTP/JSON con fallback al texto crudo, una
+  sola entrega final por petición y el **timeout real de OkHttp** con valores
+  escalados (los 30 s/60 s de producción se verifican como valores aplicados;
+  el transcurso real depende de la red y se valida en dispositivo).
+
+### 🎬 Subtítulos: sin callbacks de sesiones anteriores
+- Cada sesión de subtítulos tiene una generación: al detener y reiniciar, los
+  trabajos pendientes de la sesión anterior se descartan sin transcribir y sin
+  pintar sobre el overlay nuevo; el texto acumulado se reinicia en cada
+  sesión.
+
+### 📦 Descarga del modelo en debug: verificada antes de activar
+- El modelo descargado en builds debug se verifica con SHA-256 antes de
+  activarse: un fichero truncado o alterado nunca se marca como modelo activo
+  y se puede reintentar, igual que la garantía del build de release
+  (`checkModels`).
+
+### 🛠️ Toolchain y markers
+- NDK unificado a `28.0.13004108` en Gradle, CI y documentación; las rutas del
+  toolchain se resuelven según el host (Linux x86_64/aarch64, macOS
+  Intel/ARM, Windows).
+- Todas las escrituras de ajustes (`model_language`, `active_model`, etc.) son
+  atómicas (temp + rename): lectores concurrentes de los procesos principal y
+  del teclado nunca ven un valor parcial.
+
+### 🗂️ Transcripción de archivos con operation-id
+- Los callbacks de transcripción de archivos llevan un id de operación: rotar,
+  cerrar o recrear la pantalla durante el decode/ASR no actualiza la instancia
+  equivocada.
+
+### 🌐 Traducciones: strings visibles migradas a recursos
+- Estados, errores y toasts antes hardcodeados en Java/layouts (teclado,
+  popup, transcripción de archivos, subtítulos y descarga del modelo debug)
+  ahora son recursos traducidos en los 7 idiomas.
+- Excepción documentada: los detalles de error del postprocesado (capa sin
+  contexto Android) y los nombres de los modelos se mantienen en inglés a
+  propósito.
+
+---
+
 ## 🤖 Postprocesado AI final-only
 - Se mantiene la previsualización en streaming del transcriptor para conservar la fluidez durante la grabación.
 - Al terminar, el transcript final se envía una sola vez al modelo de postprocesado y se espera la respuesta completa antes de pegarla.

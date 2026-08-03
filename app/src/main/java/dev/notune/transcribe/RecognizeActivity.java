@@ -70,14 +70,14 @@ public class RecognizeActivity extends AppCompatActivity {
         // Permission check
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
                 != PackageManager.PERMISSION_GRANTED) {
-            status.setText("Microphone permission required.\nGrant it in the main app.");
+            status.setText(getString(R.string.rec_mic_permission_required));
             return;
         }
 
         UserDictionaryHelper.syncSystemUserDictionaryAsync(this);
         initNative(this);
         isRecording = true;
-        status.setText("Listening... (Tap to stop)");
+        status.setText(getString(R.string.rec_listening_tap_stop));
         if (isPauseAudioEnabled()) {
             audioPauser.request(this);
             pauseAudioActive = true;
@@ -89,7 +89,7 @@ public class RecognizeActivity extends AppCompatActivity {
     private void finishRecording() {
         if (!isRecording) return;
         isRecording = false;
-        status.setText("Processing...");
+        status.setText(getString(R.string.rec_processing));
         stopRecording();
         if (pauseAudioActive) {
             audioPauser.abandon(this);
@@ -136,8 +136,9 @@ public class RecognizeActivity extends AppCompatActivity {
             pauseAudioActive = false;
         }
         try { cleanupNative(); } catch (Throwable t) { /* ignore */ }
-        // Cancel any in-flight post-processing call when the popup is destroyed.
-        PostProcessor.cancelAll();
+        // Cancel this popup's in-flight post-processing call when it is
+        // destroyed — never another surface's (P0.1).
+        PostProcessor.cancelAllFor(this);
     }
 
     // Called from Rust for recording-scoped status updates.
@@ -156,9 +157,10 @@ public class RecognizeActivity extends AppCompatActivity {
     private void showStatus(String s) {
         final String shown;
         if ("Ready".equals(s)) {
-            shown = isRecording ? "Listening... (Tap to stop)" : "Ready";
+            shown = isRecording ? getString(R.string.rec_listening_tap_stop)
+                    : getString(R.string.status_ready);
         } else if ("Listening...".equals(s)) {
-            shown = "Listening... (Tap to stop)";
+            shown = getString(R.string.rec_listening_tap_stop);
         } else {
             shown = s;
         }
@@ -202,16 +204,18 @@ public class RecognizeActivity extends AppCompatActivity {
 
             SettingsManager settings = new SettingsManager(this);
             if (settings.isPostProcessEnabled()) {
-                status.setText("Refining...");
+                status.setText(getString(R.string.rec_refining));
                 Log.i(TAG, "Post-processing enabled, sending final transcript ("
                         + text.length() + " chars) to " + settings.getEffectiveApiUrl());
                 Log.i(TAG, "PP-RAW: " + text);
 
                 // The ASR partials remain the live preview. Wait for one
                 // complete post-processing response before returning the result.
+                // Owned by this Activity so destroying the popup only cancels
+                // its own call, never another surface's (P0.1).
                 new PostProcessor(settings, new Handler(Looper.getMainLooper()),
                         () -> sessionId == currentSessionId
-                                && !isFinishing() && !isDestroyed()).process(text,
+                                && !isFinishing() && !isDestroyed(), this).process(text,
                         new PostProcessor.PostProcessCallback() {
                     @Override
                     public void onSuccess(String refinedText) {

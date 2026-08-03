@@ -150,4 +150,50 @@
     <string name="debug_model_cancelled">Modell-Download abgebrochen</string>
     <string name="debug_model_no_space">Nicht genug freier Speicherplatz zum Herunterladen des Modells</string>
     <string name="debug_model_size" translatable="false">751 MB</string>
+
+    <!-- P2.4 (2026-08-03): aus Java/Layouts migrierte UI-Strings -->
+    <string name="ime_tap_to_record">Tippen zum Aufnehmen</string>
+    <string name="ime_tap_to_stop">Tippen zum Beenden</string>
+    <string name="ime_listening">Höre zu...</string>
+    <string name="ime_processing">Verarbeite...</string>
+    <string name="ime_refining">Verbessere...</string>
+    <string name="ime_no_mic_permission">Kein Mikrofonzugriff – in der App erlauben</string>
+    <string name="ime_open_app_for_permission">Öffne die App, um die Berechtigung zu erteilen</string>
+    <string name="ime_error_loading_keyboard">Fehler beim Laden der Tastatur: %1$s</string>
+    <string name="ime_cd_switch_keyboard">Tastatur wechseln</string>
+    <string name="ime_cd_space">Leertaste</string>
+    <string name="ime_cd_enter">Eingabe</string>
+    <string name="ime_cd_backspace">Rücktaste</string>
+    <string name="rec_mic_permission_required">Mikrofonberechtigung erforderlich.\nErteile sie in der Haupt-App.</string>
+    <string name="rec_listening_tap_stop">Höre zu… (tippen zum Beenden)</string>
+    <string name="rec_processing">Verarbeite...</string>
+    <string name="rec_refining">Verbessere...</string>
+    <string name="file_preparing">Vorbereiten...</string>
+    <string name="file_loading_model">Modell wird geladen...</string>
+    <string name="file_decoding_audio">Audio wird dekodiert...</string>
+    <string name="file_transcribing">Transkribiere...</string>
+    <string name="file_refining">Verbessere...</string>
+    <string name="file_copied">In die Zwischenablage kopiert</string>
+    <string name="file_copy_to_clipboard">In die Zwischenablage kopieren</string>
+    <string name="file_transcription_copied">Transkription in die Zwischenablage kopiert</string>
+    <string name="file_error_no_audio_received">Fehler: keine Audiodatei empfangen</string>
+    <string name="file_error_no_audio">Fehler: keine Audiodatei</string>
+    <string name="file_error_decode">Fehler: Audiodatei konnte nicht dekodiert werden</string>
+    <string name="file_error_format">Fehler: %1$s</string>
+    <string name="subs_grant_overlay_permission">Bitte erteile die Berechtigung \'Über anderen Apps anzeigen\'</string>
+    <string name="subs_enable_overlay_app_settings">Aktiviere \'Über anderen Apps anzeigen\' in den App-Einstellungen</string>
+    <string name="subs_enable_overlay_settings">Bitte aktiviere die Overlay-Berechtigung in den Einstellungen</string>
+    <string name="subs_overlay_required">Overlay-Berechtigung für Untertitel erforderlich</string>
+    <string name="subs_screen_capture_denied">Bildschirmaufnahme verweigert</string>
+    <string name="subs_waiting_for_audio">Warte auf Audio...</string>
+    <string name="subs_notification_active">Live-Untertitel aktiv</string>
+    <string name="subs_notification_recording">Nimm internes Audio auf...</string>
+    <string name="subs_notification_stop">Stopp</string>
+    <string name="action_close">Schließen</string>
+    <string name="debug_model_cannot_create_dir">Modellverzeichnis konnte nicht erstellt werden</string>
+    <string name="debug_model_checksum_mismatch">Prüfsumme stimmt nicht: erwartet %1$s, erhalten %2$s</string>
+    <string name="debug_model_rename_failed">Heruntergeladene Modelldatei konnte nicht umbenannt werden</string>
+    <string name="debug_model_http_error">HTTP %1$d</string>
+    <string name="debug_model_unknown_reason">unbekannt</string>
+    <string name="bench_no_data_chunk">kein Datenblock in %1$s</string>
 </resources>

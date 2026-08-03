@@ -25,6 +25,15 @@ use std::sync::{Arc, Mutex};
 
 use crate::engine;
 
+/// Monotonic session generation (P0.2). Every `initNative` (and every
+/// `cleanupNative`) bumps it; jobs carry the generation they were created
+/// under, and the worker refuses to transcribe or deliver jobs whose
+/// generation no longer matches the current one. This invalidates a previous
+/// session's worker deterministically without interrupting it: stale queued
+/// work is skipped instead of burning CPU, and stale text is never delivered
+/// to a torn-down overlay or a new session's service.
+static GENERATION: AtomicU32 = AtomicU32::new(0);
+
 const SAMPLE_RATE: usize = 16_000;
 /// Minimum audio between two partial-hypothesis updates (~0.7 s).
 const TICK_SAMPLES: usize = 11_200;
@@ -72,6 +81,9 @@ struct Job {
     /// Position of the job's last sample in the overall pushed-audio stream,
     /// used by the worker to measure how stale the job is.
     end_sample: u64,
+    /// Session generation this job was created under. The worker drops jobs
+    /// whose generation no longer matches the current session (P0.2).
+    generation: u32,
 }
 
 struct LiveSubtitleState {
@@ -94,6 +106,8 @@ struct LiveSubtitleState {
     /// smoothed by the worker; 0 until the first job completes. Used to
     /// predict a partial's cost before submitting it.
     rtf_milli: Arc<AtomicU32>,
+    /// Session generation this state belongs to; stamped on every job (P0.2).
+    generation: u32,
 }
 
 static LIVE_STATE: Lazy<Mutex<Option<LiveSubtitleState>>> = Lazy::new(|| Mutex::new(None));
@@ -116,6 +130,11 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_ini
         Err(_) => return,
     };
 
+    // New session: bump the generation so any job still queued in an older
+    // session's channel is recognized as stale and never transcribed or
+    // delivered (P0.2).
+    let generation = GENERATION.fetch_add(1, Ordering::SeqCst) + 1;
+
     let (tx, rx) = crossbeam_channel::unbounded::<Job>();
     let worker_busy = Arc::new(AtomicBool::new(false));
     let total_pushed = Arc::new(AtomicU64::new(0));
@@ -133,6 +152,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_ini
         total_pushed: total_pushed.clone(),
         pending_finals: pending_finals.clone(),
         rtf_milli: rtf_milli.clone(),
+        generation,
     });
 
     std::thread::spawn(move || {
@@ -154,6 +174,14 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_ini
 
         while let Ok(job) = rx.recv() {
             let mut job = job;
+            // A job from a previous session (cleanup + new initNative) must
+            // never be transcribed nor delivered: the overlay may be torn
+            // down or a new session may own the service (P0.2). Skip without
+            // touching the engine so an abandoned session cannot delay or
+            // pollute the new one. The worker exits once its channel drains.
+            if job.generation != GENERATION.load(Ordering::SeqCst) {
+                continue;
+            }
             // Fold queued finals into this run (see MAX_MERGED_SAMPLES). A
             // queued partial is dropped instead: it re-transcribes audio a
             // queued final already covers, and a fresh one follows anyway.
@@ -161,14 +189,20 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_ini
                 let mut merged = 0usize;
                 while job.samples.len() < MAX_MERGED_SAMPLES {
                     match rx.try_recv() {
-                        Ok(next) => {
-                            if next.is_final {
-                                job.samples.extend_from_slice(&next.samples);
-                                job.end_sample = next.end_sample;
-                                pending_finals.fetch_sub(1, Ordering::SeqCst);
-                                merged += 1;
+                        Ok(next) if next.is_final => {
+                            // Never merge work from another generation into
+                            // this job: everything queued behind a stale
+                            // final belongs to an older session anyway.
+                            if next.generation != job.generation {
+                                break;
                             }
+                            job.samples.extend_from_slice(&next.samples);
+                            job.end_sample = next.end_sample;
+                            pending_finals.fetch_sub(1, Ordering::SeqCst);
+                            merged += 1;
                         }
+                        // A queued partial: drop it and keep merging finals.
+                        Ok(_) => {}
                         Err(_) => break,
                     }
                 }
@@ -181,6 +215,11 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_ini
                 }
             }
 
+            // The session may have been invalidated while we were merging;
+            // never start a costly transcription for an abandoned session.
+            if job.generation != GENERATION.load(Ordering::SeqCst) {
+                continue;
+            }
             // Stale-job policy: if transcription can't keep up with the
             // audio, skip old work instead of drifting ever further behind.
             // A merged final ends at the newest queued audio, so merging
@@ -203,6 +242,11 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_ini
                     gap_pending = true;
                 }
             } else if let Some(engine_arc) = engine::get_engine() {
+                // Re-check before the expensive engine call too: cleanup may
+                // have raced in between the checks above.
+                if job.generation != GENERATION.load(Ordering::SeqCst) {
+                    continue;
+                }
                 let audio_secs = job.samples.len() as f64 / SAMPLE_RATE as f64;
                 let started = std::time::Instant::now();
                 let res = engine::transcribe_shared(&engine_arc, job.samples);
@@ -219,10 +263,20 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_ini
                 // job costs; also reflects thermal throttling over time.
                 let sample = (elapsed / audio_secs * 1000.0) as u32;
                 let old = rtf_milli.load(Ordering::SeqCst);
-                let ema = if old == 0 { sample } else { (old * 7 + sample * 3) / 10 };
+                let ema = if old == 0 {
+                    sample
+                } else {
+                    (old * 7 + sample * 3) / 10
+                };
                 rtf_milli.store(ema, Ordering::SeqCst);
 
                 if let Ok(r) = res {
+                    // The session may have been torn down while transcribing;
+                    // never deliver stale text to a dead overlay or a new
+                    // session's service (P0.2).
+                    if job.generation != GENERATION.load(Ordering::SeqCst) {
+                        continue;
+                    }
                     let text = r.trim();
                     if !text.is_empty() && gap_pending {
                         // Mark the dropped stretch so the transcript doesn't
@@ -249,7 +303,11 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_cle
     _env: JNIEnv,
     _class: JClass,
 ) {
-    // Dropping the state drops the sender; the worker exits once the queue drains.
+    // Bump the generation first: any job still queued (or mid-transcription)
+    // in this session's worker becomes stale and is dropped without work or
+    // delivery. Then drop the state, which drops the sender; the worker
+    // exits once its queue drains and releases its GlobalRef (P0.2).
+    GENERATION.fetch_add(1, Ordering::SeqCst);
     *LIVE_STATE.lock().unwrap() = None;
 }
 
@@ -336,6 +394,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_pus
                 samples,
                 is_final: true,
                 end_sample: stream_pos,
+                generation: state.generation,
             });
         }
     } else if state.samples_since_tick >= TICK_SAMPLES
@@ -352,6 +411,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_pus
             samples: state.segment.clone(),
             is_final: false,
             end_sample: stream_pos,
+            generation: state.generation,
         });
     }
 }

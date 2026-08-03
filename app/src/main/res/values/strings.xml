@@ -159,4 +159,62 @@
     <string name="debug_model_cancelled">Model download cancelled</string>
     <string name="debug_model_no_space">Not enough free storage to download the model</string>
     <string name="debug_model_size" translatable="false">751 MB</string>
+
+    <!-- P2.4 (2026-08-03): migrated hardcoded UI strings from Java/layouts -->
+
+    <!-- Voice keyboard (IME) -->
+    <string name="ime_tap_to_record">Tap to Record</string>
+    <string name="ime_tap_to_stop">Tap to Stop</string>
+    <string name="ime_listening">Listening...</string>
+    <string name="ime_processing">Processing...</string>
+    <string name="ime_refining">Refining...</string>
+    <string name="ime_no_mic_permission">No mic permission - grant in app</string>
+    <string name="ime_open_app_for_permission">Open the app to grant permission</string>
+    <string name="ime_error_loading_keyboard">Error loading keyboard: %1$s</string>
+    <string name="ime_cd_switch_keyboard">Switch keyboard</string>
+    <string name="ime_cd_space">Space</string>
+    <string name="ime_cd_enter">Enter</string>
+    <string name="ime_cd_backspace">Backspace</string>
+
+    <!-- Voice popup (RecognizeActivity) -->
+    <string name="rec_mic_permission_required">Microphone permission required.\nGrant it in the main app.</string>
+    <string name="rec_listening_tap_stop">Listening… (tap to stop)</string>
+    <string name="rec_processing">Processing...</string>
+    <string name="rec_refining">Refining...</string>
+
+    <!-- File transcription (TranscribeFileActivity) -->
+    <string name="file_preparing">Preparing...</string>
+    <string name="file_loading_model">Loading model...</string>
+    <string name="file_decoding_audio">Decoding audio...</string>
+    <string name="file_transcribing">Transcribing...</string>
+    <string name="file_refining">Refining...</string>
+    <string name="file_copied">Copied to clipboard</string>
+    <string name="file_copy_to_clipboard">Copy to clipboard</string>
+    <string name="file_transcription_copied">Transcription copied to clipboard</string>
+    <string name="file_error_no_audio_received">Error: No audio file received</string>
+    <string name="file_error_no_audio">Error: No audio file</string>
+    <string name="file_error_decode">Error: Could not decode audio file</string>
+    <string name="file_error_format">Error: %1$s</string>
+
+    <!-- Live subtitles (permission toasts, overlay, notification) -->
+    <string name="subs_grant_overlay_permission">Please grant \'Display over other apps\' permission</string>
+    <string name="subs_enable_overlay_app_settings">Enable \'Display over other apps\' in app settings</string>
+    <string name="subs_enable_overlay_settings">Please enable overlay permission in Settings</string>
+    <string name="subs_overlay_required">Overlay permission required for subtitles</string>
+    <string name="subs_screen_capture_denied">Screen Capture denied</string>
+    <string name="subs_waiting_for_audio">Waiting for audio...</string>
+    <string name="subs_notification_active">Live Subtitles Active</string>
+    <string name="subs_notification_recording">Recording internal audio...</string>
+    <string name="subs_notification_stop">Stop</string>
+
+    <!-- Shared -->
+    <string name="action_close">Close</string>
+
+    <!-- Debug model download errors (shown in the retry dialog) -->
+    <string name="debug_model_cannot_create_dir">Cannot create models directory</string>
+    <string name="debug_model_checksum_mismatch">Checksum mismatch: expected %1$s, got %2$s</string>
+    <string name="debug_model_rename_failed">Failed to rename downloaded model file</string>
+    <string name="debug_model_http_error">HTTP %1$d</string>
+    <string name="debug_model_unknown_reason">unknown</string>
+    <string name="bench_no_data_chunk">no data chunk in %1$s</string>
 </resources>

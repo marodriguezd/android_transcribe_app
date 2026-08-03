@@ -27,6 +27,7 @@ import java.nio.ByteOrder;
 import java.nio.ShortBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class TranscribeFileActivity extends AppCompatActivity {
 
@@ -49,6 +50,13 @@ public class TranscribeFileActivity extends AppCompatActivity {
     private TextView resultText;
     private Button copyButton;
 
+    // Monotonic operation-id source, shared across Activity instances so a
+    // recreated Activity can never collide with a stale native worker's id.
+    private static final AtomicInteger NEXT_OP = new AtomicInteger(1);
+    // The operation id of the decode currently owned by this Activity; a
+    // destroyed/recreated Activity bumps it to invalidate late callbacks.
+    private int currentOpId = 0;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -69,26 +77,30 @@ public class TranscribeFileActivity extends AppCompatActivity {
                 ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
                 ClipData clip = ClipData.newPlainText("Transcription", text);
                 clipboard.setPrimaryClip(clip);
-                Toast.makeText(this, "Copied to clipboard", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, getString(R.string.file_copied), Toast.LENGTH_SHORT).show();
             }
         });
 
         Uri audioUri = getAudioUri();
         if (audioUri == null) {
-            statusText.setText("Error: No audio file received");
+            statusText.setText(getString(R.string.file_error_no_audio_received));
             progressBar.setVisibility(View.GONE);
             return;
         }
 
-        statusText.setText("Loading model...");
+        statusText.setText(getString(R.string.file_loading_model));
         initNative(this);
     }
 
     @Override
     protected void onDestroy() {
-        // Cancel any in-flight post-processing call when the activity is
-        // destroyed, so a late callback cannot update a finishing UI.
-        PostProcessor.cancelAll();
+        // Invalidate any in-flight decode callbacks (P1.1): a late native
+        // worker must not update a destroyed/recreated Activity.
+        currentOpId = NEXT_OP.incrementAndGet();
+        // Cancel this Activity's in-flight post-processing call (owner-scoped,
+        // P0.1) so a late callback cannot update a finishing UI — without
+        // cancelling another surface's legitimate request.
+        PostProcessor.cancelAllFor(this);
         super.onDestroy();
         try { cleanupNative(); } catch (Throwable t) { /* ignore */ }
     }
@@ -110,7 +122,7 @@ public class TranscribeFileActivity extends AppCompatActivity {
     public void onStatusUpdate(String status) {
         runOnUiThread(() -> {
             if ("Ready".equals(status)) {
-                statusText.setText("Decoding audio...");
+                statusText.setText(getString(R.string.file_decoding_audio));
                 startDecodeAndTranscribe();
             } else {
                 statusText.setText(status);
@@ -121,14 +133,20 @@ public class TranscribeFileActivity extends AppCompatActivity {
         });
     }
 
-    // Called from Rust with transcription result
-    public void onTextTranscribed(String text) {
+    // Called from Rust with the transcription result of a specific decode
+    // operation. The opId guard (P1.1) drops callbacks from a worker that
+    // finishes after this Activity was destroyed or a new decode started.
+    public void onTextTranscribed(String text, int opId) {
         runOnUiThread(() -> {
+            if (opId != currentOpId || isFinishing() || isDestroyed()) return;
             SettingsManager settings = new SettingsManager(this);
             if (settings.isPostProcessEnabled()) {
-                statusText.setText("Refining...");
+                statusText.setText(getString(R.string.file_refining));
+                // Owned by this Activity so its teardown only cancels its own
+                // in-flight call, never another surface's (P0.1).
                 new PostProcessor(settings, new Handler(Looper.getMainLooper()),
-                        () -> !isFinishing() && !isDestroyed()).process(text, new PostProcessor.PostProcessCallback() {
+                        () -> !isFinishing() && !isDestroyed(), this)
+                        .process(text, new PostProcessor.PostProcessCallback() {
                     @Override
                     public void onSuccess(String refinedText) {
                         String out = (refinedText != null && !refinedText.trim().isEmpty())
@@ -161,30 +179,35 @@ public class TranscribeFileActivity extends AppCompatActivity {
         ClipData clip = ClipData.newPlainText("Transcription", text);
         clipboard.setPrimaryClip(clip);
 
-        Toast.makeText(this, "Transcription copied to clipboard", Toast.LENGTH_LONG).show();
+        Toast.makeText(this, getString(R.string.file_transcription_copied), Toast.LENGTH_LONG).show();
     }
 
     private void startDecodeAndTranscribe() {
         Uri audioUri = getAudioUri();
         if (audioUri == null) {
-            statusText.setText("Error: No audio file");
+            statusText.setText(getString(R.string.file_error_no_audio));
             return;
         }
+
+        // Every decode gets a fresh unique operation id (static counter, so a
+        // recreated Activity can never accept a stale worker's callbacks).
+        final int opId = NEXT_OP.incrementAndGet();
+        currentOpId = opId;
 
         new Thread(() -> {
             try {
                 float[] samples = decodeAudioToSamples(audioUri);
                 if (samples == null || samples.length == 0) {
-                    showError("Error: Could not decode audio file");
+                    showError(getString(R.string.file_error_decode));
                     return;
                 }
 
-                runOnUiThread(() -> statusText.setText("Transcribing..."));
-                transcribeAudio(samples, samples.length);
+                runOnUiThread(() -> statusText.setText(getString(R.string.file_transcribing)));
+                transcribeAudio(samples, samples.length, opId);
 
             } catch (Exception e) {
                 Log.e(TAG, "Error decoding audio", e);
-                showError("Error: " + e.getMessage());
+                showError(getString(R.string.file_error_format, e.getMessage()));
             }
         }).start();
     }
@@ -348,8 +371,20 @@ public class TranscribeFileActivity extends AppCompatActivity {
         return output;
     }
 
+    // Decode-scoped status ("Transcribing...", decode errors). Ignored when
+    // the operation no longer belongs to this Activity instance.
+    public void onStatusUpdate(String status, int opId) {
+        runOnUiThread(() -> {
+            if (opId != currentOpId || isFinishing() || isDestroyed()) return;
+            statusText.setText(status);
+            if (status != null && status.startsWith("Error")) {
+                progressBar.setVisibility(View.GONE);
+            }
+        });
+    }
+
     // Native methods
     private native void initNative(TranscribeFileActivity activity);
     private native void cleanupNative();
-    private native void transcribeAudio(float[] samples, int length);
+    private native void transcribeAudio(float[] samples, int length, int opId);
 }

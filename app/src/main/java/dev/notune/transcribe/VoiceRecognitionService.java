@@ -88,9 +88,9 @@ public class VoiceRecognitionService extends RecognitionService {
 
     @Override
     protected void onCancel(Callback callback) {
-        // Cancel any in-flight post-processing call when the recognition
-        // session is cancelled by the caller.
-        PostProcessor.cancelAll();
+        // Cancel this service's in-flight post-processing call when the
+        // recognition session is cancelled — never another surface's (P0.1).
+        PostProcessor.cancelAllFor(this);
         // Invalidate any post-processor callback that is still pending for
         // this session so it cannot deliver results after cancellation.
         currentSessionId++;
@@ -103,9 +103,9 @@ public class VoiceRecognitionService extends RecognitionService {
 
     @Override
     public void onDestroy() {
-        // Cancel any in-flight post-processing call when the recognition
-        // service is destroyed.
-        PostProcessor.cancelAll();
+        // Cancel this service's in-flight post-processing call when the
+        // recognition service is destroyed (owner-scoped, P0.1).
+        PostProcessor.cancelAllFor(this);
         // Invalidate any post-processor callback that is still pending so it
         // cannot deliver results to a released binder.
         currentSessionId++;
@@ -190,8 +190,11 @@ public class VoiceRecognitionService extends RecognitionService {
     private void deliverResults(Callback cb, String text, int sessionId) {
         SettingsManager settings = new SettingsManager(this);
         if (settings.isPostProcessEnabled()) {
+            // Owned by this service so a cancelled/destroyed session only
+            // cancels its own call, never another surface's (P0.1).
             new PostProcessor(settings, mainHandler,
-                    () -> sessionId == currentSessionId && settings.isPostProcessEnabled())
+                    () -> sessionId == currentSessionId && settings.isPostProcessEnabled(),
+                    this)
                     .process(text, new PostProcessor.PostProcessCallback() {
                 @Override
                 public void onSuccess(String refinedText) {

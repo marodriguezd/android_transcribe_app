@@ -1,12 +1,12 @@
 use std::sync::{Arc, Mutex};
 
-use jni::objects::{JClass, JFloatArray, JObject};
+use jni::objects::{JClass, JFloatArray};
 use jni::sys::jint;
 use jni::JNIEnv;
 use once_cell::sync::Lazy;
 
-
 use crate::engine;
+use crate::jni_util;
 
 struct TranscribeFileState {
     jvm: Arc<jni::JavaVM>,
@@ -14,28 +14,6 @@ struct TranscribeFileState {
 }
 
 static STATE: Lazy<Mutex<Option<TranscribeFileState>>> = Lazy::new(|| Mutex::new(None));
-
-fn notify_status(env: &mut JNIEnv, obj: &JObject, msg: &str) {
-    if let Ok(jmsg) = env.new_string(msg) {
-        let _ = env.call_method(
-            obj,
-            "onStatusUpdate",
-            "(Ljava/lang/String;)V",
-            &[(&jmsg).into()],
-        );
-    }
-}
-
-fn notify_text(env: &mut JNIEnv, obj: &JObject, text: &str) {
-    if let Ok(jtxt) = env.new_string(text) {
-        let _ = env.call_method(
-            obj,
-            "onTextTranscribed",
-            "(Ljava/lang/String;)V",
-            &[(&jtxt).into()],
-        );
-    }
-}
 
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_notune_transcribe_TranscribeFileActivity_initNative(
@@ -82,6 +60,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_TranscribeFileActivity_
     _class: JClass,
     samples_array: JFloatArray,
     length: jint,
+    op_id: jint,
 ) {
     let guard = STATE.lock().unwrap();
     let state = match guard.as_ref() {
@@ -96,10 +75,11 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_TranscribeFileActivity_
         let target_ref = state.target_ref.clone();
         drop(guard);
         if let Ok(mut env) = jvm.attach_current_thread() {
-            notify_status(
+            jni_util::notify_status_with_session(
                 &mut env,
                 target_ref.as_obj(),
                 "Error: no audio data to transcribe",
+                op_id,
             );
         }
         return;
@@ -135,20 +115,25 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_TranscribeFileActivity_
         }
 
         if let Some(eng_arc) = engine::get_engine() {
-            notify_status(&mut env, obj, "Transcribing...");
+            jni_util::notify_status_with_session(&mut env, obj, "Transcribing...", op_id);
 
             let res = engine::transcribe_shared(&eng_arc, buffer);
 
             match res {
                 Ok(text) => {
-                    notify_text(&mut env, obj, &text);
+                    jni_util::notify_text_with_session(&mut env, obj, &text, op_id);
                 }
                 Err(e) => {
-                    notify_status(&mut env, obj, &format!("Error: {}", e));
+                    jni_util::notify_status_with_session(
+                        &mut env,
+                        obj,
+                        &format!("Error: {}", e),
+                        op_id,
+                    );
                 }
             }
         } else {
-            notify_status(&mut env, obj, "Error: model not loaded");
+            jni_util::notify_status_with_session(&mut env, obj, "Error: model not loaded", op_id);
         }
     });
 }

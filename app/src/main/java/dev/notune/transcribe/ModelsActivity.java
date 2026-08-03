@@ -28,8 +28,6 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -323,26 +321,16 @@ public class ModelsActivity extends AppCompatActivity {
     }
 
     private String readConfig(String name) {
-        File f = new File(getFilesDir(), name);
-        if (!f.exists()) return "";
-        try {
-            return new String(Files.readAllBytes(f.toPath()), StandardCharsets.UTF_8).trim();
-        } catch (IOException e) {
-            return "";
-        }
+        return MarkerFileHelper.readString(this, name, "");
     }
 
+    /**
+     * Every model-setting marker is written through {@link MarkerFileHelper}
+     * (temp file + fsync + rename, delete on empty) so the main process and
+     * the ":ime" process never observe a partially-written value (P1.2).
+     */
     private void writeConfig(String name, String value) {
-        File f = new File(getFilesDir(), name);
-        if (value == null || value.isEmpty()) {
-            f.delete();
-            return;
-        }
-        try (OutputStream os = new FileOutputStream(f)) {
-            os.write(value.getBytes(StandardCharsets.UTF_8));
-        } catch (IOException e) {
-            Log.e(TAG, "Failed to write " + name, e);
-        }
+        MarkerFileHelper.writeString(this, name, value);
     }
 
     private void refreshList() {

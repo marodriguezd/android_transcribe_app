@@ -19,7 +19,7 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="..."
+            android:text="@string/subs_waiting_for_audio"
             android:textColor="#FFFFFF"
             android:textSize="18sp"
             android:breakStrategy="simple"

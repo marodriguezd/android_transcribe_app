@@ -5,9 +5,6 @@ import android.app.Application;
 import com.google.android.material.color.DynamicColors;
 
 import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.Locale;
 
 /**
@@ -50,15 +47,9 @@ public class App extends Application {
     }
 
     private void writeConfig(String name, String value) {
-        File f = new File(getFilesDir(), name);
-        if (value == null || value.isEmpty()) {
-            f.delete();
-            return;
-        }
-        try (FileOutputStream os = new FileOutputStream(f)) {
-            os.write(value.getBytes(StandardCharsets.UTF_8));
-        } catch (IOException e) {
-            // Non-fatal: the model will fall back to its default language.
-        }
+        // Atomic temp+rename write so the main process and ":ime" never read
+        // a partially-written language marker (P1.2). Non-fatal on failure:
+        // the model will fall back to its default language.
+        MarkerFileHelper.writeString(this, name, value);
     }
 }

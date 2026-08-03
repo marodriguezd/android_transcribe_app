@@ -150,4 +150,50 @@
     <string name="debug_model_cancelled">Téléchargement du modèle annulé</string>
     <string name="debug_model_no_space">Espace de stockage insuffisant pour télécharger le modèle</string>
     <string name="debug_model_size" translatable="false">751 MB</string>
+
+    <!-- P2.4 (2026-08-03) : chaînes d'UI migrées depuis Java/layouts -->
+    <string name="ime_tap_to_record">Toucher pour enregistrer</string>
+    <string name="ime_tap_to_stop">Toucher pour arrêter</string>
+    <string name="ime_listening">Écoute...</string>
+    <string name="ime_processing">Traitement...</string>
+    <string name="ime_refining">Affinage...</string>
+    <string name="ime_no_mic_permission">Pas d\'autorisation micro – accordez-la dans l\'app</string>
+    <string name="ime_open_app_for_permission">Ouvrez l\'app pour accorder l\'autorisation</string>
+    <string name="ime_error_loading_keyboard">Erreur lors du chargement du clavier : %1$s</string>
+    <string name="ime_cd_switch_keyboard">Changer de clavier</string>
+    <string name="ime_cd_space">Espace</string>
+    <string name="ime_cd_enter">Entrée</string>
+    <string name="ime_cd_backspace">Retour arrière</string>
+    <string name="rec_mic_permission_required">Autorisation du micro requise.\nAccordez-la dans l\'app principale.</string>
+    <string name="rec_listening_tap_stop">Écoute… (toucher pour arrêter)</string>
+    <string name="rec_processing">Traitement...</string>
+    <string name="rec_refining">Affinage...</string>
+    <string name="file_preparing">Préparation...</string>
+    <string name="file_loading_model">Chargement du modèle...</string>
+    <string name="file_decoding_audio">Décodage de l\'audio...</string>
+    <string name="file_transcribing">Transcription...</string>
+    <string name="file_refining">Affinage...</string>
+    <string name="file_copied">Copié dans le presse-papiers</string>
+    <string name="file_copy_to_clipboard">Copier dans le presse-papiers</string>
+    <string name="file_transcription_copied">Transcription copiée dans le presse-papiers</string>
+    <string name="file_error_no_audio_received">Erreur : aucun fichier audio reçu</string>
+    <string name="file_error_no_audio">Erreur : aucun fichier audio</string>
+    <string name="file_error_decode">Erreur : impossible de décoder le fichier audio</string>
+    <string name="file_error_format">Erreur : %1$s</string>
+    <string name="subs_grant_overlay_permission">Veuillez accorder l\'autorisation « Afficher par-dessus d\'autres apps »</string>
+    <string name="subs_enable_overlay_app_settings">Activez « Afficher par-dessus d\'autres apps » dans les réglages de l\'app</string>
+    <string name="subs_enable_overlay_settings">Veuillez activer l\'autorisation de superposition dans les réglages</string>
+    <string name="subs_overlay_required">Autorisation de superposition requise pour les sous-titres</string>
+    <string name="subs_screen_capture_denied">Capture d\'écran refusée</string>
+    <string name="subs_waiting_for_audio">En attente d\'audio...</string>
+    <string name="subs_notification_active">Sous-titres en direct actifs</string>
+    <string name="subs_notification_recording">Enregistrement de l\'audio interne...</string>
+    <string name="subs_notification_stop">Arrêter</string>
+    <string name="action_close">Fermer</string>
+    <string name="debug_model_cannot_create_dir">Impossible de créer le dossier des modèles</string>
+    <string name="debug_model_checksum_mismatch">Somme de contrôle incorrecte : attendu %1$s, obtenu %2$s</string>
+    <string name="debug_model_rename_failed">Impossible de renommer le fichier de modèle téléchargé</string>
+    <string name="debug_model_http_error">HTTP %1$d</string>
+    <string name="debug_model_unknown_reason">inconnu</string>
+    <string name="bench_no_data_chunk">aucun bloc de données dans %1$s</string>
 </resources>

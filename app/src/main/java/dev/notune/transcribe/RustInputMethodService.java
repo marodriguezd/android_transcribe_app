@@ -113,9 +113,10 @@ public class RustInputMethodService extends InputMethodService {
             mainHandler.post(() -> {
                 if (!isRecording && statusView != null) {
                     String current = statusView.getText().toString();
-                    if ("Refining...".equals(current) || "Processing...".equals(current)) {
-                        statusView.setText("Tap to Record");
-                        if (hintView != null) hintView.setText("Tap to Record");
+                    if (getString(R.string.ime_refining).equals(current)
+                            || getString(R.string.ime_processing).equals(current)) {
+                        statusView.setText(getString(R.string.ime_tap_to_record));
+                        if (hintView != null) hintView.setText(getString(R.string.ime_tap_to_record));
                         if (recordContainer != null) {
                             recordContainer.setEnabled(true);
                             recordContainer.setAlpha(1.0f);
@@ -292,8 +293,8 @@ public class RustInputMethodService extends InputMethodService {
                 // Check microphone permission
                 if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
                         != PackageManager.PERMISSION_GRANTED) {
-                    if (statusView != null) statusView.setText("No mic permission - grant in app");
-                    if (hintView != null) hintView.setText("Open the app to grant permission");
+                    if (statusView != null) statusView.setText(getString(R.string.ime_no_mic_permission));
+                    if (hintView != null) hintView.setText(getString(R.string.ime_open_app_for_permission));
                     return;
                 }
 
@@ -321,7 +322,7 @@ public class RustInputMethodService extends InputMethodService {
         } catch (Exception e) {
             Log.e(TAG, "Error in onCreateInputView", e);
             TextView errorView = new TextView(this);
-            errorView.setText("Error loading keyboard: " + e.getMessage());
+            errorView.setText(getString(R.string.ime_error_loading_keyboard, e.getMessage()));
             return errorView;
         }
     }
@@ -418,11 +419,11 @@ public class RustInputMethodService extends InputMethodService {
         }
         tintRecordButton(recording);
         if (recording) {
-            statusView.setText("Listening...");
-            hintView.setText("Tap to Stop");
+            statusView.setText(getString(R.string.ime_listening));
+            hintView.setText(getString(R.string.ime_tap_to_stop));
         } else {
-            statusView.setText("Processing...");
-            hintView.setText("Tap to Record");
+            statusView.setText(getString(R.string.ime_processing));
+            hintView.setText(getString(R.string.ime_tap_to_record));
             if (micLevelView != null) micLevelView.setLevel(0f);
             clearPartialText();
         }
@@ -468,8 +469,10 @@ public class RustInputMethodService extends InputMethodService {
             audioPauser.abandon(this);
             pauseAudioActive = false;
         }
-        // Cancel any in-flight post-processing call when the IME service dies.
-        PostProcessor.cancelAll();
+        // Cancel this IME's in-flight post-processing calls when the service
+        // dies (owner-scoped; the cross-process CANCEL_PP receiver keeps the
+        // global cancelAll for the "PP disabled" event).
+        PostProcessor.cancelAllFor(this);
         unregisterReceiver(cancelReceiver);
     }
 
@@ -533,9 +536,9 @@ public class RustInputMethodService extends InputMethodService {
             if (isError) {
                 statusView.setText(lastStatus);
             } else if (isTranscribing || isWaiting) {
-                statusView.setText("Processing...");
+                statusView.setText(getString(R.string.ime_processing));
             } else {
-                statusView.setText("Tap to Record");
+                statusView.setText(getString(R.string.ime_tap_to_record));
             }
         }
 
@@ -552,7 +555,7 @@ public class RustInputMethodService extends InputMethodService {
         }
 
         if (hintView != null && !isRecording) {
-            hintView.setText("Tap to Record");
+            hintView.setText(getString(R.string.ime_tap_to_record));
         }
     }
 
@@ -591,7 +594,7 @@ public class RustInputMethodService extends InputMethodService {
             if (text == null || text.trim().isEmpty()) {
                 // Nothing recognized — don't insert a stray space.
                 updateRecordButtonUI(false);
-                if (statusView != null) statusView.setText("Tap to Record");
+                if (statusView != null) statusView.setText(getString(R.string.ime_tap_to_record));
                 if (pauseAudioActive) {
                     audioPauser.abandon(this);
                     pauseAudioActive = false;
@@ -605,7 +608,7 @@ public class RustInputMethodService extends InputMethodService {
 
             SettingsManager settings = new SettingsManager(this);
             if (settings.isPostProcessEnabled()) {
-                if (statusView != null) statusView.setText("Refining...");
+                if (statusView != null) statusView.setText(getString(R.string.ime_refining));
                 if (hintView != null) hintView.setText("");
 
                 // The LLM is intentionally not streamed. The ASR model already
@@ -614,7 +617,8 @@ public class RustInputMethodService extends InputMethodService {
                 // text when a provider closes or revises an SSE response.
                 final int processingSessionId = sessionId;
                 new PostProcessor(settings, mainHandler,
-                        () -> processingSessionId == currentSessionId && !isDestroyed)
+                        () -> processingSessionId == currentSessionId && !isDestroyed,
+                        this)
                         .process(text, new PostProcessor.PostProcessCallback() {
                     @Override
                     public void onSuccess(String refinedText) {
@@ -655,7 +659,7 @@ public class RustInputMethodService extends InputMethodService {
             pauseAudioActive = false;
         }
         updateRecordButtonUI(false);
-        if (statusView != null) statusView.setText("Tap to Record");
+        if (statusView != null) statusView.setText(getString(R.string.ime_tap_to_record));
         if (pendingSwitchBack) {
             pendingSwitchBack = false;
             switchToPreviousInputMethodSafe();

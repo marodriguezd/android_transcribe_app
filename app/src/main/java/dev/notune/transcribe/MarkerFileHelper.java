@@ -67,7 +67,15 @@ public final class MarkerFileHelper {
     }
 
     /**
-     * Writes a UTF-8 string to a marker file atomically. If {@code value} is null or empty, deletes the file.
+     * Writes a UTF-8 string to a marker file atomically. If {@code value} is
+     * null or empty, deletes the file.
+     *
+     * <p>The temp file is unique per write (P1.2): concurrent writers of the
+     * same marker (main process, ":ime", settings UI) must never share a
+     * temp path, or one writer's rename can move the file another writer is
+     * still writing to, exposing partial content to readers. With per-write
+     * temps, every rename is atomic and readers only ever see a complete
+     * value.</p>
      */
     public static void writeString(Context context, String fileName, String value) {
         if (context == null || fileName == null) return;
@@ -77,7 +85,7 @@ public final class MarkerFileHelper {
             if (file.exists()) file.delete();
             return;
         }
-        File temp = new File(dir, fileName + ".tmp");
+        File temp = new File(dir, uniqueTempName(fileName));
         try (java.io.FileOutputStream os = new java.io.FileOutputStream(temp)) {
             os.write(value.getBytes(StandardCharsets.UTF_8));
             os.getFD().sync();
@@ -145,7 +153,7 @@ public final class MarkerFileHelper {
             if (file.exists()) file.delete();
             return;
         }
-        File temp = new File(dir, fileName + ".tmp");
+        File temp = new File(dir, uniqueTempName(fileName));
         File file = new File(dir, fileName);
         try (java.io.FileOutputStream os = new java.io.FileOutputStream(temp)) {
             os.write(value.getBytes(StandardCharsets.UTF_8));
@@ -158,6 +166,16 @@ public final class MarkerFileHelper {
         } finally {
             if (temp.exists()) temp.delete();
         }
+    }
+
+    /**
+     * Per-write unique temp name: concurrent writers of the same marker must
+     * never share a temp path (their renames would race and could expose a
+     * partially-written target). Thread id + a monotonic nanoTime keep names
+     * distinct across threads and repeated calls.
+     */
+    private static String uniqueTempName(String fileName) {
+        return fileName + ".tmp" + Thread.currentThread().getId() + "-" + System.nanoTime();
     }
 
     public static int readIntFromFile(File dir, String fileName, int defaultValue) {

@@ -9,7 +9,10 @@ plugins {
 android {
     namespace = "dev.notune.transcribe"
     compileSdk = 34
-    ndkVersion = "28.0.12916984"
+    // Single source of truth for the NDK (P0.4): this exact version is what
+    // CI installs (`.github/workflows/*.yml` -> sdkmanager ndk;28.0.13004108)
+    // and what README/AGENTS document. Keep all three in sync.
+    ndkVersion = "28.0.13004108"
 
     defaultConfig {
         applicationId = "dev.notune.transcribe"
@@ -73,6 +76,11 @@ android {
             // Lets plain-JUnit tests access the merged R/assets without a device,
             // matching the Handy-Android guantelete harness (AGENTS.md §3).
             isIncludeAndroidResources = true
+            // Let android.jar methods (notably android.util.Log) return default
+            // values instead of throwing "Method not mocked", so the
+            // PostProcessor HTTP suite (P1.3) can exercise the real error paths
+            // on the JVM. No existing test relies on the "not mocked" throw.
+            isReturnDefaultValues = true
         }
     }
 }
@@ -102,6 +110,14 @@ dependencies {
 
     // Unit test harness
     testImplementation("junit:junit:4.13.2")
+    // Controlled HTTP server for the post-processing cancellation-isolation
+    // tests (P0.1) and payload/fallback tests (P1.3).
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    // Real org.json for the JVM tests: the android.jar copy is stubbed, so
+    // JSONObject.toString() would return null/defaults and the PostProcessor
+    // payload tests would fail (android.jar sits last on the test classpath,
+    // so this shadows it).
+    testImplementation("org.json:json:20240303")
 
     // Material/AppCompat transitively pull the legacy kotlin-stdlib-jdk7/jdk8:1.6.21
     // (via kotlinx-coroutines-android), whose classes were folded into
@@ -118,6 +134,25 @@ dependencies {
 // Rust / cargo-ndk build task
 // ---------------------------------------------------------------------------
 
+// Name of the NDK host-toolchain directory under toolchains/llvm/prebuilt.
+// Resolved from the host OS/arch instead of hardcoding linux-x86_64 (P0.4),
+// so the sysroot/libc++ wiring works on every officially supported NDK host:
+// linux-x86_64, linux-aarch64 (where the NDK ships it), darwin-x86_64,
+// darwin-arm64 and windows. An unsupported host fails fast with a clear
+// message instead of silently pointing at a non-existent directory.
+fun ndkPrebuiltDir(): String {
+    val os = System.getProperty("os.name").lowercase()
+    val arch = System.getProperty("os.arch").lowercase()
+    val isArm64 = arch.contains("aarch64") || arch.contains("arm64")
+    return when {
+        os.contains("mac") || os.contains("darwin") ->
+            if (isArm64) "darwin-arm64" else "darwin-x86_64"
+        os.contains("win") -> "windows"
+        os.contains("linux") -> if (isArm64) "linux-aarch64" else "linux-x86_64"
+        else -> throw GradleException("Unsupported build host: $os/$arch")
+    }
+}
+
 val cargoNdkBuild by tasks.registering(Exec::class) {
     description = "Build Rust native code via cargo-ndk"
     group = "build"
@@ -129,6 +164,17 @@ val cargoNdkBuild by tasks.registering(Exec::class) {
         ?: System.getenv("ANDROID_NDK_HOME")
         ?: System.getenv("ANDROID_NDK")
         ?: android.ndkDirectory.absolutePath
+    val prebuiltDir = ndkPrebuiltDir()
+    val prebuilt = file("$ndkDir/toolchains/llvm/prebuilt/$prebuiltDir")
+    if (!prebuilt.exists()) {
+        throw GradleException(
+            "NDK host toolchain not found at ${prebuilt.absolutePath}. " +
+            "This NDK install does not ship a '$prebuiltDir' host prebuilt " +
+            "(supported hosts: linux-x86_64, darwin-x86_64, darwin-arm64, windows). " +
+            "Declared build-host limit: the official NDK host for this machine " +
+            "is not present; use one of the supported hosts above."
+        )
+    }
 
     environment("ANDROID_NDK_HOME", ndkDir)
     // transcribe-cpp-sys builds its C++ core through CMake, whose Android
@@ -147,7 +193,7 @@ val cargoNdkBuild by tasks.registering(Exec::class) {
     // arm64 phones from ~2018 on; the engine refuses older CPUs with a clear
     // error at load (see check_cpu_features in src/engine.rs) instead of
     // crashing mid-inference.
-    environment("TRANSCRIBE_CMAKE_ARGS", "-DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16 -DANDROID_STL=c++_shared -DCMAKE_SYSROOT=$ndkDir/toolchains/llvm/prebuilt/linux-x86_64/sysroot -DCMAKE_SYSTEM_VERSION=26 -DANDROID_PLATFORM=android-26 -DANDROID_ABI=arm64-v8a -DANDROID_NDK=$ndkDir -DCMAKE_ANDROID_NDK=$ndkDir")
+    environment("TRANSCRIBE_CMAKE_ARGS", "-DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16 -DANDROID_STL=c++_shared -DCMAKE_SYSROOT=$ndkDir/toolchains/llvm/prebuilt/$prebuiltDir/sysroot -DCMAKE_SYSTEM_VERSION=26 -DANDROID_PLATFORM=android-26 -DANDROID_ABI=arm64-v8a -DANDROID_NDK=$ndkDir -DCMAKE_ANDROID_NDK=$ndkDir")
 
     val jniLibsDir = project.file("src/main/jniLibs")
 
@@ -158,10 +204,11 @@ val cargoNdkBuild by tasks.registering(Exec::class) {
         "build", "--release"
     )
 
-    // Copy libc++_shared.so from NDK (needed because Rust links against it dynamically)
+    // Copy libc++_shared.so from NDK (needed because Rust links against it
+    // dynamically). Path is host-architecture aware (P0.4).
     doLast {
         val ndkPath = environment["ANDROID_NDK_HOME"] as String
-        val libcpp = file("$ndkPath/toolchains/llvm/prebuilt/linux-x86_64/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so")
+        val libcpp = file("$ndkPath/toolchains/llvm/prebuilt/$prebuiltDir/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so")
         if (libcpp.exists()) {
             val destDir = File(jniLibsDir, "arm64-v8a")
             destDir.mkdirs()

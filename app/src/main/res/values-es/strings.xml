@@ -150,4 +150,50 @@
     <string name="debug_model_cancelled">Descarga del modelo cancelada</string>
     <string name="debug_model_no_space">No hay suficiente espacio libre para descargar el modelo</string>
     <string name="debug_model_size" translatable="false">751 MB</string>
+
+    <!-- P2.4 (2026-08-03): strings de UI migradas desde Java/layouts -->
+    <string name="ime_tap_to_record">Toca para grabar</string>
+    <string name="ime_tap_to_stop">Toca para detener</string>
+    <string name="ime_listening">Escuchando...</string>
+    <string name="ime_processing">Procesando...</string>
+    <string name="ime_refining">Refinando...</string>
+    <string name="ime_no_mic_permission">Sin permiso de micrófono: concédelo en la app</string>
+    <string name="ime_open_app_for_permission">Abre la app para conceder el permiso</string>
+    <string name="ime_error_loading_keyboard">Error al cargar el teclado: %1$s</string>
+    <string name="ime_cd_switch_keyboard">Cambiar de teclado</string>
+    <string name="ime_cd_space">Espacio</string>
+    <string name="ime_cd_enter">Intro</string>
+    <string name="ime_cd_backspace">Retroceso</string>
+    <string name="rec_mic_permission_required">Se requiere permiso de micrófono.\nConcédelo en la app principal.</string>
+    <string name="rec_listening_tap_stop">Escuchando… (toca para detener)</string>
+    <string name="rec_processing">Procesando...</string>
+    <string name="rec_refining">Refinando...</string>
+    <string name="file_preparing">Preparando...</string>
+    <string name="file_loading_model">Cargando modelo...</string>
+    <string name="file_decoding_audio">Decodificando audio...</string>
+    <string name="file_transcribing">Transcribiendo...</string>
+    <string name="file_refining">Refinando...</string>
+    <string name="file_copied">Copiado al portapapeles</string>
+    <string name="file_copy_to_clipboard">Copiar al portapapeles</string>
+    <string name="file_transcription_copied">Transcripción copiada al portapapeles</string>
+    <string name="file_error_no_audio_received">Error: no se recibió ningún archivo de audio</string>
+    <string name="file_error_no_audio">Error: no hay archivo de audio</string>
+    <string name="file_error_decode">Error: no se pudo decodificar el archivo de audio</string>
+    <string name="file_error_format">Error: %1$s</string>
+    <string name="subs_grant_overlay_permission">Concede el permiso \'Mostrar sobre otras apps\'</string>
+    <string name="subs_enable_overlay_app_settings">Activa \'Mostrar sobre otras apps\' en los ajustes de la app</string>
+    <string name="subs_enable_overlay_settings">Activa el permiso de superposición en los ajustes</string>
+    <string name="subs_overlay_required">El permiso de superposición es necesario para los subtítulos</string>
+    <string name="subs_screen_capture_denied">Captura de pantalla denegada</string>
+    <string name="subs_waiting_for_audio">Esperando audio...</string>
+    <string name="subs_notification_active">Subtítulos en vivo activos</string>
+    <string name="subs_notification_recording">Grabando audio interno...</string>
+    <string name="subs_notification_stop">Detener</string>
+    <string name="action_close">Cerrar</string>
+    <string name="debug_model_cannot_create_dir">No se pudo crear el directorio de modelos</string>
+    <string name="debug_model_checksum_mismatch">Checksum incorrecto: se esperaba %1$s, se obtuvo %2$s</string>
+    <string name="debug_model_rename_failed">No se pudo renombrar el archivo de modelo descargado</string>
+    <string name="debug_model_http_error">HTTP %1$d</string>
+    <string name="debug_model_unknown_reason">desconocido</string>
+    <string name="bench_no_data_chunk">no hay bloque de datos en %1$s</string>
 </resources>

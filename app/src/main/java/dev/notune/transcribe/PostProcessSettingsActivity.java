@@ -47,11 +47,12 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         super.onDestroy();
-        // Cancel any in-flight model-list fetch when the settings screen is
-        // destroyed, so its UI callbacks cannot touch a torn-down window
-        // (e.g. calling editModel.showDropDown() after the activity is gone
-        // would throw WindowManager.BadTokenException).
-        PostProcessor.cancelAll();
+        // Cancel this screen's in-flight model-list fetch when it is destroyed
+        // (owner-scoped, P0.1), so its UI callbacks cannot touch a torn-down
+        // window (e.g. calling editModel.showDropDown() after the activity is
+        // gone would throw WindowManager.BadTokenException). A dictation from
+        // another surface is left untouched.
+        PostProcessor.cancelAllFor(this);
     }
 
     @Override
@@ -160,7 +161,8 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
         save(false);
         btnRefreshModels.setEnabled(false);
         new PostProcessor(settings, new Handler(Looper.getMainLooper()),
-                () -> !isFinishing() && !isDestroyed()).fetchModels(new PostProcessor.ModelsCallback() {
+                () -> !isFinishing() && !isDestroyed(), this)
+                .fetchModels(new PostProcessor.ModelsCallback() {
             @Override
             public void onSuccess(List<String> models) {
                 btnRefreshModels.setEnabled(true);

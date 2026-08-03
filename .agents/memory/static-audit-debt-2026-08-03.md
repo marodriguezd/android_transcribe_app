@@ -1,5 +1,13 @@
 # Auditoría estática y registro de deuda — 2026-08-03
 
+> **Estado (2026-08-03, implementación):** los bloqueadores P0.1–P0.4 y las
+> líneas P1.1–P1.3 quedaron **implementados** con tests JVM verdes
+> (`./gradlew testDebugUnitTest` → BUILD SUCCESSFUL, 32 tests). Detalle en
+> [`gauntlet-p0-implemented-2026-08-03.md`](./gauntlet-p0-implemented-2026-08-03.md).
+> Este documento conserva la auditoría original intacta; la validación de CI
+> (`assembleDebug`/`lintDebug`/`checkModels`) y de dispositivo sigue pendiente,
+> por lo que el Guantelete permanece **ABIERTO**.
+
 **Tema:** auditoría integral de arquitectura, streaming ASR, postprocesado AI,
 JNI, lifecycle, recursos, modelos, CI y Guantelete.
 
@@ -133,13 +141,24 @@ parcial; el marker activo sólo apunta a un modelo completo.
 
 #### P1.3 Probar postprocesado bajo latencia, cancelación y concurrencia
 
-El payload final-only es correcto por lectura, pero faltan pruebas de proveedor,
-timeout, cancelación, toggle durante request, respuesta JSON incompleta,
-modelo inválido y dos superficies concurrentes.
+El payload final-only es correcto por lectura, pero faltaban pruebas de
+proveedor, timeout, cancelación, toggle durante request, respuesta JSON
+incompleta, modelo inválido y dos superficies concurrentes.
 
-**Aceptación:** suite JVM con servidor HTTP controlado o seam equivalente,
-verificando payload, `stream:false`, una sola petición, cierre de response,
-fallback y aislamiento por sesión.
+**Estado (2026-08-03): implementado.** `PostProcessorTest` (8 tests JVM con
+MockWebServer) vía seam `PostProcessor.PostProcessorSettings` (SettingsManager
+lo implementa en producción): payload `/chat/completions` con `stream:false`,
+`${output}` inyectado una sola vez, transcript como user message sin marcador,
+respuesta vacía/JSON inválida/HTTP 500 → error con fallback al texto crudo,
+toggle-off durante vuelo → fallback, exactamente una entrega final, y el
+timeout real de OkHttp por seam (`setSharedClientForTests` con read timeout de
+100 ms contra un body retrasado → onError; los valores de producción
+30 s/60 s/60 s se asertan con `buildProductionClient()`). La cancelación por
+sesión queda cubierta por `CallRegistryTest`.
+
+**Aceptación (pendiente):** transcurso wall-clock de los timeouts de producción
+y comportamiento de red real (DNS, TLS, latencia del proveedor) — sólo
+verificables en smoke de dispositivo; no se esperan 60 s en el harness JVM.
 
 #### P1.4 Revisar lifecycle del worker de subtítulos y MediaProjection en hardware
 
@@ -173,22 +192,51 @@ streaming, PP apagado/encendido/fallido y cambios de idioma cross-process.
 
 #### P2.4 Reducir strings hardcodeadas
 
-La paridad XML pasa, pero quedan estados, errores y toasts visibles escritos
-directamente en Java. Migrarlos a recursos y repetir el gate de traducciones.
+La paridad XML pasa, pero quedaban estados, errores y toasts visibles escritos
+directamente en Java.
+
+**Estado (2026-08-03): implementado.** 44 strings nuevas en los 7 locales
+(174 translatables en total, gate PASS): IME (estados, permisos, error de
+carga, contentDescriptions), popup, transcripción de archivos, subtítulos
+(toasts, overlay, notificación), `action_close` y errores de la descarga debug
+(usando formatos `%1$s`/`%1$d`). Se reutilizan `status_ready` y `section_subs`.
+
+**Excepción documentada:** (a) las strings de protocolo JNI ("Ready",
+"Listening...", "Transcribing", "Error") se conservan como literales porque
+la máquina de estados Java las compara con `.equals()`/`.contains()`/
+`.startsWith()`; (b) los detalles de error de `PostProcessor` ("API Error N",
+"Parse error: ...", "Request failed", "Empty response ...") se mantienen en
+inglés a propósito: `PostProcessor` no tiene `Context` (el seam JVM de P1.3 lo
+requiere) y las superficies muestran el fallback localizado al texto crudo;
+(c) los nombres de modelo en `ModelsActivity` son nombres propios técnicos y
+no se traducen.
 
 ## Checklist futuro de cierre
 
-- [ ] Deuda P0 resuelta y revisada.
-- [ ] Tests de concurrencia/cancelación por sesión verdes.
-- [ ] Runtime debug verifica SHA-256 antes de activar el modelo.
-- [ ] Toolchain Gradle/CI/docs unificada; host ARM64/x86_64 probado o límite
-      declarado.
-- [ ] `cargo test` real o bloqueo reproducible documentado en CI.
-- [ ] `rustfmt` y lint del alcance completo verdes.
+Actualizado tras la implementación del 2026-08-03:
+
+- [x] Deuda P0 resuelta y revisada (2026-08-03).
+- [x] Tests de concurrencia/cancelación por sesión verdes (CallRegistryTest,
+      MarkerAtomicityTest — JVM).
+- [x] Runtime debug verifica SHA-256 antes de activar el modelo (FileSha256 +
+      MainActivity; tests JVM).
+- [x] Toolchain Gradle/CI/docs unificada (NDK 28.0.13004108); límite de host
+      ARM64 declarado vía `ndkPrebuiltDir()`.
+- [ ] `cargo test` real o bloqueo reproducible documentado en CI
+      (`transcribe-cpp-sys` v0.1.3 — pendiente).
+- [ ] `rustfmt` y lint del alcance completo verdes (rustfmt de los ficheros
+      tocados ✅; `lintDebug` pendiente de CI).
 - [ ] Smoke test de las seis superficies en dispositivo/emulador.
-- [ ] Postprocesado verificado con servidor HTTP controlado y fallback.
-- [ ] Markers verificados frente a lecturas concurrentes main/`:ime`.
-- [ ] Strings visibles migradas o excepción documentada.
+- [x] Postprocesado verificado con servidor HTTP controlado: payload,
+      `stream:false`, JSON inválido, HTTP error, toggle-off, fallback y
+      timeout real de OkHttp por seam (P1.3 — `PostProcessorTest`, 8 tests;
+      los 30 s/60 s de producción se asertan; el wall-clock y la red real
+      quedan para smoke en dispositivo).
+- [x] Markers verificados frente a lecturas concurrentes main/`:ime`
+      (MarkerAtomicityTest; temp único por escritura).
+- [x] Strings visibles migradas o excepción documentada (P2.4, 2026-08-03:
+      44 strings en 7 locales; excepción: PostProcessor sin Context + strings
+      de protocolo JNI + nombres de modelo).
 - [ ] Sólo entonces actualizar el estado a “Guantelete cerrado”.
 
 ## Regla de lenguaje para documentos futuros

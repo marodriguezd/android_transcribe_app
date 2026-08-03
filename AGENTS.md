@@ -47,7 +47,7 @@ Post-procesado IA (fork addition): opcional, *off-line-by-default*, refina texto
 | Lenguaje UI | **Java** (sin Kotlin) | Java 8 source/target |
 | Android Gradle Plugin | `com.android.application` | **8.7.3** |
 | Build tool | Gradle wrapper | ver `gradle/wrapper/gradle-wrapper.properties` |
-| Toolchain humano | JDK 17 · Rust `aarch64-linux-android` · [`cargo-ndk`](https://github.com/bbqsrc/cargo-ndk) | NDK/SDK efectivos deben tomarse de `app/build.gradle.kts`; actualmente hay una discrepancia documentada con CI/README que debe resolverse antes de cerrar el Guantelete |
+| Toolchain humano | JDK 17 · Android NDK **28.0.13004108** (unificado en Gradle = CI = README, 2026-08-03) · Rust `aarch64-linux-android` · [`cargo-ndk`](https://github.com/bbqsrc/cargo-ndk) | Host soportados: linux-x86_64, darwin-x86_64, darwin-arm64, windows (ver `ndkPrebuiltDir()` en `app/build.gradle.kts`); un host sin prebuilt NDK falla con mensaje claro |
 | Target NDK ABIs | **`arm64-v8a` únicamente** (`abiFilters += "arm64-v8a"`) | excluidas x86 / armeabi-v7a; no confundir ABI del APK con arquitectura del host de build |
 | `compileSdk` / `targetSdk` / `minSdk` | Gradle efectivo: `34 / 34 / 26` | `AGENTS.md`, README y `.agents/spec.md` deben permanecer alineados con Gradle; la compatibilidad Android 15/SDK 35 queda pendiente de decisión y validación |
 | Material | Material Components for Android | `1.12.0` (Material 3 + Material You) |
@@ -111,11 +111,11 @@ Post-procesado IA (fork addition): opcional, *off-line-by-default*, refina texto
 - **Validación automatizada:** Ejecutar `./gradlew assembleDebug` o suites de unit test sin nuevos advertencias o fallos + smoke test funcional en dispositivo/emulador.
 - **Java:** Sigue las convenciones de §4.
 - **Rust:** Sigue el estilo inline existente (4 espacios, `rustfmt` por defecto).
-- **Gates configurados / evidencia histórica parcial (Guantelete ABIERTO):**
-  - `testDebugUnitTest` está configurado en CI; el historial registra 14 tests JVM verdes, pero esta auditoría no vuelve a atribuir ese resultado al estado actual.
-  - `checkModels` verifica SHA-256 de assets bundled presentes; es no-op cuando falta el asset y **no cubre todavía** la descarga runtime debug.
-  - `scripts/check_translations.py` comprueba paridad de nombres en 6 locales alternativos; no detecta todas las cadenas hardcodeadas en Java.
-  - `lintDebug` está configurado como hard gate en debug CI; la salida histórica de 0 errores/103 warnings debe distinguirse de una ejecución actual.
+- **Gates configurados / evidencia (Guantelete ABIERTO):**
+  - `testDebugUnitTest`: **32 tests JVM verdes** verificados localmente el 2026-08-03 (`BUILD SUCCESSFUL`): markers/subtitle prefs + `CallRegistryTest` (cancelación por owner) + `MarkerAtomicityTest` (lecturas concurrentes) + `FileSha256Test` + `PostProcessorTest` (suite HTTP P1.3: payload, `stream:false`, `${output}` una vez, errores, fallback y timeout real de OkHttp por seam con valores escalados; los 30 s/60 s de producción se asertan, no se esperan en wall-clock).
+  - `checkModels` verifica SHA-256 de assets bundled presentes; es no-op cuando falta el asset. La descarga runtime debug **también** verifica SHA-256 antes de activar `active_model` (P0.3, `FileSha256`), pendiente de smoke en dispositivo.
+  - `scripts/check_translations.py` comprueba paridad de nombres en 6 locales alternativos; no detecta todas las cadenas hardcodeadas en Java. P2.4 (2026-08-03): las strings visibles de Java/layouts están migradas a recursos (44 nuevas, gate PASS); excepción documentada para los detalles de error de `PostProcessor` (sin `Context`, seam JVM) y las strings de protocolo JNI que usa la máquina de estados como comparadores.
+  - `lintDebug` está configurado como hard gate en debug CI; pendiente de una ejecución actual tras los cambios del 2026-08-03.
   - Tests Rust `#[cfg(test)]` en `audio` y `corrector` tienen cobertura de lógica pura mediante crate espejo; el crate cdylib completo sigue bloqueado por `transcribe-cpp-sys v0.1.3` y no debe describirse como ejecutado satisfactoriamente en CI hasta existir un workflow/log reproducible.
   - El plan, los bloqueadores P0 y los criterios de cierre viven en [`GAUNTLETE_PLAN.md`](GAUNTLETE_PLAN.md) y [`.agents/memory/static-audit-debt-2026-08-03.md`](.agents/memory/static-audit-debt-2026-08-03.md).
 
@@ -167,6 +167,7 @@ static {
   - `onPartialText(String)` — hipótesis parcial en vivo de modelos streaming (Nemotron) mientras se graba; visual-only en Java (el texto final llega siempre por `onTextTranscribed`/`onResults`). Las superficies sin streaming envían no-op.
   - `onAutoStop()` — disparo del monitor de endpointing.
   - **Grabación IME/popup con generación:** las superficies `RustInputMethodService` y `RecognizeActivity` mantienen además las variantes JNI `onStatusUpdate(String, int)`, `onTextTranscribed(String, int)`, `onAudioLevel(float, int)`, `onPartialText(String, int)` y `onAutoStop(int)`. El `int` es el `sessionId` de la grabación; Java descarta callbacks tardíos cuyo ID ya no coincide con la generación activa. El engine/lifecycle conserva las variantes sin ID para estados de carga y compatibilidad con las demás superficies.
+  - **Transcripción de archivos con operation-id (P1.1):** `TranscribeFileActivity` mantiene `onTextTranscribed(String, int)` y `onStatusUpdate(String, int)` donde el `int` es un operation-id único por decode (`AtomicInteger` estático, inmune a recreaciones de Activity); `transcribeAudio(float[], int, int)` lo recibe de Java y lo devuelve en cada callback. Java descarta callbacks cuyo opId ya no es el actual o cuya Activity está `isFinishing()/isDestroyed()`.
   - `onBenchmarkResult(float audioSecs, float computeSecs, String error)`.
 - **Resiliencia del engine:** `transcribe_shared` hace `panic::catch_unwind` + recuperación de `Mutex` envenenado (`unwrap_or_else(|p| p.into_inner())`). Si lo refactorizas, **mantén estas dos capas**.
 
@@ -235,7 +236,7 @@ No renombrar archivos Rust/Java sin actualizar la entrada JNI (§4.3).**Post-pro
   desactivado, se comete el texto ASR directamente; si la llamada falla, se cancela o devuelve
   una respuesta vacía/no válida, siempre se comete el texto crudo. Así se evita pegar tokens
   parciales, duplicados o texto "Frankenstein" y se conserva la fluidez del streaming ASR.
-- **Cancelación/lifecycle:** existen `PostProcessor.cancelAll()` y validadores de Activity/IME, y el `Response` de OkHttp se cierra siempre, incluidos errores y parseos fallidos. **Limitación auditada:** `cancelAll()` es global al proceso, no por operación; el aislamiento por sesión y la generación determinista de workers de subtítulos siguen siendo deuda P0 documentada en `GAUNTLETE_PLAN.md`.
+- **Cancelación/lifecycle:** la cancelación es **por propietario** (`PostProcessor.cancelAllFor(owner)`, identidad de la Activity/Service dueña de la llamada; registro en `CallRegistry`): destruir una superficie o cancelar un reconocimiento nunca cancela una petición legítima de otra superficie. `PostProcessor.cancelAll()` (global) queda reservado para eventos realmente globales: toggle PP-off (con broadcast `CANCEL_ACTION` al proceso `:ime`) y muerte del servicio IME. Los validadores de Activity/IME impiden callbacks tardíos sobre componentes destruidos, y el `Response` de OkHttp se cierra siempre, incluidos errores y parseos fallidos.
 
 ### 4.7 Rust: contratos del singleton Engine (no romper)
 
@@ -289,7 +290,7 @@ No renombrar archivos Rust/Java sin actualizar la entrada JNI (§4.3).**Post-pro
 - ❌ **No añadir soporte para otras ABIs** (`armeabi-v7a`, `x86`, `x86_64`) sin revisar antes:
   - `check_cpu_features` requiere dotprod+fp16 (ARMv8.2 ~2018+); cualquier dispositivo antiguo fallaría en medio de la inferencia con `SIGILL`.
   - el ggml cross-compile con `GGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16` está fijado en `app/build.gradle.kts`.
-- ❌ **No romper la verificación SHA-256** ni eliminar el marker de "modelo bundled" — protege contra apps que se actualizan con un modelo nuevo y mantienen el viejo en cache. La descarga runtime debug también debe verificar el hash antes de escribir `active_model`; esa ruta está auditada como deuda P0 hasta corregirse.
+- ❌ **No romper la verificación SHA-256** ni eliminar el marker de "modelo bundled" — protege contra apps que se actualizan con un modelo nuevo y mantienen el viejo en cache. La descarga runtime debug verifica el hash con `FileSha256` **antes** de escribir `active_model` (P0.3, implementado 2026-08-03); no degradar esa ruta a activación sin hash.
 - ❌ **No convertir la app a Kotlin** sin discutirlo antes. Es un proyecto Java a propósito (legado del upstream, evita overhead de KSP/codegen).
 - ❌ **No mover ajustes a `SharedPreferences`** sin migrar también los marker files consumidos por Rust (`model_language`, `model_translate`, `active_model`, `model_threads`). El código Rust solo lee del *filesystem*, no de prefs.
 - ❌ **No añadir dependencias síncronas bloqueantes** al evento del audio callback de `cpal` (en `voice_session.rs`/`recog_service.rs`). Toda escritura a `audio_buffer` debe ser O(1) bajo el mutex.
@@ -306,6 +307,7 @@ No renombrar archivos Rust/Java sin actualizar la entrada JNI (§4.3).**Post-pro
 
 - ✅ Si añades un call-back JNI nuevo, documéntalo con la firma exacta en este `AGENTS.md` (§4.4) y añade un stub no-op en Java por defecto para no romper builds en los que aún no has cableado el lado Java.
 - ✅ Cada nuevo ajuste del usuario va como **marker file en `filesDir()`**, sin excepción. La API key usa codificación Base64 para ofuscación mínima; la seguridad real viene del sandbox de Android.
+- ✅ Toda escritura de markers cross-process (main/`:ime`) pasa por `MarkerFileHelper` (temp **único por escritura** + fsync + rename; delete en vacío). Nunca `FileOutputStream` directo sobre el nombre final: writers concurrentes compartiendo el mismo `*.tmp` pueden exponer contenido parcial (cazado por `MarkerAtomicityTest`).
 - ✅ Antes de añadir cadenas visibles, duplicarlas en los 7 locales. Si añades una cadena que **no** quieres traducir, márcala con `translatable="false"`.
 - ✅ Si tocas el `Engine`, lee primero `src/engine.rs` completo (~370 líneas, muy comentado): decisiones sobre warm-up, re-read de idioma, fallback a modelo bundled, warnings de capabilities (`supports_translate`/`variant().contains("turbo")`), Whisper `temperature_inc`, todo está allí por una razón documentada.
 - ✅ Si añades un nuevo surface (Activity/Service), recuerda:

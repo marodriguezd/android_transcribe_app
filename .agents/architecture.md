@@ -78,11 +78,12 @@ Audio del sistema vía MediaProjection
   → crossbeam_channel::Sender<Job> → worker thread
   → engine::transcribe_shared  → onSubtitleText(text, isFinal)
      • partial (replacea hipótesis en ventana visible)
-     • final (appendea a transcript)
-     • lag > 8 s → drop + "…" gap marker
-     • parciales paradas si RTF > 2 s/segundo
-     • **pendiente P0:** invalidar callbacks de workers de generaciones anteriores tras cleanup/restart
- (predict-cost)
+     • final (appendea a transcript)      • lag > 8 s → drop + "…" gap marker
+      • parciales paradas si RTF > 2 s/segundo
+      • ✅ P0.2 (2026-08-03): generación AtomicU32 bumpada en init/cleanup; jobs
+        y worker portan la generación — jobs viejos se descartan sin transcribir
+        ni entregar; el worker termina al drenar el canal y suelta su GlobalRef
+  (predict-cost)
 ```
 
 ### 3. Cambio de modelo o idioma (cross-process)
@@ -90,7 +91,8 @@ Audio del sistema vía MediaProjection
 ```
 ModelsActivity (Java)
   → escribe `model_language` / `active_model` / `model_threads` en filesDir
-     • **pendiente P1:** todas las escrituras deben usar una ruta atómica común
+     • ✅ P1.2 (2026-08-03): toda escritura pasa por MarkerFileHelper con temp
+       único por escritura + fsync + rename (nunca se observa contenido parcial)
   → engine::reset() (singleton main, espera carga en vuelo)
   → proceso `:ime` ve el cambio SIN recarga propia
   → ✅ idioma aplica en TODAS las surfaces en el siguiente run
@@ -102,18 +104,21 @@ La auditoría estática integral confirmó la coherencia del diseño principal, 
 el Guantelete sigue **ABIERTO**. No confundir este documento de arquitectura con
 una certificación de runtime.
 
-Bloqueadores P0 que afectan a esta arquitectura:
+Bloqueadores P0 que afectan a esta arquitectura — **implementados el 2026-08-03**
+(ver [`memory/gauntlet-p0-implemented-2026-08-03.md`](./memory/gauntlet-p0-implemented-2026-08-03.md));
+la validación de CI/dispositivo sigue pendiente:
 
-1. `PostProcessor.cancelAll()` es global al proceso; debe aislarse por operación
-   para que una superficie no cancele otra.
-2. El worker de subtítulos conserva receiver/GlobalRef tras cleanup y necesita
-   generación/token y parada determinista.
-3. La descarga runtime debug debe verificar SHA-256 antes de activar
-   `active_model`.
-4. Gradle, CI y documentación discrepan en SDK/NDK; además hay rutas
-   `linux-x86_64` que deben resolverse o declararse como límite del host.
+1. ✅ `PostProcessor` ahora cancela por propietario (`cancelAllFor(owner)`);
+   `cancelAll()` global queda sólo para shutdown real / toggle PP-off.
+2. ✅ Worker de subtítulos con generación: jobs viejos nunca se transcriben ni
+   entregan; el worker termina al drenar su canal.
+3. ✅ La descarga runtime debug verifica SHA-256 antes de activar `active_model`.
+4. ✅ Toolchain unificada: `ndkVersion 28.0.13004108` en Gradle = CI = docs;
+   rutas de host resueltas con `ndkPrebuiltDir()` y límite de host declarado.
 
-La lista completa P0/P1/P2 y los criterios de aceptación está en
+Además: ✅ P1.1 operation-id en transcripción de archivos; ✅ P1.2 markers
+atómicos (temp único por escritura). La lista completa P0/P1/P2 y los criterios
+de aceptación está en
 [`memory/static-audit-debt-2026-08-03.md`](./memory/static-audit-debt-2026-08-03.md)
 y el orden operativo en [`../GAUNTLETE_PLAN.md`](../GAUNTLETE_PLAN.md).
 

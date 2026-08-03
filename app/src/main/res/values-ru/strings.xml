@@ -150,4 +150,50 @@
     <string name="debug_model_cancelled">Загрузка модели отменена</string>
     <string name="debug_model_no_space">Недостаточно свободного места для загрузки модели</string>
     <string name="debug_model_size" translatable="false">751 MB</string>
+
+    <!-- P2.4 (2026-08-03): строки интерфейса, перенесённые из Java/layout -->
+    <string name="ime_tap_to_record">Нажмите, чтобы записать</string>
+    <string name="ime_tap_to_stop">Нажмите, чтобы остановить</string>
+    <string name="ime_listening">Слушаю...</string>
+    <string name="ime_processing">Обработка...</string>
+    <string name="ime_refining">Уточнение...</string>
+    <string name="ime_no_mic_permission">Нет доступа к микрофону — разрешите в приложении</string>
+    <string name="ime_open_app_for_permission">Откройте приложение, чтобы разрешить доступ</string>
+    <string name="ime_error_loading_keyboard">Ошибка загрузки клавиатуры: %1$s</string>
+    <string name="ime_cd_switch_keyboard">Сменить клавиатуру</string>
+    <string name="ime_cd_space">Пробел</string>
+    <string name="ime_cd_enter">Ввод</string>
+    <string name="ime_cd_backspace">Забой</string>
+    <string name="rec_mic_permission_required">Требуется доступ к микрофону.\nРазрешите его в основном приложении.</string>
+    <string name="rec_listening_tap_stop">Слушаю… (нажмите, чтобы остановить)</string>
+    <string name="rec_processing">Обработка...</string>
+    <string name="rec_refining">Уточнение...</string>
+    <string name="file_preparing">Подготовка...</string>
+    <string name="file_loading_model">Загрузка модели...</string>
+    <string name="file_decoding_audio">Декодирование аудио...</string>
+    <string name="file_transcribing">Расшифровка...</string>
+    <string name="file_refining">Уточнение...</string>
+    <string name="file_copied">Скопировано в буфер обмена</string>
+    <string name="file_copy_to_clipboard">Копировать в буфер обмена</string>
+    <string name="file_transcription_copied">Расшифровка скопирована в буфер обмена</string>
+    <string name="file_error_no_audio_received">Ошибка: аудиофайл не получен</string>
+    <string name="file_error_no_audio">Ошибка: нет аудиофайла</string>
+    <string name="file_error_decode">Ошибка: не удалось декодировать аудиофайл</string>
+    <string name="file_error_format">Ошибка: %1$s</string>
+    <string name="subs_grant_overlay_permission">Разрешите доступ «Поверх других приложений»</string>
+    <string name="subs_enable_overlay_app_settings">Включите «Поверх других приложений» в настройках приложения</string>
+    <string name="subs_enable_overlay_settings">Включите разрешение на наложение в настройках</string>
+    <string name="subs_overlay_required">Для субтитров требуется разрешение на наложение</string>
+    <string name="subs_screen_capture_denied">Захват экрана отклонён</string>
+    <string name="subs_waiting_for_audio">Ожидание аудио...</string>
+    <string name="subs_notification_active">Живые субтитры активны</string>
+    <string name="subs_notification_recording">Запись внутреннего аудио...</string>
+    <string name="subs_notification_stop">Стоп</string>
+    <string name="action_close">Закрыть</string>
+    <string name="debug_model_cannot_create_dir">Не удалось создать папку моделей</string>
+    <string name="debug_model_checksum_mismatch">Несовпадение контрольной суммы: ожидалось %1$s, получено %2$s</string>
+    <string name="debug_model_rename_failed">Не удалось переименовать скачанный файл модели</string>
+    <string name="debug_model_http_error">HTTP %1$d</string>
+    <string name="debug_model_unknown_reason">неизвестно</string>
+    <string name="bench_no_data_chunk">нет блока данных в %1$s</string>
 </resources>

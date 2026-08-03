@@ -15,7 +15,7 @@
         android:layout_height="48dp"
         android:layout_gravity="top|end"
         android:background="?attr/selectableItemBackgroundBorderless"
-        android:contentDescription="Close"
+        android:contentDescription="@string/action_close"
         android:src="@drawable/ic_close"
         app:tint="?attr/colorOnSurfaceVariant" />
 
@@ -49,7 +49,7 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:gravity="center"
-                android:text="Preparing..."
+                android:text="@string/file_preparing"
                 android:textColor="?attr/colorOnSurfaceVariant"
                 android:textAppearance="?attr/textAppearanceBodyMedium" />
         </LinearLayout>
@@ -81,7 +81,7 @@
             android:id="@+id/btn_copy"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Copy to clipboard"
+            android:text="@string/file_copy_to_clipboard"
             android:visibility="gone" />
 
     </LinearLayout>

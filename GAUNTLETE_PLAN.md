@@ -8,11 +8,14 @@
 
 ## 1. Estado actual
 
-**Estado: ABIERTO — deuda P0 pendiente.**
+**Estado: ABIERTO — deuda P0 implementada; pendiente de validación CI/dispositivo.**
 
-La auditoría del 2026-08-03 fue sólo lectura. No se deben atribuir a esta sesión
-logs `BUILD SUCCESSFUL`, tests o smoke tests. El diseño final-only es coherente,
-pero no basta para cerrar concurrencia, workers, descarga runtime ni toolchain.
+El 2026-08-03 se implementaron los cuatro bloqueadores P0 y las líneas P1.1–P1.3
+(ver [`memory/gauntlet-p0-implemented-2026-08-03.md`](.agents/memory/gauntlet-p0-implemented-2026-08-03.md)).
+`testDebugUnitTest` (32 tests), translations y rustfmt de los ficheros tocados
+pasaron localmente; `assembleDebug`, `lintDebug`, `checkModels`, Rust real y los
+smoke tests en dispositivo siguen pendientes de CI/hardware — sin ellos no se
+declara el Guantelete cerrado.
 
 ### Taxonomía obligatoria de evidencia
 
@@ -31,7 +34,7 @@ su evidencia para cada cambio relevante:
 
 | Gate | Qué cubre | Limitación conocida |
 |---|---|---|
-| `testDebugUnitTest` | 14 tests JVM de markers/subtitle prefs según historial | No cubre JNI, OkHttp real, engine ni lifecycle Android |
+| `testDebugUnitTest` | 32 tests JVM (markers/subtitle prefs + cancelación por owner + atomicidad de markers + SHA-256 + suite HTTP del postprocesado con timeout real por seam) | No cubre JNI, engine ni lifecycle Android; los timeouts de producción (30 s/60 s) se asertan pero no se esperan en wall-clock |
 | `checkModels` | SHA-256 de assets bundled presentes | No cubre la descarga runtime debug si no se añade su hash |
 | `scripts/check_translations.py` | Paridad de nombres en seis locales alternativos | No detecta todas las cadenas hardcodeadas en Java |
 | `lintDebug` | Lint del variant debug | No sustituye pruebas de dispositivo ni garantiza release |
@@ -49,6 +52,11 @@ su evidencia para cada cambio relevante:
   sólo produce fallback en la sesión afectada.
 - **Criterio de cierre:** tests JVM/HTTP controlados verdes + revisión de
   lifecycle en IME, popup, RecognitionService, archivo y settings.
+- **Estado: implementado 2026-08-03.** `CallRegistry` con owner por identidad;
+  `cancelAllFor(owner)` en las cinco superficies; `cancelAll()` global sólo para
+  shutdown real / toggle PP-off. Tests: `CallRegistryTest` (4, MockWebServer)
+  + `PostProcessorTest` (8, P1.3) verdes. Pendiente: smoke de PP concurrente en
+  dispositivo.
 
 ### P0.2 Subtítulos: worker generacional y cleanup determinista
 
@@ -60,6 +68,12 @@ su evidencia para cada cambio relevante:
   destrucción de servicio y overlay recreado.
 - **Criterio de cierre:** cero callbacks de una generación anterior y cero
   actualizaciones sobre overlay eliminado.
+- **Estado: implementado 2026-08-03.** Generación `AtomicU32` bumpada en
+  `initNative`/`cleanupNative`; jobs portan generación; el worker descarta jobs
+  viejos (sin transcribir ni entregar) y termina al drenar su canal. Java:
+  reset de la ventana en `setupOverlay` y `mSubtitleText = null` en
+  `removeOverlay`. Pendiente: smoke start/stop/start + revocación
+  MediaProjection en dispositivo.
 
 ### P0.3 Modelo debug: verificar antes de activar
 
@@ -69,6 +83,10 @@ su evidencia para cada cambio relevante:
 - **Pruebas:** hash correcto, mismatch, descarga truncada, rename fallido,
   reintento y falta de espacio.
 - **Criterio de cierre:** debug y release exponen la misma garantía observable.
+- **Estado: implementado 2026-08-03.** `FileSha256` (testeado con vectores
+  conocidos) + verificación previa al rename en `startDebugModelDownload`;
+  `active_model` atómico vía `MarkerFileHelper`. Pendiente: smoke de mismatch /
+  truncado en dispositivo.
 
 ### P0.4 Toolchain: una sola verdad reproducible
 
@@ -79,18 +97,32 @@ su evidencia para cada cambio relevante:
 - **Pruebas:** build en runner x86_64 y host ARM64 soportado, o declaración
   explícita de que sólo uno es oficial.
 - **Criterio de cierre:** cero referencias contradictorias y APK reproducible.
+- **Estado: implementado 2026-08-03.** `ndkVersion = "28.0.13004108"`
+  (Gradle = CI = README/AGENTS); SDK efectivo 34/34/26 con Android 15/SDK 35
+  pendiente de decisión; `ndkPrebuiltDir()` resuelve sysroot/libc++ por host y
+  declara el límite con GradleException claro. Pendiente: `assembleDebug` en CI
+  x86_64 y verificación de host ARM64 o su límite documentado en README.
 
 ## 4. Deuda P1 — robustez de superficies
 
-1. **Transcripción de archivos:** añadir operation-id para que workers nativos no
-   actualicen Activity destruida/recreada.
-2. **Markers:** centralizar toda escritura de `model_language`, `device_language`,
-   `active_model`, `model_translate`, `model_threads` y `stream_context_right`
-   en escritura temporal + rename; probar lecturas main/`:ime` concurrentes.
-3. **Postprocesado:** probar URL/payload, `stream:false`, `${output}`, respuesta
-   inválida, HTTP error, timeout, cancelación, toggle y proveedor concurrente.
+1. ✅ **Transcripción de archivos** (2026-08-03): operation-id en
+   `transcribeAudio`/callbacks; callbacks obsoletos descartados por opId +
+   `isFinishing/isDestroyed`.
+2. ✅ **Markers** (2026-08-03): toda escritura pasa por `MarkerFileHelper` con
+   temp único por escritura + fsync + rename; lecturas concurrentes testeadas
+   (MarkerAtomicityTest).
+3. ✅ **Postprocesado** (2026-08-03, P1.3): `PostProcessorTest` (8 tests JVM
+   con MockWebServer) cubre URL/payload `/chat/completions` con `stream:false`,
+   `${output}` inyectado una sola vez, transcript como user message sin marcador,
+   respuesta vacía/JSON inválida/HTTP error → error + fallback, toggle-off en
+   vuelo → texto crudo y exactamente una entrega final. El **timeout real de
+   OkHttp** se cubre con client de valores escalados vía seam
+   (`setSharedClientForTests`: read timeout 100 ms contra body retrasado →
+   onError) y los valores de producción (30 s/60 s/60 s) se asertan con
+   `buildProductionClient()`. Queda fuera del harness el transcurso wall-clock
+   de esos timeouts y la red real → smoke en dispositivo.
 4. **Subtítulos/MediaProjection:** probar Android 10–15, stop desde notificación,
-   revocación, `AudioRecord` error, overlay permission y restart.
+   revocación, `AudioRecord` error, overlay permission y restart (dispositivo).
 
 ## 5. Deuda P2 — cobertura del Guantelete
 
@@ -101,18 +133,26 @@ su evidencia para cada cambio relevante:
    subtítulos, archivo y custom words.
 4. Cubrir modelo streaming y no streaming, PP off/on/failure, cambio de idioma,
    cambio de modelo, cancelación rápida y proceso `:ime`.
-5. Migrar cadenas hardcodeadas visibles a recursos o registrar excepciones.
+5. ✅ Migrar cadenas hardcodeadas visibles a recursos o registrar excepciones
+   (2026-08-03, P2.4): 44 strings nuevas en 7 locales (gate PASS, 174
+   translatables); excepción documentada para los detalles de error de
+   `PostProcessor` (sin Context, seam JVM) y las strings de protocolo JNI.
 
 ## 6. Secuencia futura recomendada
 
-1. Resolver P0.4 primero, para que los siguientes resultados sean reproducibles.
-2. Implementar P0.3 y añadir tests de integridad/activación del modelo.
-3. Implementar P0.1 y P0.2 con tokens de operación/generación.
-4. Añadir tests HTTP/JVM y lifecycle de las seis superficies.
-5. Ejecutar gates separados: translations → JVM → assemble → lint → hash.
-6. Ejecutar Rust real/rustfmt cuando el entorno lo permita.
+1. ✅ P0.4 resuelto (2026-08-03): NDK unificado + host detection.
+2. ✅ P0.3 implementado con tests JVM (FileSha256).
+3. ✅ P0.1 y P0.2 implementados con tokens de operación/generación.
+4. ✅ P1.3 resuelto (2026-08-03): suite HTTP/JVM completa (payload,
+   `stream:false`, `${output}`, JSON inválido, HTTP error, fallback, una sola
+   entrega y timeout real de OkHttp por seam con valores escalados).
+   Pendiente: smoke de red real en dispositivo.
+5. Ejecutar gates separados en CI: translations → JVM → assemble → lint → hash.
+6. Ejecutar Rust real/rustfmt cuando el entorno lo permita (`cargo test`
+   bloqueado por `transcribe-cpp-sys` v0.1.3).
 7. Ejecutar smoke test en dispositivo y conservar modelo, API, ABI, Android y
-   logs.
+   logs (especialmente subtítulos start/stop/start, revocación MediaProjection,
+   PP concurrente, descarga debug truncada).
 8. Revisar docs y sólo entonces cambiar este estado a **CERRADO**.
 
 ## 7. Comandos/gates de cierre previstos

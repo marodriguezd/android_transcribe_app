@@ -26,7 +26,7 @@ import java.nio.charset.StandardCharsets;
  * The API key is Base64-encoded for minimal obscurity; real protection comes
  * from the Android app sandbox that guards filesDir().
  */
-public class SettingsManager {
+public class SettingsManager implements PostProcessor.PostProcessorSettings {
     private static final String TAG = "SettingsManager";
 
     // SharedPreferences file used only for the one-time legacy migration.

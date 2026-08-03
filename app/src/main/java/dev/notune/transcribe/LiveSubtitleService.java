@@ -169,7 +169,14 @@ public class LiveSubtitleService extends Service {
 
         mMaxLines = SubtitlePrefs.getMaxLines(this);
         mSubtitleText = mOverlayView.findViewById(R.id.subs_text);
-        mSubtitleText.setText("Waiting for audio...");
+        mSubtitleText.setText(getString(R.string.subs_waiting_for_audio));
+
+        // New session: reset the transcript window so text from a previous
+        // session never leaks into the fresh overlay (P0.2).
+        mCommittedText.setLength(0);
+        mCommittedBase = 0;
+        mWindowStartAbs = 0;
+        mDisplayedEndAbs = 0;
         
         View closeBtn = mOverlayView.findViewById(R.id.btn_close_subs);
         closeBtn.setOnClickListener(v -> {
@@ -245,6 +252,10 @@ public class LiveSubtitleService extends Service {
             mWindowManager.removeView(mOverlayView);
             mOverlayView = null;
         }
+        // Drop the caption view reference too: any late native callback (an
+        // old session's worker that raced cleanup) finds mSubtitleText null
+        // and exits instead of updating a removed overlay (P0.2).
+        mSubtitleText = null;
     }
 
     /**
@@ -439,7 +450,8 @@ public class LiveSubtitleService extends Service {
 
     private void createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Live Subtitles", NotificationManager.IMPORTANCE_LOW);
+            NotificationChannel channel = new NotificationChannel(CHANNEL_ID,
+                    getString(R.string.section_subs), NotificationManager.IMPORTANCE_LOW);
             NotificationManager manager = getSystemService(NotificationManager.class);
             if (manager != null) {
                 manager.createNotificationChannel(channel);
@@ -455,10 +467,11 @@ public class LiveSubtitleService extends Service {
         PendingIntent stopPendingIntent = PendingIntent.getService(this, 0, stopIntent, PendingIntent.FLAG_IMMUTABLE);
 
         return new Notification.Builder(this, CHANNEL_ID)
-                .setContentTitle("Live Subtitles Active")
-                .setContentText("Recording internal audio...")
+                .setContentTitle(getString(R.string.subs_notification_active))
+                .setContentText(getString(R.string.subs_notification_recording))
                 .setSmallIcon(android.R.drawable.ic_btn_speak_now)
-                .addAction(new Notification.Action.Builder(null, "Stop", stopPendingIntent).build())
+                .addAction(new Notification.Action.Builder(null,
+                        getString(R.string.subs_notification_stop), stopPendingIntent).build())
                 .build();
     }
 

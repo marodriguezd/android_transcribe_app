@@ -4,6 +4,12 @@
 
 ## 🟢 Recién completado
 
+- **2026-08-03 — CI en verde tras el fix del JObject:** el run inicial del
+  push `2846494` (30857034745) falló en `Build Debug APK` por un import
+  perdido en el refactor P1.1; corregido (`aa08a08`) y verificado con
+  `cargo check --lib`. Los runs de re-validación `30859369221`/`30859370506`
+  pasaron **todos los gates**: translations, unit tests, `assembleDebug` y
+  `lintDebug`; el APK `app-debug-apk-v0.1.24` se envió al bot de Telegram.
 - **2026-08-03 — Plan del Guantelete ejecutado (P0 + P1.1/P1.2):**
   - P0.1 cancelación del postprocesado por propietario (`CallRegistry`,
     `cancelAllFor(owner)` en las 5 superficies) con `CallRegistryTest`;
@@ -50,8 +56,10 @@ indexadas: `phonetic-corrector-2026-07-28.md`, `optimizations-2026-07-29.md`,
 4. ✅ NDK/SDK unificados (34/34/26, NDK 28.0.13004108); rutas de host resueltas
    con `ndkPrebuiltDir()` y límite declarado.
 
-Implementados el 2026-08-03 y gateados por JVM; la validación de CI
-(`assembleDebug`/`lintDebug`/`checkModels`) y de dispositivo sigue pendiente.
+Implementados el 2026-08-03 y gateados por JVM; `assembleDebug`/`lintDebug`
+confirmados en CI (2026-08-03, runs `30859369221`/`30859370506` del fix
+`aa08a08`). Pendiente: `checkModels` (workflow release) y validación de
+dispositivo.
 
 ## 🟡 Deuda P1/P2
 
@@ -68,7 +76,8 @@ Implementados el 2026-08-03 y gateados por JVM; la validación de CI
   de producción (30 s/60 s), DNS/TLS, latencia, toggle-off en vuelo y
   superficies concurrentes (checklist en la auditoría §P1.5).
 - Habilitar `cargo test` real o documentar bloqueo reproducible en CI.
-- Ejecutar `lintDebug`/rustfmt de todo el alcance en CI.
+- ✅ `lintDebug` validado en CI (2026-08-03). Pendiente: rustfmt de todo el
+  alcance en CI.
 - Añadir smoke/instrumentation matrix para las seis superficies.
 - ✅ Strings visibles hardcodeadas migradas a recursos en los 7 locales
   (P2.4, 2026-08-03): 44 strings nuevas (IME, popup, archivos, subtítulos,
@@ -79,11 +88,12 @@ Implementados el 2026-08-03 y gateados por JVM; la validación de CI
 
 ## 🟡 Validación pendiente
 
-- `./gradlew assembleDebug` y `assembleRelease` en el pipeline oficial
+- ✅ `assembleDebug`, `lintDebug` y translations confirmados en CI
+  (2026-08-03: runs `30859369221`/`30859370506` del fix `aa08a08`;
+  `testDebugUnitTest` ya pasaba localmente con 32 tests).
+- Pendiente: `assembleRelease` y `checkModels` en el pipeline oficial
   (el NDK local no está instalado en este entorno; local.properties apunta a
   una versión antigua y está gitignored).
-- `checkModels`, `lintDebug` y translations en CI actual (`testDebugUnitTest`
-  ya pasó localmente: 32 tests).
 - Tests Rust del crate real cuando se resuelva `transcribe-cpp-sys`.
 - Smoke test en dispositivo arm64 con modelo streaming y no streaming
   (incluidos subtítulos start/stop/start y revocación MediaProjection).

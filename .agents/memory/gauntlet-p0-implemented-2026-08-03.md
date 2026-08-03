@@ -8,7 +8,9 @@ ejecutada localmente: `testDebugUnitTest` (32 tests, BUILD SUCCESSFUL),
 `python3 scripts/check_translations.py` (PASS 6 locales), `rustfmt --check` de
 `src/subtitle.rs` y `src/transcribe_file.rs`, `git diff --check`. **No** se
 ejecutaron `assembleDebug`/`lintDebug`/`checkModels` (sin NDK local) ni smoke
-tests en dispositivo: eso sigue pendiente de CI/hardware.
+tests en dispositivo: eso quedó para CI/hardware. El CI confirmó
+`assembleDebug` y `lintDebug` el 2026-08-03 con el fix `aa08a08` (ver secciones
+CI); `checkModels` y el smoke en dispositivo siguen pendientes.
 
 ## Qué se implementó
 
@@ -128,14 +130,24 @@ JVM local no lo detecta porque `testDebugUnitTest` salta `cargoNdkBuild`
 (protección térmica, AGENTS.md) y `rustfmt --check` no resuelve nombres.
 Corregido añadiendo `JObject` al import
 (`use jni::objects::{JClass, JFloatArray, JObject}`) y verificado con
-`cargo check --lib` (exit 0). Pendiente: re-run de CI con el fix.
+`cargo check --lib` (exit 0).
+
+### CI del fix aa08a08 (2026-08-03): todos los gates en verde
+
+El re-run con el fix (commit `aa08a08`) **pasó todos los gates de CI**: los
+runs `30859369221` y `30859370506` (doble trigger del workflow, mismo commit)
+terminaron `success` con Check translations PASS, Run unit tests PASS, **Build
+Debug APK PASS** y Lint (hard gate) PASS. El APK `app-debug-apk-v0.1.24` se
+subió como artifact y se envió al bot de Telegram.
 
 ## Estado del Guantelete
 
 Sigue **ABIERTO**: la implementación P0 y P1.1–P1.3 está hecha y gateada por
-JVM (32 tests, BUILD SUCCESSFUL), pero la regla de cierre exige además CI
-(`assembleDebug`, `lintDebug`, `checkModels`), Rust real/`cargo test` (bloqueado
-por `transcribe-cpp-sys` v0.1.3), P1.4/P1.5 y smoke test en dispositivo
+JVM (32 tests, BUILD SUCCESSFUL) y el CI confirmó `assembleDebug` + `lintDebug`
+(runs `30859369221`/`30859370506` del fix `aa08a08`, 2026-08-03), pero la regla
+de cierre exige además `checkModels` (no corre en el workflow debug, es del
+release), Rust real/`cargo test` (bloqueado por `transcribe-cpp-sys` v0.1.3),
+P1.4/P1.5 y smoke test en dispositivo
 (subtítulos start/stop/start, revocación MediaProjection, PP con proveedor
 real — timeouts 30 s/60 s, DNS/TLS, latencia, toggle-off en vuelo y superficies
 concurrentes — y descarga debug truncada). Ver checklist en

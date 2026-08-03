@@ -13,9 +13,11 @@
 El 2026-08-03 se implementaron los cuatro bloqueadores P0 y las líneas P1.1–P1.3
 (ver [`memory/gauntlet-p0-implemented-2026-08-03.md`](.agents/memory/gauntlet-p0-implemented-2026-08-03.md)).
 `testDebugUnitTest` (32 tests), translations y rustfmt de los ficheros tocados
-pasaron localmente; `assembleDebug`, `lintDebug`, `checkModels`, Rust real y los
-smoke tests en dispositivo siguen pendientes de CI/hardware — sin ellos no se
-declara el Guantelete cerrado.
+pasaron localmente; `assembleDebug` y `lintDebug` quedaron **validados en CI**
+el 2026-08-03 (runs `30859369221`/`30859370506` del fix `aa08a08`, APK
+`app-debug-apk-v0.1.24` enviado a Telegram). Pendientes de CI/hardware:
+`checkModels` (workflow release), `assembleRelease`, Rust real y los smoke
+tests en dispositivo — sin ellos no se declara el Guantelete cerrado.
 
 ### Taxonomía obligatoria de evidencia
 
@@ -99,9 +101,9 @@ su evidencia para cada cambio relevante:
 - **Criterio de cierre:** cero referencias contradictorias y APK reproducible.
 - **Estado: implementado 2026-08-03.** `ndkVersion = "28.0.13004108"`
   (Gradle = CI = README/AGENTS); SDK efectivo 34/34/26 con Android 15/SDK 35
-  pendiente de decisión; `ndkPrebuiltDir()` resuelve sysroot/libc++ por host y
-  declara el límite con GradleException claro. Pendiente: `assembleDebug` en CI
-  x86_64 y verificación de host ARM64 o su límite documentado en README.
+  pendiente de decisión; `ndkPrebuiltDir()` resuelve sysroot/libc++ por hosty declara el límite con GradleException claro. `assembleDebug` confirmado en CI
+x86_64 el 2026-08-03 (runs `30859369221`/`30859370506` del fix `aa08a08`).
+Pendiente: verificación de host ARM64 o su límite documentado en README.
 
 ## 4. Deuda P1 — robustez de superficies
 
@@ -153,7 +155,9 @@ su evidencia para cada cambio relevante:
    `stream:false`, `${output}`, JSON inválido, HTTP error, fallback, una sola
    entrega y timeout real de OkHttp por seam con valores escalados).
    Pendiente: smoke de red real en dispositivo.
-5. Ejecutar gates separados en CI: translations → JVM → assemble → lint → hash.
+5. ✅ Ejecutar gates separados en CI: translations → JVM → assemble → lint
+   (2026-08-03, runs `30859369221`/`30859370506` del fix `aa08a08`). Pendiente:
+   hash (`checkModels`, workflow release).
 6. Ejecutar Rust real/rustfmt cuando el entorno lo permita (`cargo test`
    bloqueado por `transcribe-cpp-sys` v0.1.3).
 7. Ejecutar smoke test en dispositivo y conservar modelo, API, ABI, Android y

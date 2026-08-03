@@ -5,9 +5,11 @@
 > `memory/static-audit-debt-2026-08-03.md`.
 >
 > El repositorio está en **Guantelete ABIERTO**: los bloqueadores P0 y las
-> líneas P1.1–P1.3 están **implementados** y gateados por JVM (32 tests), pero
-> la validación de CI/dispositivo sigue pendiente. No confundas implementación
-> con validación ejecutada en CI o hardware.
+> líneas P1.1–P1.3 están **implementados** y gateados por JVM (32 tests);
+> `assembleDebug` y `lintDebug` quedaron **validados en CI** el 2026-08-03
+> (runs `30859369221`/`30859370506` del fix `aa08a08`, APK v0.1.24 a Telegram).
+> Pendientes: `checkModels`/release, Rust real y smoke en dispositivo. No
+> confundas implementación con validación ejecutada en CI o hardware.
 
 ## Ya implementado (2026-08-03) — no rehacer
 
@@ -43,8 +45,9 @@ auditoría §P1.5).
 
 ### P2 / CI / dispositivo
 
-- `assembleDebug`, `lintDebug`, `checkModels` en CI (workflows ya separan
-  tests de assemble; el guard de `cargoNdkBuild` sigue siendo obligatorio).
+- ✅ `assembleDebug` y `lintDebug` validados en CI (2026-08-03, runs
+  `30859369221`/`30859370506` del fix `aa08a08`). Pendiente: `checkModels` en
+  CI (workflow release; el guard de `cargoNdkBuild` sigue siendo obligatorio).
 - `cargo test` real o bloqueo reproducible de `transcribe-cpp-sys` v0.1.3.
 - Smoke test de las seis superficies; especial atención a subtítulos
   start/stop/start, revocación MediaProjection, descarga debug truncada y

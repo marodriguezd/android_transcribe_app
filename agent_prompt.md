@@ -29,7 +29,7 @@
   UI dispatch; defensive IME cleanup; signing warnings; CI gates
   (`cargo fmt --check`, `checkModels` on debug, release APK
   zipalign/apksigner verification).
-- Tests: 34 JVM tests green, confirmed in CI run `30897003634` (2026-08-04).
+- Tests: 34 JVM tests green, confirmed in CI run `30897928321` for commit `371a119` (2026-08-04).
 
 ## Next: validation and remaining debt
 
@@ -54,15 +54,16 @@ are asserted as applied values; wall-clock durations stay out of the harness.
 
 ### P2 / CI
 
-- ✅ `cargo fmt --all -- --check` and `checkModels` exercised green on run
-  `30897003634` (2026-08-04).
+- ✅ `cargo fmt --all -- --check`, translations, 34 JVM tests, `assembleDebug`,
+  `lintDebug` and `checkModels` exercised green on run `30897928321` for
+  commit `371a119` (2026-08-04).
 - ⏳ `assembleRelease` + `checkModels` + signature/alignment verification in
   the release workflow (runs on the `v0.1.24` tag).
 - ⏳ Full-crate `cargo test` or a documented reproducible block of
   `transcribe-cpp-sys v0.1.3`.
-- ⏳ Version/tag sequence for v0.1.24: **versionCode 26 committed**
-  (2026-08-04); tag `v0.1.24` pending user validation of the debug APK
-  (run `30897003634`).
+- ✅ Version/tag sequence for v0.1.24: **versionCode 26 committed**
+  (2026-08-04); debug APK validated functionally on device from CI run
+  `30897928321`; tag creation is the final publication step.
 
 ## Rules to respect when touching implemented code
 
@@ -116,5 +117,8 @@ cargo test
 
 Then: device smoke of popup, RecognitionService, IME, subtitles, file and
 custom words with streaming and non-streaming models, PP off/on/failed, fast
-cancel, language change and the `:ime` process — and only then the
-`v0.1.24` tag + release.
+cancel, language change and the `:ime` process — and then the
+`v0.1.24` tag + release. Device Logcat attribution for the real-provider
+post-processing smoke was inconclusive, although the observed transformed
+output was functionally positive; do not describe that evidence as a full
+six-surface/device matrix.

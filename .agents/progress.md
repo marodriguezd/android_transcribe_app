@@ -1,24 +1,25 @@
 # Progress — current AI-assisted work state
 
-**Last update:** 2026-08-04 (v0.1.24 release preparation)
+**Last update:** 2026-08-04 (v0.1.24 release closeout)
 
 ## 🟢 Recently completed
 
-- **2026-08-04 — CI green on the privacy work:** run `30897003634` passed every gate — `cargo fmt --check`, translations, **34 JVM tests**, `assembleDebug`, `lintDebug`, `checkModels` — and sent the APK to Telegram. The earlier run `30895862658` failed because AGP 8.x disables `BuildConfig` generation by default; fixed with `buildFeatures { buildConfig = true }` and the network tests were made deterministic (injected DNS + `NO_PROXY`), so they pass even under a runner proxy.
+- **2026-08-04 — CI green on the privacy work:** run `30897928321` (commit `371a119`) passed every gate — `cargo fmt --check`, translations, **34 JVM tests**, `assembleDebug`, `lintDebug`, `checkModels` — and sent the APK to Telegram. The earlier run `30895862658` failed because AGP 8.x disables `BuildConfig` generation by default; fixed with `buildFeatures { buildConfig = true }` and the network tests were made deterministic (injected DNS + `NO_PROXY`), so they pass even under a runner proxy.
 - **2026-08-04 — v0.1.24 release hardening:** privacy logging (`BuildConfig.DEBUG` gating for transcripts/PP errors), model-import hardening (`sanitizeModelFileName`, weak-ref UI dispatch), defensive IME cleanup, signing warnings, `cargo fmt --check` + `checkModels` CI gates, release APK verification (`zipalign`/`apksigner`), JVM harness closure (DNS fail + connect timeout, 34 tests total), English `RELEASE_NOTES`/`CHANGELOG`/store changelog, README language fix, agentic docs in English. Details: [`memory/release-0.1.24-prep-2026-08-04.md`](./memory/release-0.1.24-prep-2026-08-04.md).
+- **2026-08-04 — Reusable device smoke automation:** added `scripts/smoke_postprocess_device.py` + `scripts/README.md`. It drives the real MainActivity → private post-processing settings → file-transcription path by resource ID, selects AutoComplete rows semantically, accepts credentials only from an environment variable, asserts final-only refinement, and uninstalls in `finally`.
 - **2026-08-04 — P1.4/P1.5 feasibility:** checklists classified by what is runnable without hardware; 2 JVM tests added to close the harness (see above); remaining scenarios require a device.
 - **2026-08-03 — CI green after the JObject fix:** runs `30859369221`/`30859370506` passed translations, unit tests, `assembleDebug` and `lintDebug`; APK `app-debug-apk-v0.1.24` sent to Telegram.
 - **2026-08-03 — Gauntlet plan executed (P0 + P1.1/P1.2):** owner-scoped PP cancellation, subtitle generations, SHA-256 on debug downloads, unified toolchain, file-transcription operation-ids, atomic markers; JVM harness green (32 tests). Details: [`memory/gauntlet-p0-implemented-2026-08-03.md`](./memory/gauntlet-p0-implemented-2026-08-03.md).
 - **2026-08-03 — Static audit & debt register:** [`memory/static-audit-debt-2026-08-03.md`](./memory/static-audit-debt-2026-08-03.md).
 
-## 🟢 P0 blockers — implemented, pending validation
+## 🟢 P0 blockers — implemented and CI-validated
 
 1. ✅ Owner-scoped PP cancellation (`cancelAllFor(owner)`; global `cancelAll()` only for real shutdown / PP toggle-off).
 2. ✅ Subtitle worker generations: stale jobs never transcribe nor deliver.
 3. ✅ SHA-256 verified before activating the debug runtime download.
 4. ✅ Unified toolchain: NDK 28.0.13004108 (Gradle = CI = docs), per-host `ndkPrebuiltDir()`.
 
-Implemented 2026-08-03, gated by JVM; `assembleDebug`/`lintDebug` confirmed in CI. **Pending:** `checkModels` in the release workflow (added to debug workflow 2026-08-04), full release build, device validation.
+Implemented 2026-08-03, gated by JVM; `assembleDebug`, `lintDebug` and `checkModels` confirmed in CI. **Pending:** full release build/signature evidence, remaining device matrix, and full-crate Rust test block.
 
 ## 🟡 P1/P2 debt
 
@@ -27,13 +28,13 @@ Implemented 2026-08-03, gated by JVM; `assembleDebug`/`lintDebug` confirmed in C
 - ⏳ **Device-only (P1.4/P1.5):** subtitle/MediaProjection lifecycle on Android 10–15 + one OEM ROM; post-processing with a real provider (production 30 s/60 s wall-clock, TLS, `CANCEL_PP` broadcast to `:ime`, concurrent surfaces, leaks, end-to-end latency); smoke of the six surfaces.
 - ⏳ Full-crate `cargo test` or a documented reproducible block of `transcribe-cpp-sys v0.1.3`.
 - ⏳ `rustfmt` full-scope check in CI (added as a hard gate 2026-08-04).
-- ⏳ Version/tag sequence for the v0.1.24 release: **versionCode 26 committed** (2026-08-04, release commit); tag `v0.1.24` pending user validation of the debug APK (run `30897003634`).
+- ✅ Version/tag sequence for the v0.1.24 release: **versionCode 26 committed**; debug APK `0.1.24` from CI run `30897928321` (commit `371a119`) installed and functionally validated on the connected device. Tag `v0.1.24` is now the remaining publication step.
 
 ## 🟡 Validation pending
 
-- ✅ translations, JVM tests (34), `assembleDebug`, `lintDebug`, `checkModels` and `cargo fmt --check` in CI on run `30897003634` (2026-08-04).
+- ✅ translations, JVM tests (34), `assembleDebug`, `lintDebug`, `checkModels` and `cargo fmt --check` in CI on run `30897928321` (commit `371a119`, 2026-08-04).
 - ⏳ `assembleRelease` + `checkModels` + signature/alignment verification in the release workflow (runs on the `v0.1.24` tag).
-- ⏳ Device smoke: popup, RecognitionService, IME, subtitles, file, custom words — streaming and non-streaming models, PP off/on/failed, fast cancel, language change, `:ime` process.
+- 🟡 Device smoke: the CI APK was installed cleanly, Nemotron downloaded and the IME/provider post-processing path produced functionally transformed output with Groq; Logcat attribution was inconclusive. The full popup/RecognitionService/IME/subtitles/file/custom-words matrix, cancellation and lifecycle scenarios remain pending. The reusable runner is available at `scripts/smoke_postprocess_device.py`.
 
 ## 🔴 Known environment blocks
 

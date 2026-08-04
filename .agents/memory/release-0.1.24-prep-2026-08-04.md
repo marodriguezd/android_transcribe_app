@@ -4,7 +4,7 @@
 
 ## Context
 
-Full static audit of the repository completed earlier on 2026-08-04 (source, tests, CI, agentic files, the 41 commits of 28/07–04/08). Veredict: the Gauntlet remains **OPEN** — solid architecture and 32 JVM tests, but no closed release: no `v0.1.24` tag, no release-signing evidence, no device smoke of the six surfaces.
+Full static audit of the repository completed earlier on 2026-08-04 (source, tests, CI, agentic files, the 41 commits of 28/07–04/08). The Gauntlet remains **OPEN** for the complete device matrix and release-signing evidence, while the implementation gates are green and the v0.1.24 debug APK has received a focused device smoke.
 
 User decisions (2026-08-04):
 
@@ -52,13 +52,14 @@ User decisions (2026-08-04):
 
 ## Verification
 
-- Local validation pending on the run: `./gradlew testDebugUnitTest` (expect 34 tests green), `python3 scripts/check_translations.py`, `cargo fmt --all -- --check`, plus code review.
-- `assembleDebug`/`lintDebug`/`checkModels`/release gates run in CI (workflows changed).
+- CI run `30897928321` on commit `371a119` passed translations, `cargo fmt --all -- --check`, 34 JVM tests, `assembleDebug`, `lintDebug` and `checkModels`; its debug APK was installed on-device as `0.1.24`.
+- The focused device smoke downloaded Nemotron successfully and the real Groq post-processing path produced functionally transformed output. Logcat attribution was inconclusive, so this is not claimed as a complete six-surface or privacy-release validation.
+- Release gates remain delegated to the tag-triggered workflow.
 
 ## Remaining work for a closed v0.1.24
 
 - Device smoke of the six surfaces (P1.4 subtitles/MediaProjection lifecycle, P1.5 post-processing with a real provider).
-- Tag `v0.1.24` + signed release: `versionCode 26` is committed in the release commit (2026-08-04); the tag is created **only after the user validates the debug APK** (run `30897003634`), and the release workflow then produces the signed APK with `apksigner`/`zipalign` evidence.
+- Tag `v0.1.24` + signed release: `versionCode 26` is committed; the debug APK from CI run `30897928321` (commit `371a119`) was installed and functionally validated on-device. Creating the tag now delegates signed APK generation and `apksigner`/`zipalign` evidence to the release workflow.
 - `cargo test` of the full crate or a documented reproducible block of `transcribe-cpp-sys v0.1.3`.
 - Final README/AGENTS consistency pass in English.
 
@@ -80,5 +81,6 @@ User decisions (2026-08-04):
 - Secondary latent issue caught while fixing: the two new network tests could be made flaky by runner proxies; made deterministic (lesson 5).
 - Fix commits: `7b62942` — `buildConfig = true` + deterministic network tests (injected DNS + `NO_PROXY`; the `InetAddress` import was also missing in the first attempt).
 - Local re-validation: `testDebugUnitTest` → BUILD SUCCESSFUL, 34/34 tests green with `HTTP_PROXY`/`HTTPS_PROXY` set to an unreachable proxy.
-- Green re-run: push `7b62942` triggered run `30897003634` → all 21 steps success (incl. `cargo fmt --check`, translations, 34 JVM tests, `assembleDebug`, `lintDebug`, `checkModels`), APK sent to Telegram.
-- Release commit (2026-08-04): `versionCode 26`, `RELEASE_NOTES.md` re-headed to `# v0.1.24`; tag `v0.1.24` deliberately **not** created (pending device validation).
+- Green re-run: push `7b62942` triggered run `30897003634` → all gates success; APK sent to Telegram.
+- Final release-preparation push `371a119` triggered run `30897928321` → success; artifact `app-debug-apk-v0.1.24` was downloaded and installed cleanly on the device. The device retained the expected Nemotron runtime model, and the focused Groq smoke showed transformed output, with Logcat attribution inconclusive.
+- The v0.1.24 tag was intentionally deferred until this debug validation and is now ready to be created; the remaining release evidence will come from the tag-triggered workflow.

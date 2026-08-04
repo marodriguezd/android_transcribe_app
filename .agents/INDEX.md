@@ -51,6 +51,10 @@ Se rellena conforme se acumulen sesiones de trabajo. Listado en orden cronológi
   CI gates (rustfmt/checkModels/APK verification), JVM harness closure
   (DNS fail + connect timeout, 34 tests), English publication metadata and
   the maintainer decisions behind them.
+- [`../scripts/README.md`](../scripts/README.md) —
+  secret-safe device smoke runner for real post-processing with an
+  OpenAI-compatible provider; documents resource-ID UI automation, cleanup,
+  and future-release usage.
 - [`memory/p14-p15-feasibility-2026-08-04.md`](./memory/p14-p15-feasibility-2026-08-04.md) —
   clasificación de los checklists P1.4/P1.5 según qué pasos son ejecutables
   desde el entorno actual (sin dispositivo físico) y cuáles requieren

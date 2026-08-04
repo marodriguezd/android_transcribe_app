@@ -78,6 +78,35 @@ system audio
 - JVM tests: `SourceLanguageResolverTest`, `SubtitleTranslationTargetsTest`,
   `SubtitlePrefsTest` extended.
 
+## Follow-up decision: selector moved out of MainActivity (commit `d2044c9`)
+
+- **Decision:** the translation-target selector lives on the
+  `LiveSubtitleActivity` **start screen**, not on `MainActivity`. The main
+  screen is back to its pre-feature state; it carries nothing
+  subtitle-specific.
+- **Rationale:** maintainer request — the live-subtitle feature should not
+  touch the main screen at all. Configuring the target where the session
+  starts also matches how the marker is consumed: `LiveSubtitleService`
+  reads `subtitle_translation_target` at session start.
+- **What changed:**
+  - `LiveSubtitleActivity` became a real config screen: `AppCompatActivity`
+    + `@style/AppTheme` (it was a translucent transient permission bridge),
+    new `activity_live_subtitle.xml` with spinner + start button, and
+    `configChanges` like the sibling activities (rotation no longer loses
+    the permission-flow state).
+  - The overlay-permission flow is now triggered by the start button; on
+    denial the activity **stays open** with a toast instead of finishing, so
+    the user can retry or change the target.
+  - `MainActivity.java` −48 lines / `activity_main.xml` −31 lines: spinner
+    setup call + method + unused imports removed.
+  - New strings `live_subs_title` / `live_subs_desc` in all 7 locales.
+- **UX implications:** "Start Live Subtitles" in `MainActivity` now opens the
+  config screen first (one extra tap before the consent flow). Selecting a
+  target saves the marker immediately, so entering just to configure works.
+- **Validation:** 71 JVM tests, translations PASS, `lintDebug` BUILD
+  SUCCESSFUL, code review clean (only polish items: the overlay-denial loop
+  is intentional; `super.onActivityResult` required by AppCompatActivity).
+
 ## Gates (local, 2026-08-04)
 
 - `./gradlew testDebugUnitTest` → BUILD SUCCESSFUL, **71 tests**, 0 failures

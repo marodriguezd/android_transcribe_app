@@ -194,6 +194,10 @@
     <string name="subs_notification_recording">Запись внутреннего аудио...</string>
     <string name="subs_notification_stop">Стоп</string>
     <string name="action_close">Закрыть</string>
+    <string name="action_cancel">Отмена</string>
+    <string name="rec_cancelled">Транскрипция отменена</string>
+    <string name="ime_cancelled">Транскрипция отменена</string>
+    <string name="file_cancelled">Транскрипция отменена</string>
     <string name="debug_model_cannot_create_dir">Не удалось создать папку моделей</string>
     <string name="debug_model_checksum_mismatch">Несовпадение контрольной суммы: ожидалось %1$s, получено %2$s</string>
     <string name="debug_model_rename_failed">Не удалось переименовать скачанный файл модели</string>

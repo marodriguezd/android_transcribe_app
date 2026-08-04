@@ -213,6 +213,10 @@
 
     <!-- Shared -->
     <string name="action_close">Close</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="rec_cancelled">Transcription cancelled</string>
+    <string name="ime_cancelled">Transcription cancelled</string>
+    <string name="file_cancelled">Transcription cancelled</string>
 
     <!-- Debug model download errors (shown in the retry dialog) -->
     <string name="debug_model_cannot_create_dir">Cannot create models directory</string>

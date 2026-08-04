@@ -29,6 +29,8 @@ import java.nio.ByteOrder;
 import java.nio.ShortBuffer;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CancellationException;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public class TranscribeFileActivity extends AppCompatActivity {
@@ -57,7 +59,8 @@ public class TranscribeFileActivity extends AppCompatActivity {
     private static final AtomicInteger NEXT_OP = new AtomicInteger(1);
     // The operation id of the decode currently owned by this Activity; a
     // destroyed/recreated Activity bumps it to invalidate late callbacks.
-    private int currentOpId = 0;
+    private volatile int currentOpId = 0;
+    private final AtomicBoolean cancelRequested = new AtomicBoolean(false);
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -71,7 +74,8 @@ public class TranscribeFileActivity extends AppCompatActivity {
         resultText = findViewById(R.id.txt_result);
         copyButton = findViewById(R.id.btn_copy);
 
-        findViewById(R.id.btn_close).setOnClickListener(v -> finish());
+        findViewById(R.id.btn_close).setOnClickListener(v -> cancelAndClose());
+        findViewById(R.id.btn_cancel).setOnClickListener(v -> cancelCurrentOperation());
 
         copyButton.setOnClickListener(v -> {
             String text = resultText.getText().toString();
@@ -94,11 +98,32 @@ public class TranscribeFileActivity extends AppCompatActivity {
         initNative(this);
     }
 
+    /** Discards decode, native transcription, and post-processing without showing a result. */
+    private void cancelCurrentOperation() {
+        cancelRequested.set(true);
+        currentOpId = NEXT_OP.incrementAndGet();
+        try { cancelTranscription(); } catch (Throwable ignored) { }
+        PostProcessor.cancelAllFor(this);
+        progressArea.setVisibility(View.VISIBLE);
+        resultArea.setVisibility(View.GONE);
+        progressBar.setVisibility(View.GONE);
+        findViewById(R.id.btn_cancel).setVisibility(View.GONE);
+        statusText.setText(getString(R.string.file_cancelled));
+    }
+
+    private void cancelAndClose() {
+        cancelCurrentOperation();
+        setResult(Activity.RESULT_CANCELED);
+        finish();
+    }
+
     @Override
     protected void onDestroy() {
         // Invalidate any in-flight decode callbacks (P1.1): a late native
         // worker must not update a destroyed/recreated Activity.
+        cancelRequested.set(true);
         currentOpId = NEXT_OP.incrementAndGet();
+        try { cancelTranscription(); } catch (Throwable ignored) { }
         // Cancel this Activity's in-flight post-processing call (owner-scoped,
         // P0.1) so a late callback cannot update a finishing UI — without
         // cancelling another surface's legitimate request.
@@ -123,6 +148,7 @@ public class TranscribeFileActivity extends AppCompatActivity {
     // Called from Rust when model is ready
     public void onStatusUpdate(String status) {
         runOnUiThread(() -> {
+            if (cancelRequested.get() || isFinishing() || isDestroyed()) return;
             if ("Ready".equals(status)) {
                 statusText.setText(getString(R.string.file_decoding_audio));
                 startDecodeAndTranscribe();
@@ -151,6 +177,8 @@ public class TranscribeFileActivity extends AppCompatActivity {
                         .process(text, new PostProcessor.PostProcessCallback() {
                     @Override
                     public void onSuccess(String refinedText) {
+                        if (opId != currentOpId || cancelRequested.get()
+                                || isFinishing() || isDestroyed()) return;
                         String out = (refinedText != null && !refinedText.trim().isEmpty())
                                 ? refinedText : text;
                         showResult(out);
@@ -158,6 +186,8 @@ public class TranscribeFileActivity extends AppCompatActivity {
 
                     @Override
                     public void onError(String error) {
+                        if (opId != currentOpId || cancelRequested.get()
+                                || isFinishing() || isDestroyed()) return;
                         // Privacy (v0.1.24): the error string can carry
                         // provider details; the transcript itself is never
                         // logged in release builds.
@@ -200,10 +230,12 @@ public class TranscribeFileActivity extends AppCompatActivity {
         // recreated Activity can never accept a stale worker's callbacks).
         final int opId = NEXT_OP.incrementAndGet();
         currentOpId = opId;
+        cancelRequested.set(false);
 
         new Thread(() -> {
             try {
                 float[] samples = decodeAudioToSamples(audioUri);
+                if (cancelRequested.get() || opId != currentOpId) return;
                 if (samples == null || samples.length == 0) {
                     showError(getString(R.string.file_error_decode));
                     return;
@@ -212,7 +244,10 @@ public class TranscribeFileActivity extends AppCompatActivity {
                 runOnUiThread(() -> statusText.setText(getString(R.string.file_transcribing)));
                 transcribeAudio(samples, samples.length, opId);
 
+            } catch (CancellationException e) {
+                // User explicitly cancelled; do not surface an error or result.
             } catch (Exception e) {
+                if (cancelRequested.get() || opId != currentOpId) return;
                 Log.e(TAG, "Error decoding audio", e);
                 showError(getString(R.string.file_error_format, e.getMessage()));
             }
@@ -231,36 +266,66 @@ public class TranscribeFileActivity extends AppCompatActivity {
      */
     private float[] decodeAudioToSamples(Uri uri) throws IOException {
         MediaExtractor extractor = new MediaExtractor();
-        extractor.setDataSource(this, uri, null);
+        try {
+            extractor.setDataSource(this, uri, null);
+        } catch (IOException | RuntimeException e) {
+            extractor.release();
+            throw e;
+        }
 
         // Find audio track
         int audioTrackIndex = -1;
         MediaFormat inputFormat = null;
-        for (int i = 0; i < extractor.getTrackCount(); i++) {
-            MediaFormat format = extractor.getTrackFormat(i);
-            String mime = format.getString(MediaFormat.KEY_MIME);
-            if (mime != null && mime.startsWith("audio/")) {
-                audioTrackIndex = i;
-                inputFormat = format;
-                break;
+        try {
+            for (int i = 0; i < extractor.getTrackCount(); i++) {
+                MediaFormat format = extractor.getTrackFormat(i);
+                String mime = format.getString(MediaFormat.KEY_MIME);
+                if (mime != null && mime.startsWith("audio/")) {
+                    audioTrackIndex = i;
+                    inputFormat = format;
+                    break;
+                }
             }
-        }
+            if (audioTrackIndex < 0 || inputFormat == null) {
+                Log.e(TAG, "No audio track found");
+                extractor.release();
+                return null;
+            }
 
-        if (audioTrackIndex < 0 || inputFormat == null) {
-            Log.e(TAG, "No audio track found");
-            return null;
+            extractor.selectTrack(audioTrackIndex);
+        } catch (RuntimeException e) {
+            extractor.release();
+            throw e;
         }
-
-        extractor.selectTrack(audioTrackIndex);
-        String mime = inputFormat.getString(MediaFormat.KEY_MIME);
-        int sampleRate = inputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
-        int channelCount = inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
+        String mime;
+        int sampleRate;
+        int channelCount;
+        try {
+            mime = inputFormat.getString(MediaFormat.KEY_MIME);
+            sampleRate = inputFormat.getInteger(MediaFormat.KEY_SAMPLE_RATE);
+            channelCount = inputFormat.getInteger(MediaFormat.KEY_CHANNEL_COUNT);
+        } catch (RuntimeException e) {
+            extractor.release();
+            throw e;
+        }
 
         Log.i(TAG, "Audio: mime=" + mime + " rate=" + sampleRate + " channels=" + channelCount);
 
-        MediaCodec codec = MediaCodec.createDecoderByType(mime);
-        codec.configure(inputFormat, null, null, 0);
-        codec.start();
+        MediaCodec codec;
+        try {
+            codec = MediaCodec.createDecoderByType(mime);
+        } catch (IOException | RuntimeException e) {
+            extractor.release();
+            throw e;
+        }
+        try {
+            codec.configure(inputFormat, null, null, 0);
+            codec.start();
+        } catch (RuntimeException e) {
+            codec.release();
+            extractor.release();
+            throw e;
+        }
 
         List<float[]> allChunks = new ArrayList<>();
         int totalSamples = 0;
@@ -270,7 +335,9 @@ public class TranscribeFileActivity extends AppCompatActivity {
         boolean outputDone = false;
         long timeoutUs = 10000;
 
-        while (!outputDone) {
+        try {
+            while (!outputDone) {
+                if (cancelRequested.get()) throw new CancellationException();
             // Feed input
             if (!inputDone) {
                 int inputBufferIndex = codec.dequeueInputBuffer(timeoutUs);
@@ -327,11 +394,12 @@ public class TranscribeFileActivity extends AppCompatActivity {
 
                 codec.releaseOutputBuffer(outputBufferIndex, false);
             }
+            }
+        } finally {
+            try { codec.stop(); } catch (Exception ignored) { }
+            codec.release();
+            extractor.release();
         }
-
-        codec.stop();
-        codec.release();
-        extractor.release();
 
         // Resample to 16kHz if needed
         float[] monoSamples = mergeChunks(allChunks, totalSamples);
@@ -394,4 +462,5 @@ public class TranscribeFileActivity extends AppCompatActivity {
     private native void initNative(TranscribeFileActivity activity);
     private native void cleanupNative();
     private native void transcribeAudio(float[] samples, int length, int opId);
+    private native void cancelTranscription();
 }

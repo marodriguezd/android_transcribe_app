@@ -50,20 +50,7 @@ public class RecognizeActivity extends AppCompatActivity {
         micLevel = findViewById(R.id.mic_level);
         status = findViewById(R.id.txt_status);
 
-        findViewById(R.id.btn_close).setOnClickListener(v -> {
-            // discard current recording
-            if (isRecording) {
-                isRecording = false;
-                currentSessionId++;
-                cancelRecording();   // new native method
-            }
-            if (pauseAudioActive) {
-                audioPauser.abandon(this);
-                pauseAudioActive = false;
-            }
-            setResult(Activity.RESULT_CANCELED);
-            finish();
-        });
+        findViewById(R.id.btn_close).setOnClickListener(v -> cancelAndClose());
 
         // Tap anywhere (or on mic) to stop
         findViewById(R.id.root).setOnClickListener(v -> finishRecording());
@@ -84,6 +71,20 @@ public class RecognizeActivity extends AppCompatActivity {
             pauseAudioActive = true;
         }
         startRecording(isAutoStopEnabled(), ++currentSessionId);
+    }
+
+    /** Discards recording, transcription, or post-processing without delivering text. */
+    private void cancelAndClose() {
+        isRecording = false;
+        currentSessionId++;
+        try { cancelRecording(); } catch (Throwable ignored) { }
+        PostProcessor.cancelAllFor(this);
+        if (pauseAudioActive) {
+            audioPauser.abandon(this);
+            pauseAudioActive = false;
+        }
+        setResult(Activity.RESULT_CANCELED);
+        finish();
     }
 
     /** Stop capture and transcribe — used by both tap-to-stop and auto-stop. */

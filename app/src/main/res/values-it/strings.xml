@@ -194,6 +194,10 @@
     <string name="subs_notification_recording">Registrazione dell\'audio interno...</string>
     <string name="subs_notification_stop">Ferma</string>
     <string name="action_close">Chiudi</string>
+    <string name="action_cancel">Annulla</string>
+    <string name="rec_cancelled">Trascrizione annullata</string>
+    <string name="ime_cancelled">Trascrizione annullata</string>
+    <string name="file_cancelled">Trascrizione annullata</string>
     <string name="debug_model_cannot_create_dir">Impossibile creare la cartella dei modelli</string>
     <string name="debug_model_checksum_mismatch">Checksum non corrispondente: atteso %1$s, ottenuto %2$s</string>
     <string name="debug_model_rename_failed">Impossibile rinominare il file del modello scaricato</string>

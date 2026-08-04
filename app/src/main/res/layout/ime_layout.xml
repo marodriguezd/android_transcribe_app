@@ -33,6 +33,17 @@
             android:layout_width="24dp"
             android:layout_height="24dp"
             android:visibility="gone"/>
+
+        <Button
+            android:id="@+id/ime_cancel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:minHeight="0dp"
+            android:minWidth="0dp"
+            android:paddingStart="12dp"
+            android:paddingEnd="12dp"
+            android:text="@string/action_cancel"
+            android:visibility="gone" />
     </LinearLayout>
 
     <!-- Live streaming partial transcription (Nemotron etc.): a two-line

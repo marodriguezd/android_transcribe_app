@@ -194,6 +194,10 @@
     <string name="subs_notification_recording">Nimm internes Audio auf...</string>
     <string name="subs_notification_stop">Stopp</string>
     <string name="action_close">Schließen</string>
+    <string name="action_cancel">Abbrechen</string>
+    <string name="rec_cancelled">Transkription abgebrochen</string>
+    <string name="ime_cancelled">Transkription abgebrochen</string>
+    <string name="file_cancelled">Transkription abgebrochen</string>
     <string name="debug_model_cannot_create_dir">Modellverzeichnis konnte nicht erstellt werden</string>
     <string name="debug_model_checksum_mismatch">Prüfsumme stimmt nicht: erwartet %1$s, erhalten %2$s</string>
     <string name="debug_model_rename_failed">Heruntergeladene Modelldatei konnte nicht umbenannt werden</string>

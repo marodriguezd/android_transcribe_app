@@ -54,6 +54,7 @@ public class RustInputMethodService extends InputMethodService {
     private View recordContainer;
     private android.widget.ImageView micIcon;
     private ProgressBar progressBar;
+    private Button cancelButton;
     private View backspaceButton;
     private View spaceButton;
     private View enterButton;
@@ -178,6 +179,7 @@ public class RustInputMethodService extends InputMethodService {
 
             statusView = view.findViewById(R.id.ime_status_text);
             progressBar = view.findViewById(R.id.ime_progress);
+            cancelButton = view.findViewById(R.id.ime_cancel);
             recordContainer = view.findViewById(R.id.ime_record_container);
             micIcon = view.findViewById(R.id.ime_mic_icon);
             micLevelView = view.findViewById(R.id.ime_mic_level);
@@ -289,6 +291,8 @@ public class RustInputMethodService extends InputMethodService {
                 }
             });
 
+            cancelButton.setOnClickListener(v -> cancelCurrentTranscription());
+
             recordContainer.setOnClickListener(v -> {
                 if (!recordContainer.isEnabled()) return;
 
@@ -307,6 +311,10 @@ public class RustInputMethodService extends InputMethodService {
                         pauseAudioActive = false;
                     }
                     updateRecordButtonUI(false);
+                    if (cancelButton != null) {
+                        cancelButton.setVisibility(View.VISIBLE);
+                        cancelButton.setEnabled(!isDestroyed);
+                    }
                 } else {
                     UserDictionaryHelper.syncSystemUserDictionaryAsync(this);
                     if (isPauseAudioEnabled()) {
@@ -423,9 +431,15 @@ public class RustInputMethodService extends InputMethodService {
         if (recording) {
             statusView.setText(getString(R.string.ime_listening));
             hintView.setText(getString(R.string.ime_tap_to_stop));
+            if (cancelButton != null) cancelButton.setVisibility(View.GONE);
         } else {
             statusView.setText(getString(R.string.ime_processing));
             hintView.setText(getString(R.string.ime_tap_to_record));
+            if (cancelButton != null) {
+                cancelButton.setVisibility(lastStatus.contains("Transcribing")
+                        || lastStatus.contains("Processing")
+                        || lastStatus.contains("Waiting") ? View.VISIBLE : View.GONE);
+            }
             if (micLevelView != null) micLevelView.setLevel(0f);
             clearPartialText();
         }
@@ -499,6 +513,10 @@ public class RustInputMethodService extends InputMethodService {
                     pauseAudioActive = false;
                 }
                 updateRecordButtonUI(false);
+                if (cancelButton != null) {
+                    cancelButton.setVisibility(View.VISIBLE);
+                    cancelButton.setEnabled(!isDestroyed);
+                }
             }
         });
     }
@@ -552,11 +570,17 @@ public class RustInputMethodService extends InputMethodService {
             progressBar.setVisibility(View.GONE);
         }
 
-        // Disable button only during transcription/processing/waiting or fatal errors
+        // Disable recording while transcription is running, but leave the
+        // dedicated cancel action enabled so the user can discard the result.
         if (recordContainer != null) {
             boolean disable = isTranscribing || isWaiting || isError;
             recordContainer.setEnabled(!disable);
             recordContainer.setAlpha(disable ? 0.5f : 1.0f);
+        }
+        if (cancelButton != null) {
+            cancelButton.setVisibility(!isRecording && (isTranscribing || isWaiting)
+                    ? View.VISIBLE : View.GONE);
+            cancelButton.setEnabled(!isDestroyed);
         }
 
         if (hintView != null && !isRecording) {
@@ -592,6 +616,26 @@ public class RustInputMethodService extends InputMethodService {
         if (partialScroll != null) partialScroll.setVisibility(View.GONE);
     }
 
+    /** Cancels native transcription and any owner-scoped post-processing call. */
+    private void cancelCurrentTranscription() {
+        currentSessionId++;
+        lastStatus = "Canceled";
+        try { cancelRecording(); } catch (Throwable ignored) { }
+        PostProcessor.cancelAllFor(this);
+        if (pauseAudioActive) {
+            audioPauser.abandon(this);
+            pauseAudioActive = false;
+        }
+        updateRecordButtonUI(false);
+        if (statusView != null) statusView.setText(getString(R.string.ime_cancelled));
+        if (hintView != null) hintView.setText(getString(R.string.ime_tap_to_record));
+        if (recordContainer != null) {
+            recordContainer.setEnabled(true);
+            recordContainer.setAlpha(1.0f);
+        }
+        if (cancelButton != null) cancelButton.setVisibility(View.GONE);
+    }
+
     // Called from Rust
     public void onTextTranscribed(String text, int sessionId) {
         mainHandler.post(() -> {
@@ -613,8 +657,13 @@ public class RustInputMethodService extends InputMethodService {
 
             SettingsManager settings = new SettingsManager(this);
             if (settings.isPostProcessEnabled()) {
+                lastStatus = "Processing...";
                 if (statusView != null) statusView.setText(getString(R.string.ime_refining));
                 if (hintView != null) hintView.setText("");
+                if (cancelButton != null) {
+                    cancelButton.setVisibility(View.VISIBLE);
+                    cancelButton.setEnabled(!isDestroyed);
+                }
 
                 // The LLM is intentionally not streamed. The ASR model already
                 // provided the real-time preview; committing only this complete

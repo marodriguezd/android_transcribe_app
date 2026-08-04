@@ -46,6 +46,8 @@
     <string name="setting_subtitle_translation">Перевод субтитров</string>
     <string name="setting_subtitle_translation_desc">Переводит живые субтитры после распознавания. «Авто (исходный язык)» сохраняет язык речи. При выборе фиксированного языка при первом использовании загружается небольшой пакет (Google Play Services; сам перевод выполняется на устройстве и затем работает офлайн).</string>
     <string name="subtitle_translation_auto">Авто (исходный язык)</string>
+    <string name="live_subs_title">Живые субтитры</string>
+    <string name="live_subs_desc">Выберите язык субтитров, а затем запустите показ субтитров для звука с устройства.</string>
     <string name="subtitle_translation_saved">Перевод субтитров сохранён</string>
     <string name="subs_translation_unavailable">Перевод субтитров недоступен на этом устройстве; отображается исходный язык.</string>
 

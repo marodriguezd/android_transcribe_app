@@ -66,8 +66,12 @@ system audio
   fallback), serial FIFO translation queue (max 8, head-of-line ordering
   enforced), per-session generation to drop late callbacks, single
   user-facing Toast when translation is unavailable.
-- `MainActivity` + `activity_main.xml` — target-language spinner on the
-  live-subtitle card; strings propagated to all 7 locales.
+- `LiveSubtitleActivity` + `activity_live_subtitle.xml` (new) — the activity
+  became a real config/start screen (theme changed from translucent to
+  `AppTheme`): target-language spinner + start button, then the existing
+  overlay → screen-capture → service flow. **The selector was deliberately
+  moved out of `MainActivity`** so the main screen carries nothing
+  subtitle-specific; strings propagated to all 7 locales.
 - `app/build.gradle.kts` — ML Kit translate dependency.
 - `src/engine.rs` / `src/subtitle.rs` — `transcribe_subtitle` forces
   `Task::Transcribe` for the subtitle path.

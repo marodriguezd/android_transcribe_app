@@ -47,6 +47,8 @@
     <string name="setting_subtitle_translation">Subtitle translation</string>
     <string name="setting_subtitle_translation_desc">Translate live subtitles after recognizing them. “Auto (original language)” keeps the language spoken. Choosing a fixed language downloads a small pack on first use (Google Play Services; the translation itself is on-device and works offline afterwards).</string>
     <string name="subtitle_translation_auto">Auto (original language)</string>
+    <string name="live_subs_title">Live subtitles</string>
+    <string name="live_subs_desc">Choose the subtitle language, then start captioning your device audio.</string>
     <string name="subtitle_translation_saved">Subtitle translation saved</string>
     <string name="subs_translation_unavailable">Subtitle translation isn\'t available on this device; showing the original language.</string>
 

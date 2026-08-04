@@ -63,10 +63,13 @@
             android:configChanges="orientation|keyboardHidden|screenSize"
             android:exported="false" />
 
-        <!-- Live Subtitles Activity (for permissions) -->
+        <!-- Live Subtitles Activity: configuration + permissions. Uses the app
+             theme so the screen is a normal (opaque) start/config page where
+             the user picks the translation target before starting. -->
         <activity
             android:name=".LiveSubtitleActivity"
-            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:theme="@style/AppTheme"
+            android:configChanges="orientation|keyboardHidden|screenSize"
             android:excludeFromRecents="true"
             android:launchMode="singleInstance"
             android:exported="false" />

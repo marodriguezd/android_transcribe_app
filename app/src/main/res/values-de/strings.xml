@@ -46,6 +46,8 @@
     <string name="setting_subtitle_translation">Untertitel-Übersetzung</string>
     <string name="setting_subtitle_translation_desc">Übersetzt Live-Untertitel nach der Erkennung. „Auto (Originalsprache)“ behält die gesprochene Sprache. Bei Wahl einer festen Sprache wird beim ersten Mal ein kleines Sprachpaket heruntergeladen (Google Play Services; die Übersetzung selbst läuft auf dem Gerät und funktioniert danach offline).</string>
     <string name="subtitle_translation_auto">Auto (Originalsprache)</string>
+    <string name="live_subs_title">Live-Untertitel</string>
+    <string name="live_subs_desc">Wähle die Untertitelsprache und starte dann die Untertitelung des Geräteaudios.</string>
     <string name="subtitle_translation_saved">Untertitel-Übersetzung gespeichert</string>
     <string name="subs_translation_unavailable">Untertitel-Übersetzung ist auf diesem Gerät nicht verfügbar; es wird die Originalsprache angezeigt.</string>
 

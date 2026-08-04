@@ -1,15 +1,24 @@
 # Changelog
 
-Historial completo de cambios del proyecto **android_transcribe_app** (fork de [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app)).
+Full change history of **android_transcribe_app** (fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app)).
 
 ---
 
-# Unreleased
+# v0.1.24
 
-### 🤖 Postprocesado AI final-only
-- Los parciales del transcriptor continúan mostrándose en streaming como previsualización visual.
-- El transcript final se envía una única vez al postprocesador con una respuesta JSON completa; el IME y el popup hacen un único commit del resultado.
-- Si el postprocesado está apagado, se cancela, falla o devuelve contenido inválido, se entrega la transcripción cruda sin perder texto.
+Release hardening for the 0.1.24 launch (see [RELEASE_NOTES.md](RELEASE_NOTES.md) for the full notes):
+
+### 🔒 Transcript privacy
+- Raw transcripts and provider endpoints are no longer logged in release builds (`BuildConfig.DEBUG` gating); debug APKs keep the diagnostics.
+
+### 🤖 Post-processing final-only (replacing the historical SSE streaming)
+- The ASR streaming preview remains visual-only; the final transcript is sent exactly once to the post-processor and the complete response is committed.
+- The IME and popup no longer paste partial LLM tokens; any failure, cancellation or invalid response falls back to the raw transcript (no "Frankenstein" text).
+
+### 🛡️ Hardening
+- Owner-scoped post-processing cancellation (`CallRegistry`), generation-scoped subtitle workers, SHA-256 verified debug model downloads, atomic marker writes, operation-ids for file transcription, sanitized model import names, import-safe lifecycle.
+- JVM harness closed: real DNS failure and connect-timeout tests added to `PostProcessorTest` (10 tests; 34 JVM tests total).
+- CI: `cargo fmt --all -- --check` gate in both workflows, `checkModels` on the debug workflow, keystore fail-fast, `zipalign`/`apksigner` verification of the release APK.
 
 ---
 

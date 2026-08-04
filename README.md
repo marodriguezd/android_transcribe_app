@@ -16,7 +16,7 @@ height="80">](https://github.com/marodriguezd/android_transcribe_app/releases/la
 - **100% offline & private:** The bundled Nemotron 3.5 ASR model runs entirely on-device — no audio ever leaves your phone, and no network is required. (The optional AI post-processing layer is the only feature that talks to the network, and only if you enable it.)
 - **Live Subtitles:** Real-time captions for any audio/video playing on your device.
 - **Optional voice keyboard:** A built-in keyboard you can switch to for voice input wherever you prefer it.
-- **Supported Languages (built-in model):** English, Spanish, German, French. Import a different GGUF model (see below) for other languages.
+- **Supported Languages (built-in model):** 40 language-locales with automatic language detection (Nemotron 3.5 ASR Streaming). English, Spanish, German, French, Italian, Portuguese, Russian, Polish, Dutch and many more; import a different GGUF model (see below) for anything else.
 - **Custom models:** Import any [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) GGUF model (Whisper, Nemotron streaming, Canary, more Parakeet variants, …) from a downloaded file — the app stays fully offline; downloads happen in your browser.
 - **Efficient native backend:** All models run through [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) (ggml), wrapped in a safe Rust core.
 
@@ -134,7 +134,7 @@ export STORE_PASS=yourpassword
 
 ### Model Assets
 
-The built-in Nemotron 3.5 ASR Streaming GGUF model (~751 MB, Q8_0) is automatically downloaded from HuggingFace during the first build via a Gradle task. The checksum is verified with SHA-256. No manual download is needed.
+The built-in Nemotron 3.5 ASR Streaming GGUF model (~751 MB, Q8_0) is automatically downloaded from HuggingFace during the first build via a Gradle task. The checksum is verified with SHA-256. No manual download is needed. (Debug APKs ship without the model to stay under Telegram's 50 MB limit and download it on first run — also SHA-256 verified before activation.)
 
 ## Project Structure
 

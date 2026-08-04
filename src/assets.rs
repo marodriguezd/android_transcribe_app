@@ -142,7 +142,10 @@ fn extraction_matches_assets(
 fn find_gguf(dir: &Path) -> anyhow::Result<PathBuf> {
     for entry in std::fs::read_dir(dir)? {
         let path = entry?.path();
-        if path.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("gguf")) {
+        if path
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("gguf"))
+        {
             return Ok(path);
         }
     }

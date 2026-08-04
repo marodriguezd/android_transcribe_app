@@ -56,7 +56,11 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_MainActivity_benchmarkN
 ) {
     let len = length as usize;
     let mut buffer = vec![0.0f32; len];
-    if len == 0 || env.get_float_array_region(&samples, 0, &mut buffer).is_err() {
+    if len == 0
+        || env
+            .get_float_array_region(&samples, 0, &mut buffer)
+            .is_err()
+    {
         return;
     }
 

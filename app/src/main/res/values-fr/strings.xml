@@ -125,6 +125,9 @@
     <string name="pp_prompt">Invite système</string>
     <string name="pp_save">Enregistrer</string>
     <string name="pp_saved">Paramètres enregistrés</string>
+    <string name="pp_test_connection">Tester le post-traitement</string>
+    <string name="pp_test_success">Le post-traitement fonctionne</string>
+    <string name="pp_test_error">Échec du test de post-traitement : %1$s</string>
 
     <!-- Dictionnaire de mots personnalisés (ajout du fork) : correction phonétique -->
     <string name="cw_card_title">Mots personnalisés</string>

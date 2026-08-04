@@ -125,6 +125,9 @@
     <string name="pp_prompt">Prompt do sistema</string>
     <string name="pp_save">Salvar</string>
     <string name="pp_saved">Configurações salvas</string>
+    <string name="pp_test_connection">Testar pós-processamento</string>
+    <string name="pp_test_success">O pós-processamento funciona</string>
+    <string name="pp_test_error">Falha no teste de pós-processamento: %1$s</string>
 
     <!-- Dicionário de palavras personalizadas (acréscimo do fork): correção fonética -->
     <string name="cw_card_title">Palavras personalizadas</string>

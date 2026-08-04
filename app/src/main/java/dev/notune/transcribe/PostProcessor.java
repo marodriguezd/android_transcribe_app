@@ -38,6 +38,9 @@ import okhttp3.Response;
  */
 public class PostProcessor {
     private static final String TAG = "PostProcessor";
+    private static final String DIAGNOSTIC_INPUT =
+            "This is a diagnostic post-processing test.";
+    private static final String DIAGNOSTIC_MARKER = "POSTPROCESS_DIAGNOSTIC_OK";
     private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
 
     /** Broadcast action used to cancel calls in the isolated IME process. */
@@ -202,6 +205,36 @@ public class PostProcessor {
      * or an error so each caller can deliver the raw transcript as fallback.
      */
     public void process(final String rawText, final PostProcessCallback callback) {
+        processInternal(rawText, callback, false);
+    }
+
+    /**
+     * Runs the real configured endpoint with a fixed, non-user diagnostic
+     * sentence. This deliberately bypasses the enabled marker so the settings
+     * screen can distinguish "disabled" from "configured but broken" without
+     * sending any user transcript.
+     */
+    public void testConnection(final PostProcessCallback callback) {
+        processInternal(DIAGNOSTIC_INPUT, new PostProcessCallback() {
+            @Override
+            public void onSuccess(String refinedText) {
+                if (DIAGNOSTIC_MARKER.equals(refinedText != null
+                        ? refinedText.trim() : "")) {
+                    callback.onSuccess(refinedText);
+                } else {
+                    callback.onError("Provider responded, but the diagnostic marker was not returned");
+                }
+            }
+
+            @Override
+            public void onError(String error) {
+                callback.onError(error);
+            }
+        }, true);
+    }
+
+    private void processInternal(final String rawText, final PostProcessCallback callback,
+                                 boolean forceRequest) {
         if (rawText == null || rawText.trim().isEmpty()) {
             dispatchToUi(() -> callback.onSuccess(rawText != null ? rawText : ""));
             return;
@@ -209,7 +242,7 @@ public class PostProcessor {
 
         // Re-check the marker here, not only at each caller, because the toggle
         // can change between receiving the ASR result and creating this call.
-        if (!settings.isPostProcessEnabled()) {
+        if (!forceRequest && !settings.isPostProcessEnabled()) {
             dispatchToUi(() -> callback.onSuccess(rawText));
             return;
         }
@@ -220,9 +253,16 @@ public class PostProcessor {
         final String systemInstruction = settings.getActivePromptBody();
         final boolean injected = systemInstruction != null
                 && systemInstruction.contains("${output}");
+        String activeSystemInstruction = systemInstruction;
+        if (forceRequest) {
+            String diagnosticInstruction = "\n\nDIAGNOSTIC MODE: For this diagnostic request only, "
+                    + "return exactly " + DIAGNOSTIC_MARKER + " and nothing else.";
+            activeSystemInstruction = (activeSystemInstruction != null
+                    ? activeSystemInstruction : "") + diagnosticInstruction;
+        }
         final String requestSystemInstruction = injected
-                ? systemInstruction.replace("${output}", rawText)
-                : systemInstruction;
+                ? activeSystemInstruction.replace("${output}", rawText)
+                : activeSystemInstruction;
 
         try {
             JSONObject json = new JSONObject();
@@ -268,8 +308,8 @@ public class PostProcessor {
                     CallRegistry.unregister(call);
                     String message = e.getMessage() != null
                             ? e.getMessage() : "Post-processing request failed";
-                    Log.e(TAG, "API call failed: " + message);
-                    dispatchToUi(() -> callback.onError(message));
+                    debugLog("API call failed: " + message);
+                    dispatchToUi(() -> callback.onError("Network error: " + message));
                 }
 
                 @Override
@@ -280,14 +320,14 @@ public class PostProcessor {
                     try (Response responseResource = response) {
                         // If the user disabled post-processing while the request
                         // was in flight, the raw transcript wins.
-                        if (!settings.isPostProcessEnabled()) {
+                        if (!forceRequest && !settings.isPostProcessEnabled()) {
                             dispatchToUi(() -> callback.onSuccess(rawText));
                             return;
                         }
 
                         if (!responseResource.isSuccessful()) {
-                            String error = "API Error " + responseResource.code();
-                            Log.e(TAG, error);
+                            String error = describeHttpError(responseResource);
+                            debugLog(error);
                             dispatchToUi(() -> callback.onError(error));
                             return;
                         }
@@ -305,10 +345,11 @@ public class PostProcessor {
                                 return;
                             }
 
-                            String resultText = choices.getJSONObject(0)
-                                    .getJSONObject("message")
-                                    .getString("content")
-                                    .trim();
+                            JSONObject message = choices.getJSONObject(0)
+                                    .optJSONObject("message");
+                            String resultText = message != null
+                                    ? message.optString("content", "").trim()
+                                    : "";
                             if (resultText.isEmpty()) {
                                 dispatchToUi(() -> callback.onError("Empty response from AI"));
                             } else {
@@ -316,11 +357,12 @@ public class PostProcessor {
                                 // If the user disabled PP after the HTTP thread parsed the
                                 // response, the raw ASR transcript still wins.
                                 dispatchToUi(() -> callback.onSuccess(
-                                        settings.isPostProcessEnabled() ? resultText : rawText));
+                                        forceRequest || settings.isPostProcessEnabled()
+                                                ? resultText : rawText));
                             }
                         } catch (Exception e) {
-                            String error = "Parse error: " + e.getMessage();
-                            Log.e(TAG, "Failed to parse API response: " + e.getMessage());
+                            String error = "Invalid AI response";
+                            debugLog("Failed to parse API response: " + e.getClass().getSimpleName());
                             dispatchToUi(() -> callback.onError(error));
                         }
                     }
@@ -329,8 +371,78 @@ public class PostProcessor {
         } catch (Exception e) {
             String error = e.getMessage() != null
                     ? e.getMessage() : "Failed to create post-processing request";
-            Log.e(TAG, error);
-            dispatchToUi(() -> callback.onError(error));
+            debugLog("Failed to create post-processing request: " + e.getClass().getSimpleName());
+            dispatchToUi(() -> callback.onError("Request setup error: " + error));
+        }
+    }
+
+    /** Returns a release-safe explanation for common provider failures. */
+    private static String describeHttpError(Response response) throws IOException {
+        int code = response.code();
+        String message;
+        switch (code) {
+            case 400:
+                message = "bad request (check the model and provider)";
+                break;
+            case 401:
+                message = "unauthorized (check the API key)";
+                break;
+            case 403:
+                message = "forbidden (check the API key or account)";
+                break;
+            case 404:
+                message = "endpoint or model not found";
+                break;
+            case 408:
+                message = "provider timed out";
+                break;
+            case 429:
+                message = "provider rate limit or quota exceeded";
+                break;
+            default:
+                message = "provider rejected the request";
+                break;
+        }
+
+        if (BuildConfig.DEBUG && response.body() != null) {
+            try {
+                String body = response.body().string();
+                String providerMessage = extractProviderErrorMessage(body);
+                if (!providerMessage.isEmpty()) {
+                    message += ": " + providerMessage;
+                }
+            } catch (IOException e) {
+                // Preserve the callback contract even when an error body cannot
+                // be read; never let diagnostics turn into a silent callback loss.
+                debugLog("Could not read provider error body: "
+                        + e.getClass().getSimpleName());
+            }
+        }
+        return "API Error " + code + ": " + message;
+    }
+
+    /** Extracts only a short, sanitized provider message; never logs the body. */
+    private static String extractProviderErrorMessage(String body) {
+        if (body == null || body.trim().isEmpty()) return "";
+        try {
+            JSONObject root = new JSONObject(body);
+            JSONObject error = root.optJSONObject("error");
+            String message = error != null ? error.optString("message", "") : "";
+            if (message == null || message.trim().isEmpty()) return "";
+            message = message.replaceAll("\\s+", " ").trim();
+            message = message.replaceAll("(?i)bearer\\s+\\S+", "Bearer [redacted]");
+            message = message.replaceAll("(?i)sk-[A-Za-z0-9_-]+", "[redacted]");
+            if (message.length() > 180) message = message.substring(0, 180) + "…";
+            return message;
+        } catch (Exception ignored) {
+            return "";
+        }
+    }
+
+    /** Keeps diagnostic details out of release logs, including transcript data. */
+    private static void debugLog(String message) {
+        if (BuildConfig.DEBUG) {
+            Log.d(TAG, message);
         }
     }
 
@@ -371,12 +483,20 @@ public class PostProcessor {
         }
 
         String apiKey = settings.getApiKey();
-        Request.Builder requestBuilder = new Request.Builder().url(modelsUrl).get();
-        if (apiKey != null && !apiKey.isEmpty()) {
-            requestBuilder.addHeader("Authorization", "Bearer " + apiKey);
+        final Request request;
+        try {
+            Request.Builder requestBuilder = new Request.Builder().url(modelsUrl).get();
+            if (apiKey != null && !apiKey.isEmpty()) {
+                requestBuilder.addHeader("Authorization", "Bearer " + apiKey);
+            }
+            request = requestBuilder.build();
+        } catch (Exception e) {
+            debugLog("Failed to create model-list request: " + e.getClass().getSimpleName());
+            dispatchToUi(() -> callback.onError("Invalid provider URL"));
+            return;
         }
 
-        Call call = getSharedClient().newCall(requestBuilder.build());
+        Call call = getSharedClient().newCall(request);
         CallRegistry.register(call, owner);
         call.enqueue(new Callback() {
             @Override
@@ -391,8 +511,9 @@ public class PostProcessor {
                 CallRegistry.unregister(call);
                 try (Response responseResource = response) {
                     if (!responseResource.isSuccessful()) {
-                        dispatchToUi(() -> callback.onError(
-                                "Error " + responseResource.code()));
+                        String error = describeHttpError(responseResource);
+                        debugLog(error);
+                        dispatchToUi(() -> callback.onError(error));
                         return;
                     }
                     try {
@@ -410,7 +531,8 @@ public class PostProcessor {
                         Collections.sort(models);
                         dispatchToUi(() -> callback.onSuccess(models));
                     } catch (Exception e) {
-                        dispatchToUi(() -> callback.onError("Parse error: " + e.getMessage()));
+                        debugLog("Failed to parse model list: " + e.getClass().getSimpleName());
+                        dispatchToUi(() -> callback.onError("Invalid model-list response"));
                     }
                 }
             }

@@ -112,6 +112,9 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
 
         Button save = findViewById(R.id.btn_save);
         save.setOnClickListener(v -> save(true));
+
+        Button testConnection = findViewById(R.id.btn_test_connection);
+        testConnection.setOnClickListener(v -> testConnection(testConnection));
     }
 
     /**
@@ -181,6 +184,28 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
                 Toast.makeText(PostProcessSettingsActivity.this,
                         getString(R.string.pp_models_error) + ": " + error,
                         Toast.LENGTH_LONG).show();
+            }
+        });
+    }
+
+    private void testConnection(Button button) {
+        save(false);
+        button.setEnabled(false);
+        new PostProcessor(settings, new Handler(Looper.getMainLooper()),
+                () -> !isFinishing() && !isDestroyed(), this)
+                .testConnection(new PostProcessor.PostProcessCallback() {
+            @Override
+            public void onSuccess(String refinedText) {
+                button.setEnabled(true);
+                Toast.makeText(PostProcessSettingsActivity.this,
+                        getString(R.string.pp_test_success), Toast.LENGTH_LONG).show();
+            }
+
+            @Override
+            public void onError(String error) {
+                button.setEnabled(true);
+                Toast.makeText(PostProcessSettingsActivity.this,
+                        getString(R.string.pp_test_error, error), Toast.LENGTH_LONG).show();
             }
         });
     }

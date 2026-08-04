@@ -125,6 +125,9 @@
     <string name="pp_prompt">Системный промпт</string>
     <string name="pp_save">Сохранить</string>
     <string name="pp_saved">Настройки сохранены</string>
+    <string name="pp_test_connection">Проверить постобработку</string>
+    <string name="pp_test_success">Постобработка работает</string>
+    <string name="pp_test_error">Ошибка проверки постобработки: %1$s</string>
 
     <!-- Словарь пользовательских слов (добавление форка): фонетическая коррекция -->
     <string name="cw_card_title">Свои слова</string>

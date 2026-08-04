@@ -201,6 +201,67 @@ public class PostProcessorTest {
     }
 
     @Test
+    public void nullContentReportsEmptyResponseInsteadOfParseFailure() throws Exception {
+        FakeSettings settings = new FakeSettings();
+        settings.url = server.url("/").toString();
+        server.enqueue(new MockResponse().setBody(
+                "{\"choices\":[{\"message\":{\"content\":null}}]}"));
+
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<String> outcome = new AtomicReference<>("pending");
+        newProcessor(settings, new Object()).process("raw", callback("ok:", "err:", outcome, done));
+
+        assertTrue(done.await(5, TimeUnit.SECONDS));
+        assertEquals("err:Empty response from AI", outcome.get());
+    }
+
+    @Test
+    public void diagnosticConnectionTestRunsWhenFeatureIsDisabled() throws Exception {
+        FakeSettings settings = new FakeSettings();
+        settings.enabled = false;
+        settings.url = server.url("/").toString();
+        server.enqueue(new MockResponse().setBody(completionJson("POSTPROCESS_DIAGNOSTIC_OK")));
+
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<String> outcome = new AtomicReference<>("pending");
+        newProcessor(settings, new Object()).testConnection(
+                callback("ok:", "err:", outcome, done));
+
+        assertTrue(done.await(5, TimeUnit.SECONDS));
+        assertEquals("ok:POSTPROCESS_DIAGNOSTIC_OK", outcome.get());
+        RecordedRequest request = server.takeRequest(2, TimeUnit.SECONDS);
+        assertNotNull(request);
+        JSONObject body = new JSONObject(request.getBody().readUtf8());
+        assertFalse("diagnostic request must remain non-streaming", body.getBoolean("stream"));
+        String payload = body.toString();
+        assertTrue("diagnostic marker instruction must be sent",
+                payload.contains("POSTPROCESS_DIAGNOSTIC_OK"));
+        assertTrue("diagnostic request must not contain a user transcript",
+                payload.contains("This is a diagnostic post-processing test."));
+    }
+
+    @Test
+    public void providerErrorMessageRedactsCredentialLikeValues() throws Exception {
+        FakeSettings settings = new FakeSettings();
+        settings.url = server.url("/").toString();
+        server.enqueue(new MockResponse().setResponseCode(401).setBody(
+                "{\"error\":{\"message\":\"invalid Bearer sk-secret-token\"}}"));
+
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<String> outcome = new AtomicReference<>("pending");
+        newProcessor(settings, new Object()).process("raw",
+                callback("ok:", "err:", outcome, done));
+
+        assertTrue(done.await(5, TimeUnit.SECONDS));
+        assertTrue(outcome.get().contains("API Error 401"));
+        assertFalse("credential must not reach the caller-facing diagnostic",
+                outcome.get().contains("sk-secret-token"));
+        assertFalse("bearer value must not reach the caller-facing diagnostic",
+                outcome.get().contains("Bearer sk-secret-token"));
+        assertTrue(outcome.get().contains("[redacted]"));
+    }
+
+    @Test
     public void productionClientAppliesTimeoutGuarantees() {
         // The exact guarantee users get on device: 30 s to connect, 60 s
         // read/write for the complete non-streaming response. Asserting the
@@ -226,7 +287,7 @@ public class PostProcessorTest {
         try {
             FakeSettings settings = new FakeSettings();
             settings.url = server.url("/").toString();
-            server.enqueue(new MockResponse().setBodyDelay(5, TimeUnit.SECONDS)
+            server.enqueue(new MockResponse().setHeadersDelay(5, TimeUnit.SECONDS)
                     .setBody(completionJson("late")));
 
             CountDownLatch done = new CountDownLatch(1);
@@ -322,14 +383,16 @@ public class PostProcessorTest {
     public void httpErrorReportsApiError() throws Exception {
         FakeSettings settings = new FakeSettings();
         settings.url = server.url("/").toString();
-        server.enqueue(new MockResponse().setResponseCode(500).setBody("boom"));
+        server.enqueue(new MockResponse().setResponseCode(500).setBody(
+                "{\"error\":{\"message\":\"provider says model is unavailable\"}}"));
 
         CountDownLatch done = new CountDownLatch(1);
         AtomicReference<String> outcome = new AtomicReference<>("pending");
         newProcessor(settings, new Object()).process("raw", callback("ok:", "err:", outcome, done));
 
         assertTrue(done.await(5, TimeUnit.SECONDS));
-        assertEquals("err:API Error 500", outcome.get());
+        assertEquals("err:API Error 500: provider rejected the request: provider says model is unavailable",
+                outcome.get());
     }
 
     @Test

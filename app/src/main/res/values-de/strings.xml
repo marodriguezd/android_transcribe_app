@@ -125,6 +125,9 @@
     <string name="pp_prompt">System-Prompt</string>
     <string name="pp_save">Speichern</string>
     <string name="pp_saved">Einstellungen gespeichert</string>
+    <string name="pp_test_connection">Nachbearbeitung testen</string>
+    <string name="pp_test_success">Nachbearbeitung funktioniert</string>
+    <string name="pp_test_error">Nachbearbeitungstest fehlgeschlagen: %1$s</string>
 
     <!-- Benutzerwörterbuch (Fork-Zusatz): phonetische Nachbearbeitung -->
     <string name="cw_card_title">Eigene Wörter</string>

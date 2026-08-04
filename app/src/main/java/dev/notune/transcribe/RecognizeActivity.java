@@ -235,7 +235,9 @@ public class RecognizeActivity extends AppCompatActivity {
                     @Override
                     public void onError(String error) {
                         if (sessionId != currentSessionId) return;
-                        Log.w(TAG, "Post-processing failed, delivering raw text: " + error);
+                        if (BuildConfig.DEBUG) {
+                            Log.w(TAG, "Post-processing failed, delivering raw text: " + error);
+                        }
                         deliverResult(text);
                     }
                 });

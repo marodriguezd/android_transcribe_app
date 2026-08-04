@@ -6,6 +6,12 @@ al trabajar en este repo. Funciona como una **conversación durable** entre
 sesiones: lo que se consigue, lo que se está haciendo y lo que se ha hecho no
 se pierde al cerrar la conversación porque vive en `git`.
 
+## Language (2026-08-04)
+
+Maintainer decision: new and updated documents in this folder are written in
+**English**. Historical documents in Spanish remain as recorded history — keep
+them unchanged; only add English sections or new English files.
+
 ## Cómo usar estos ficheros (orden de lectura al abrir el repo)
 
 1. **`progress.md`** — primero. Refleja el estado actual, lo que está en

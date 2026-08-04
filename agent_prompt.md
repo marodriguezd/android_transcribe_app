@@ -1,110 +1,106 @@
-# agent_prompt.md — Instrucciones para el siguiente agente
+# agent_prompt.md — Instructions for the next agent
 
-> Lee primero `AGENTS.md`, `GAUNTLETE_PLAN.md`, `.agents/progress.md`,
-> `memory/gauntlet-p0-implemented-2026-08-03.md` y la auditoría
+> Read first: `AGENTS.md`, `GAUNTLETE_PLAN.md`, `.agents/progress.md`,
+> `memory/release-0.1.24-prep-2026-08-04.md`,
+> `memory/gauntlet-p0-implemented-2026-08-03.md` and the audit
 > `memory/static-audit-debt-2026-08-03.md`.
 >
-> El repositorio está en **Guantelete ABIERTO**: los bloqueadores P0 y las
-> líneas P1.1–P1.3 están **implementados** y gateados por JVM (32 tests);
-> `assembleDebug` y `lintDebug` quedaron **validados en CI** el 2026-08-03
-> (runs `30859369221`/`30859370506` del fix `aa08a08`, APK v0.1.24 a Telegram).
-> Pendientes: `checkModels`/release, Rust real y smoke en dispositivo. No
-> confundas implementación con validación ejecutada en CI o hardware.
+> The repository is on the **v0.1.24 release track**. The P0 blockers and
+> P1.1–P1.3 are implemented and gated by JVM (**34 tests** since 2026-08-04:
+> the DNS-failure and connect-timeout tests closed the P1.5 JVM harness);
+> `assembleDebug` and `lintDebug` were validated in CI on 2026-08-03 (runs
+> `30859369221`/`30859370506`, fix `aa08a08`). Do not confuse implementation
+> with executed CI/hardware validation.
 
-## Ya implementado (2026-08-03) — no rehacer
+## Already implemented — do not redo
 
-- P0.1: cancelación del postprocesado por propietario (`CallRegistry` +
-  `cancelAllFor(owner)`; `cancelAll()` global sólo para shutdown real).
-- P0.2: generación de sesión para el worker de subtítulos (`GENERATION` en
-  `subtitle.rs`; reset de ventana y `mSubtitleText=null` en Java).
-- P0.3: SHA-256 verificado antes de activar la descarga runtime debug
+- P0.1: owner-scoped post-processing cancellation (`CallRegistry` +
+  `cancelAllFor(owner)`; global `cancelAll()` only for real shutdown).
+- P0.2: subtitle worker session generations (`GENERATION` in `subtitle.rs`).
+- P0.3: SHA-256 verified before activating the debug runtime download
   (`FileSha256` + `MainActivity`).
-- P0.4: toolchain unificada (NDK 28.0.13004108; `ndkPrebuiltDir()`).
-- P1.1: operation-id en `transcribe_file.rs`/`TranscribeFileActivity`.
-- P1.2: markers atómicos (temp único por escritura en `MarkerFileHelper`;
-  `ModelsActivity`/`App`/`MainActivity` centralizados).
-- P1.3: suite HTTP/JVM del postprocesado (`PostProcessorTest`, 8 tests con
-  MockWebServer) vía seam `PostProcessorSettings` (SettingsManager lo
-  implementa en producción) + timeout real de OkHttp por seam con client de
-  valores escalados (`setSharedClientForTests`).
-- Tests: `CallRegistryTest`, `MarkerAtomicityTest`, `FileSha256Test`,
-  `PostProcessorTest` — 32 tests JVM verdes localmente (2026-08-03).
+- P0.4: unified toolchain (NDK 28.0.13004108; `ndkPrebuiltDir()`).
+- P1.1: operation-id in `transcribe_file.rs`/`TranscribeFileActivity`.
+- P1.2: atomic markers (unique temp per write in `MarkerFileHelper`).
+- P1.3: HTTP/JVM post-processor suite (10 tests) via the
+  `PostProcessorSettings` seam + scaled-client timeout seam.
+- **2026-08-04 hardening:** transcript/PP-error logs gated behind
+  `BuildConfig.DEBUG`; `ModelsActivity` import name sanitization + weak-ref
+  UI dispatch; defensive IME cleanup; signing warnings; CI gates
+  (`cargo fmt --check`, `checkModels` on debug, release APK
+  zipalign/apksigner verification).
+- Tests: 34 JVM tests green expected (`testDebugUnitTest`).
 
-## Siguiente: validación y deuda restante
+## Next: validation and remaining debt
 
-### P1.3 — resto pendiente
+### JVM (complete)
 
-La suite HTTP/JVM está cerrada (payload, `stream:false`, `${output}`, JSON
-inválido, HTTP error, toggle-off, fallback y timeout real de OkHttp por seam —
-exactamente una entrega final por sesión). Los valores de producción
-(30 s/60 s/60 s) se asertan en JVM; lo que queda fuera del harness es el
-**transcurso wall-clock** de esos timeouts (esperar 60 s en CI no aporta) y el
-comportamiento de red real (DNS, TLS, latencia del proveedor) → smoke de PP
-con proveedor real en dispositivo (**P1.5** — checklist detallado en la
-auditoría §P1.5).
+The harness now covers: payload, `stream:false`, `${output}` once, invalid
+JSON, HTTP error, toggle-off during flight, exactly one delivery, real OkHttp
+read timeout by seam, **real DNS failure (`.invalid`)**, and **real connect
+timeout (`192.0.2.1`, scaled client)**. Production values (30 s/60 s/60 s)
+are asserted as applied values; wall-clock durations stay out of the harness.
 
-### Pendientes JVM (viabilidad 2026-08-04)
+### Device-only (P1.4/P1.5)
 
-Antes del smoke, cerrar el harness con **2 tests más** en `PostProcessorTest`
-(ambos ejecutables sin dispositivo): (1) DNS fail real con host `.invalid` →
-`UnknownHostException` → fallback a texto crudo; (2) connect timeout por seam
-con client escalado contra IP TEST-NET `192.0.2.1` → `onError`. El resto de
-P1.5 (wall-clock 30 s/60 s, TLS real, broadcast `CANCEL_PP` al `:ime`, IME no
-bloqueado, superficies concurrentes, fugas, latencia end-to-end) y **todo
-P1.4** requieren dispositivo — ver
-`memory/p14-p15-feasibility-2026-08-04.md`.
+- P1.4: subtitles/MediaProjection lifecycle — Android 10–15 + one OEM ROM,
+  stop/restart, notification stop, revocation, overlay removal, AudioRecord
+  errors, zero callbacks after `cleanupNative`.
+- P1.5: post-processing with a real provider — production timeouts, TLS,
+  `CANCEL_PP` broadcast to `:ime`, IME never stuck in "Refining…", concurrent
+  surfaces, 10+ consecutive dictations without leaks, end-to-end latency.
+- Smoke of the six surfaces (popup, RecognitionService, IME, subtitles, file,
+  custom words) with streaming and non-streaming models.
 
-### P2 / CI / dispositivo
+### P2 / CI
 
-- ✅ `assembleDebug` y `lintDebug` validados en CI (2026-08-03, runs
-  `30859369221`/`30859370506` del fix `aa08a08`). Pendiente: `checkModels` en
-  CI (workflow release; el guard de `cargoNdkBuild` sigue siendo obligatorio).
-- `cargo test` real o bloqueo reproducible de `transcribe-cpp-sys` v0.1.3.
-- Smoke test de las seis superficies; especial atención a subtítulos
-  start/stop/start, revocación MediaProjection, descarga debug truncada y
-  PP con proveedor real (P1.5: timeouts 30 s/60 s, DNS/TLS, latencia,
-  toggle-off en vuelo y superficies concurrentes).
-- ✅ P2.4 hecho (2026-08-03): strings visibles migradas a los 7 locales (44
-  nuevas, gate PASS); excepción documentada: detalles de error de
-  `PostProcessor` (sin Context) y strings de protocolo JNI.
+- ⏳ `cargo fmt --all -- --check` and `checkModels` added to workflows
+  (2026-08-04) — still to be exercised on a push.
+- ⏳ `assembleRelease` + `checkModels` + signature/alignment verification in
+  the release workflow.
+- ⏳ Full-crate `cargo test` or a documented reproducible block of
+  `transcribe-cpp-sys v0.1.3`.
+- ⏳ Version/tag sequence for v0.1.24 (versionCode 26; tag `v0.1.24`).
 
-## Reglas a respetar al tocar lo implementado
+## Rules to respect when touching implemented code
 
-- Preservar `CallRegistry` (owner por identidad, `NO_OWNER` sentinel) y la
-  separación global vs owner-scoped de `cancelAll`.
-- Preservar la generación de subtítulos: no reintroducir entregas de workers
-  viejos ni quitar los re-checks antes de transcribir/deliver.
-- No activar un modelo sin verificar su hash; `active_model` siempre atómico.
-- No cambiar firmas JNI sin búsqueda global (transcribeAudio ya lleva opId).
-- No eliminar `catch_unwind` ni recuperación de Mutex poison.
-- No cachear `model_language` dentro de `Engine`.
-- No subir umbrales de subtítulos sin hardware lento.
-- No declarar “BUILD SUCCESSFUL” sin salida real ni “Guantelete cerrado”
-  mientras queden P0 sin validar en CI/dispositivo.
+- Preserve `CallRegistry` (identity owners, `NO_OWNER` sentinel) and the
+  global-vs-owner-scoped separation of `cancelAll`.
+- Preserve subtitle generations: never reintroduce stale worker deliveries or
+  remove the re-checks before transcribing/delivering.
+- Never activate a model without verifying its hash; `active_model` stays
+  atomic.
+- Never log transcribed text in release builds (`BuildConfig.DEBUG` gating).
+- Do not change JNI signatures without a global search (`transcribeAudio`
+  already carries opId).
+- Do not remove `catch_unwind` or Mutex-poison recovery.
+- Do not cache `model_language` inside `Engine`.
+- Do not raise subtitle thresholds without slow hardware.
+- Do not declare "BUILD SUCCESSFUL" without real output, nor "Gauntlet
+  closed" while any P0 lacks CI/device validation.
 
-## Prioridad P2
+## P2 priorities
 
-- habilitar `cargo test` real o documentar bloqueo reproducible de
-  `transcribe-cpp-sys` en CI;
-- `cargo fmt --all -- --check` del Rust tocado;
-- smoke/instrumentation matrix de las seis superficies;
-- ✅ migrar strings hardcodeadas visibles a recursos (P2.4, 2026-08-03);
-- conservar evidencia fechada de cada gate.
+- Exercise the new CI gates (`cargo fmt --check`, `checkModels`) on a push;
+- run the release workflow end-to-end on a `v0.1.24` tag with keystore
+  secrets and keep the `apksigner verify` evidence;
+- smoke/instrumentation matrix of the six surfaces;
+- keep dated evidence for every gate.
 
-## Prohibiciones
+## Prohibitions
 
-- No cambiar firmas JNI sin búsqueda global y actualización de Java/Rust.
-- No eliminar `catch_unwind` ni recuperación de Mutex poison.
-- No cachear `model_language` dentro de `Engine`.
-- No subir umbrales de subtítulos sin hardware lento.
-- No activar un modelo antes de verificar su hash.
-- No declarar “BUILD SUCCESSFUL” sin salida real del comando.
-- No declarar “Guantelete cerrado” mientras exista cualquier P0 abierto.
+- No JNI signature changes without a global search and Java/Rust updates.
+- No removing `catch_unwind` or Mutex-poison recovery.
+- No caching `model_language` inside `Engine`.
+- No raising subtitle thresholds without slow hardware.
+- No activating a model before verifying its hash.
+- No raw transcript in production logs.
+- No "BUILD SUCCESSFUL" without real command output; no "Gauntlet closed"
+  while any P0 is open.
 
-## Validación final prevista
+## Final validation planned
 
-Las invocaciones deben ejecutarse en CI/host autorizado, separadas según el
-workflow:
+Run in CI/authorized host, as separate invocations per workflow:
 
 ```bash
 python3 scripts/check_translations.py
@@ -112,10 +108,11 @@ python3 scripts/check_translations.py
 ./gradlew assembleDebug
 ./gradlew lintDebug
 ./gradlew checkModels
-cargo test
 cargo fmt --all -- --check
+cargo test
 ```
 
-Después: smoke test de popup, RecognitionService, IME, subtítulos, archivo y
-custom words con modelo streaming y no streaming, PP desactivado/activado/
-fallido, cancelación rápida, cambio de idioma y proceso `:ime`.
+Then: device smoke of popup, RecognitionService, IME, subtitles, file and
+custom words with streaming and non-streaming models, PP off/on/failed, fast
+cancel, language change and the `:ime` process — and only then the
+`v0.1.24` tag + release.

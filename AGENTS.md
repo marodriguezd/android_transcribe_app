@@ -5,6 +5,11 @@
 > **Repo:** `android_transcribe_app` (fork de `notune/android_transcribe_app`)
 > **Tipo:** App Android de transcripción de voz *offline* con opción de post-procesado con IA.
 > **Versión declarada actualmente en Gradle:** 0.1.24 (`versionCode 25`, ver `app/build.gradle.kts`). La versión realmente publicada debe comprobarse en tags/releases; no asumir que coincide con este fichero.
+>
+> **Idioma (decisión 2026-08-04):** los ficheros agénticos nuevos/actualizados
+> (`.agents/`, `agent_prompt.md`) se escriben en **inglés**; este `AGENTS.md`
+> conserva su idioma histórico. Cualquier sección nueva que añadas aquí puede
+> ir en inglés.
 
 > **Scope:** este archivo documenta el **contrato de implementación** (versiones
 > pinneadas, handshake JNI, reglas críticas, plantillas de nuevos componentes).
@@ -112,7 +117,9 @@ Post-procesado IA (fork addition): opcional, *off-line-by-default*, refina texto
 - **Java:** Sigue las convenciones de §4.
 - **Rust:** Sigue el estilo inline existente (4 espacios, `rustfmt` por defecto).
 - **Gates configurados / evidencia (Guantelete ABIERTO):**
-  - `testDebugUnitTest`: **32 tests JVM verdes** verificados localmente el 2026-08-03 (`BUILD SUCCESSFUL`): markers/subtitle prefs + `CallRegistryTest` (cancelación por owner) + `MarkerAtomicityTest` (lecturas concurrentes) + `FileSha256Test` + `PostProcessorTest` (suite HTTP P1.3: payload, `stream:false`, `${output}` una vez, errores, fallback y timeout real de OkHttp por seam con valores escalados; los 30 s/60 s de producción se asertan, no se esperan en wall-clock).
+  - `testDebugUnitTest`: **34 tests JVM verdes** (`BUILD SUCCESSFUL`, último run 2026-08-04): markers/subtitle prefs + `CallRegistryTest` (cancelación por owner) + `MarkerAtomicityTest` (lecturas concurrentes) + `FileSha256Test` + `PostProcessorTest` (suite HTTP P1.3 — payload, `stream:false`, `${output}` una vez, errores, fallback, timeout real de OkHttp por seam con valores escalados — **más DNS fail real con host `.invalid` y connect timeout por seam contra `192.0.2.1` desde 2026-08-04**; los 30 s/60 s de producción se asertan, no se esperan en wall-clock).
+  - **Privacidad (2026-08-04):** el transcript crudo y los detalles de error del post-procesado **no se loguean en release** (gating con `BuildConfig.DEBUG`). No reintroducir logs de texto transcrito sin gate de debug.
+  - **Gates CI (2026-08-04):** `cargo fmt --all -- --check` es gate duro en ambos workflows; `checkModels` también corre en el workflow debug; el workflow release falla rápido si falta `KEYSTORE_BASE64` y verifica `zipalign -c` + `apksigner verify` del APK antes de publicar.
   - `checkModels` verifica SHA-256 de assets bundled presentes; es no-op cuando falta el asset. La descarga runtime debug **también** verifica SHA-256 antes de activar `active_model` (P0.3, `FileSha256`), pendiente de smoke en dispositivo.
   - `scripts/check_translations.py` comprueba paridad de nombres en 6 locales alternativos; no detecta todas las cadenas hardcodeadas en Java. P2.4 (2026-08-03): las strings visibles de Java/layouts están migradas a recursos (44 nuevas, gate PASS); excepción documentada para los detalles de error de `PostProcessor` (sin `Context`, seam JVM) y las strings de protocolo JNI que usa la máquina de estados como comparadores.
   - `lintDebug` está configurado como hard gate en debug CI; pendiente de una ejecución actual tras los cambios del 2026-08-03.

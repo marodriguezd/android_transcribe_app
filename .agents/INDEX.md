@@ -42,6 +42,15 @@ escrito X?" sin navegar a ciegas.
 
 Se rellena conforme se acumulen sesiones de trabajo. Listado en orden cronológico inverso (lo más reciente primero):
 
+> **Language note (2026-08-04):** new/updated documents in this folder are
+> written in English (maintainer decision). Historical Spanish documents stay
+> as the recorded history; do not silently translate them.
+
+- [`memory/release-0.1.24-prep-2026-08-04.md`](./memory/release-0.1.24-prep-2026-08-04.md) —
+  v0.1.24 release preparation: privacy logging, model-import hardening,
+  CI gates (rustfmt/checkModels/APK verification), JVM harness closure
+  (DNS fail + connect timeout, 34 tests), English publication metadata and
+  the maintainer decisions behind them.
 - [`memory/p14-p15-feasibility-2026-08-04.md`](./memory/p14-p15-feasibility-2026-08-04.md) —
   clasificación de los checklists P1.4/P1.5 según qué pasos son ejecutables
   desde el entorno actual (sin dispositivo físico) y cuáles requieren

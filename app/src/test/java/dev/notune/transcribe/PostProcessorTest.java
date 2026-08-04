@@ -28,6 +28,14 @@ import static org.junit.Assert.assertTrue;
  * handling of success/empty/HTTP-error responses and of the toggle-off
  * during-flight fallback to the raw transcript.
  *
+ * <p>Since 2026-08-04 the harness also closes the two remaining network
+ * scenarios that do not need hardware (P1.5): a real DNS failure against
+ * the RFC 6761 reserved {@code .invalid} host, and a real OkHttp connect
+ * timeout against the TEST-NET address {@code 192.0.2.1} with a
+ * test-scaled client. Both exercise genuine network/OkHttp mechanisms on
+ * the JVM and assert the caller-facing {@code onError} contract (the
+ * surfaces then deliver the raw transcript).</p>
+ *
  * <p>Uses the package-private {@link PostProcessor.PostProcessorSettings}
  * seam with a fake settings object, so no Android Context or framework
  * classes are involved — matching the Guantelette JVM-test harness.</p>
@@ -232,6 +240,66 @@ public class PostProcessorTest {
                     outcome.get().startsWith("err:"));
             assertTrue("expected socket timeout message, got " + outcome.get(),
                     outcome.get().contains("timeout"));
+        } finally {
+            PostProcessor.resetSharedClientForTests();
+        }
+    }
+
+    @Test
+    public void dnsFailureReportsError() throws Exception {
+        // RFC 6761 reserves the .invalid TLD: resolution is guaranteed to
+        // fail, so this exercises a real UnknownHostException (DNS failure)
+        // without depending on any particular network configuration. A
+        // scaled client bounds the test even if a runner's resolver hangs.
+        PostProcessor.setSharedClientForTests(new OkHttpClient.Builder()
+                .connectTimeout(2, TimeUnit.SECONDS)
+                .readTimeout(5, TimeUnit.SECONDS)
+                .writeTimeout(5, TimeUnit.SECONDS)
+                .build());
+        try {
+            FakeSettings settings = new FakeSettings();
+            settings.url = "https://no-such-host.invalid/v1";
+
+            CountDownLatch done = new CountDownLatch(1);
+            AtomicReference<String> outcome = new AtomicReference<>("pending");
+            newProcessor(settings, new Object()).process("raw",
+                    callback("ok:", "err:", outcome, done));
+
+            assertTrue("DNS failure callback must fire", done.await(10, TimeUnit.SECONDS));
+            // The contract surfaces onError; the caller (IME/popup/...) then
+            // delivers the raw transcript as fallback.
+            assertTrue("expected a DNS/connect error, got " + outcome.get(),
+                    outcome.get().startsWith("err:"));
+        } finally {
+            PostProcessor.resetSharedClientForTests();
+        }
+    }
+
+    @Test
+    public void connectTimeoutReportsError() throws Exception {
+        // TEST-NET (RFC 5737) 192.0.2.1 is guaranteed unroutable; with a
+        // 500 ms connect timeout the OkHttp connect phase must time out
+        // instead of succeeding, exercising the real SocketTimeoutException
+        // path (the production connect timeout is 30 s — see
+        // productionClientAppliesTimeoutGuarantees; waiting it out would
+        // stall CI, so this uses a scaled client via the seam).
+        PostProcessor.setSharedClientForTests(new OkHttpClient.Builder()
+                .connectTimeout(500, TimeUnit.MILLISECONDS)
+                .readTimeout(2, TimeUnit.SECONDS)
+                .writeTimeout(2, TimeUnit.SECONDS)
+                .build());
+        try {
+            FakeSettings settings = new FakeSettings();
+            settings.url = "http://192.0.2.1/v1";
+
+            CountDownLatch done = new CountDownLatch(1);
+            AtomicReference<String> outcome = new AtomicReference<>("pending");
+            newProcessor(settings, new Object()).process("raw",
+                    callback("ok:", "err:", outcome, done));
+
+            assertTrue("connect timeout callback must fire", done.await(10, TimeUnit.SECONDS));
+            assertTrue("expected a connect timeout error, got " + outcome.get(),
+                    outcome.get().startsWith("err:"));
         } finally {
             PostProcessor.resetSharedClientForTests();
         }

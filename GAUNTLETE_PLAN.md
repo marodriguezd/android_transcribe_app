@@ -12,7 +12,7 @@
 
 El 2026-08-03 se implementaron los cuatro bloqueadores P0 y las líneas P1.1–P1.3
 (ver [`memory/gauntlet-p0-implemented-2026-08-03.md`](.agents/memory/gauntlet-p0-implemented-2026-08-03.md)).
-`testDebugUnitTest` (32 tests), translations y rustfmt de los ficheros tocados
+`testDebugUnitTest` (34 tests), translations y rustfmt de los ficheros tocados
 pasaron localmente; `assembleDebug` y `lintDebug` quedaron **validados en CI**
 el 2026-08-03 (runs `30859369221`/`30859370506` del fix `aa08a08`, APK
 `app-debug-apk-v0.1.24` enviado a Telegram). Pendientes de CI/hardware:
@@ -36,7 +36,7 @@ su evidencia para cada cambio relevante:
 
 | Gate | Qué cubre | Limitación conocida |
 |---|---|---|
-| `testDebugUnitTest` | 32 tests JVM (markers/subtitle prefs + cancelación por owner + atomicidad de markers + SHA-256 + suite HTTP del postprocesado con timeout real por seam) | No cubre JNI, engine ni lifecycle Android; los timeouts de producción (30 s/60 s) se asertan pero no se esperan en wall-clock |
+| `testDebugUnitTest` | 34 tests JVM (markers/subtitle prefs + cancelación por owner + atomicidad de markers + SHA-256 + suite HTTP del postprocesado con timeout real por seam + DNS fail real con host `.invalid` y connect timeout por seam contra `192.0.2.1` desde 2026-08-04) | No cubre JNI, engine ni lifecycle Android; los timeouts de producción (30 s/60 s) se asertan pero no se esperan en wall-clock |
 | `checkModels` | SHA-256 de assets bundled presentes | No cubre la descarga runtime debug si no se añade su hash |
 | `scripts/check_translations.py` | Paridad de nombres en seis locales alternativos | No detecta todas las cadenas hardcodeadas en Java |
 | `lintDebug` | Lint del variant debug | No sustituye pruebas de dispositivo ni garantiza release |
@@ -57,7 +57,7 @@ su evidencia para cada cambio relevante:
 - **Estado: implementado 2026-08-03.** `CallRegistry` con owner por identidad;
   `cancelAllFor(owner)` en las cinco superficies; `cancelAll()` global sólo para
   shutdown real / toggle PP-off. Tests: `CallRegistryTest` (4, MockWebServer)
-  + `PostProcessorTest` (8, P1.3) verdes. Pendiente: smoke de PP concurrente en
+  + `PostProcessorTest` (10, P1.3) verdes. Pendiente: smoke de PP concurrente en
   dispositivo.
 
 ### P0.2 Subtítulos: worker generacional y cleanup determinista
@@ -113,7 +113,7 @@ Pendiente: verificación de host ARM64 o su límite documentado en README.
 2. ✅ **Markers** (2026-08-03): toda escritura pasa por `MarkerFileHelper` con
    temp único por escritura + fsync + rename; lecturas concurrentes testeadas
    (MarkerAtomicityTest).
-3. ✅ **Postprocesado** (2026-08-03, P1.3): `PostProcessorTest` (8 tests JVM
+3. ✅ **Postprocesado** (2026-08-03, P1.3): `PostProcessorTest` (10 tests JVM
    con MockWebServer) cubre URL/payload `/chat/completions` con `stream:false`,
    `${output}` inyectado una sola vez, transcript como user message sin marcador,
    respuesta vacía/JSON inválida/HTTP error → error + fallback, toggle-off en
@@ -132,9 +132,9 @@ Pendiente: verificación de host ARM64 o su límite documentado en README.
    OpenAI-compatible real: timeouts de producción (30 s connect / 60 s
    read/write), DNS, TLS, latencia, toggle-off en vuelo (broadcast
    `CANCEL_PP` al `:ime`), superficies concurrentes y fallback a texto crudo —
-   checklist completo en la auditoría (§P1.5). Viabilidad 2026-08-04: 7 de 12
-   escenarios ya cubiertos en JVM; **2 tests JVM pendientes** (DNS fail,
-   connect timeout por seam) que cierran el harness antes del smoke; 5 quedan
+   checklist completo en la auditoría (§P1.5). Viabilidad 2026-08-04: 9 de 12
+   escenarios ya cubiertos en JVM (**DNS fail y connect timeout añadidos el
+   2026-08-04**, cerrando el harness); 5 quedan
    solo-dispositivo.
 
 ## 5. Deuda P2 — cobertura del Guantelete

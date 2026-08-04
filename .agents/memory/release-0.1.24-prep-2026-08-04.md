@@ -38,7 +38,7 @@ User decisions (2026-08-04):
 
 ### Publication metadata
 
-- `RELEASE_NOTES.md` fully in English: new **Unreleased** section (privacy, final-only PP, isolation, CI hardening) plus historical v0.1.19–v0.1.24 notes.
+- `RELEASE_NOTES.md` fully in English: new **v0.1.24** section (privacy, final-only PP, isolation, CI hardening) plus historical v0.1.19–v0.1.23 notes (re-headed from `# Unreleased` to `# v0.1.24 — release hardening (2026-08-04)` in the release commit).
 - `CHANGELOG.md`: v0.1.24 section in English; historical sections left as-is.
 - `fastlane/metadata/android/en-US/changelogs/26.txt`: new store changelog for `versionCode 26`.
 - `README.md`: corrected the built-in-model language claim (40 locales, not 4) and clarified the debug-model download.
@@ -58,7 +58,7 @@ User decisions (2026-08-04):
 ## Remaining work for a closed v0.1.24
 
 - Device smoke of the six surfaces (P1.4 subtitles/MediaProjection lifecycle, P1.5 post-processing with a real provider).
-- Decide and execute the version/tag sequence: `versionCode 26` + tag `v0.1.24` (still pending — do not tag without release evidence).
+- Tag `v0.1.24` + signed release: `versionCode 26` is committed in the release commit (2026-08-04); the tag is created **only after the user validates the debug APK** (run `30897003634`), and the release workflow then produces the signed APK with `apksigner`/`zipalign` evidence.
 - `cargo test` of the full crate or a documented reproducible block of `transcribe-cpp-sys v0.1.3`.
 - Final README/AGENTS consistency pass in English.
 
@@ -78,5 +78,7 @@ User decisions (2026-08-04):
 - Run `30895862658` (push `625ad68`, "Debug APK → Telegram") **failed at step 14 `testDebugUnitTest`**.
 - Root cause: `BuildConfig.DEBUG` used in 4 production files (`RecognizeActivity`, `VoiceRecognitionService`, `TranscribeFileActivity`, `RustInputMethodService`) but AGP 8.x does not generate `BuildConfig` unless `buildFeatures.buildConfig = true`. Clean CI build → unresolved symbol.
 - Secondary latent issue caught while fixing: the two new network tests could be made flaky by runner proxies; made deterministic (lesson 5).
-- Fix commits: (to be listed after push) — `buildConfig = true` + deterministic network tests.
+- Fix commits: `7b62942` — `buildConfig = true` + deterministic network tests (injected DNS + `NO_PROXY`; the `InetAddress` import was also missing in the first attempt).
 - Local re-validation: `testDebugUnitTest` → BUILD SUCCESSFUL, 34/34 tests green with `HTTP_PROXY`/`HTTPS_PROXY` set to an unreachable proxy.
+- Green re-run: push `7b62942` triggered run `30897003634` → all 21 steps success (incl. `cargo fmt --check`, translations, 34 JVM tests, `assembleDebug`, `lintDebug`, `checkModels`), APK sent to Telegram.
+- Release commit (2026-08-04): `versionCode 26`, `RELEASE_NOTES.md` re-headed to `# v0.1.24`; tag `v0.1.24` deliberately **not** created (pending device validation).

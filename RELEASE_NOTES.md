@@ -1,9 +1,7 @@
-# Unreleased
+# v0.1.24 — release hardening (2026-08-04)
 
-## v0.1.24 — release hardening
-
-> These notes are the ones the `v0.1.24` tag will publish (the release workflow
-> reads `RELEASE_NOTES.md` via `body_path`). Fork of
+> Release notes published by the `v0.1.24` tag (the release workflow reads
+> `RELEASE_NOTES.md` via `body_path`). `versionCode 26`. Fork of
 > [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app).
 
 ### 🔒 Transcript privacy in production logs

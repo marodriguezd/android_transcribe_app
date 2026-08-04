@@ -4,6 +4,7 @@
 
 ## 🟢 Recently completed
 
+- **2026-08-04 — CI green on the privacy work:** run `30897003634` passed every gate — `cargo fmt --check`, translations, **34 JVM tests**, `assembleDebug`, `lintDebug`, `checkModels` — and sent the APK to Telegram. The earlier run `30895862658` failed because AGP 8.x disables `BuildConfig` generation by default; fixed with `buildFeatures { buildConfig = true }` and the network tests were made deterministic (injected DNS + `NO_PROXY`), so they pass even under a runner proxy.
 - **2026-08-04 — v0.1.24 release hardening:** privacy logging (`BuildConfig.DEBUG` gating for transcripts/PP errors), model-import hardening (`sanitizeModelFileName`, weak-ref UI dispatch), defensive IME cleanup, signing warnings, `cargo fmt --check` + `checkModels` CI gates, release APK verification (`zipalign`/`apksigner`), JVM harness closure (DNS fail + connect timeout, 34 tests total), English `RELEASE_NOTES`/`CHANGELOG`/store changelog, README language fix, agentic docs in English. Details: [`memory/release-0.1.24-prep-2026-08-04.md`](./memory/release-0.1.24-prep-2026-08-04.md).
 - **2026-08-04 — P1.4/P1.5 feasibility:** checklists classified by what is runnable without hardware; 2 JVM tests added to close the harness (see above); remaining scenarios require a device.
 - **2026-08-03 — CI green after the JObject fix:** runs `30859369221`/`30859370506` passed translations, unit tests, `assembleDebug` and `lintDebug`; APK `app-debug-apk-v0.1.24` sent to Telegram.
@@ -26,13 +27,12 @@ Implemented 2026-08-03, gated by JVM; `assembleDebug`/`lintDebug` confirmed in C
 - ⏳ **Device-only (P1.4/P1.5):** subtitle/MediaProjection lifecycle on Android 10–15 + one OEM ROM; post-processing with a real provider (production 30 s/60 s wall-clock, TLS, `CANCEL_PP` broadcast to `:ime`, concurrent surfaces, leaks, end-to-end latency); smoke of the six surfaces.
 - ⏳ Full-crate `cargo test` or a documented reproducible block of `transcribe-cpp-sys v0.1.3`.
 - ⏳ `rustfmt` full-scope check in CI (added as a hard gate 2026-08-04).
-- ⏳ Version/tag sequence for the v0.1.24 release (versionCode 26; tag `v0.1.24` pending release evidence).
+- ⏳ Version/tag sequence for the v0.1.24 release: **versionCode 26 committed** (2026-08-04, release commit); tag `v0.1.24` pending user validation of the debug APK (run `30897003634`).
 
 ## 🟡 Validation pending
 
-- ✅ translations, JVM tests, `assembleDebug`, `lintDebug` in CI (2026-08-03).
-- ⏳ `cargo fmt --all -- --check` and `checkModels` in CI (added 2026-08-04, not yet run on a push).
-- ⏳ `assembleRelease` + `checkModels` + signature/alignment verification in the release workflow.
+- ✅ translations, JVM tests (34), `assembleDebug`, `lintDebug`, `checkModels` and `cargo fmt --check` in CI on run `30897003634` (2026-08-04).
+- ⏳ `assembleRelease` + `checkModels` + signature/alignment verification in the release workflow (runs on the `v0.1.24` tag).
 - ⏳ Device smoke: popup, RecognitionService, IME, subtitles, file, custom words — streaming and non-streaming models, PP off/on/failed, fast cancel, language change, `:ime` process.
 
 ## 🔴 Known environment blocks

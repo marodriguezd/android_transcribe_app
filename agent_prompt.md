@@ -29,7 +29,7 @@
   UI dispatch; defensive IME cleanup; signing warnings; CI gates
   (`cargo fmt --check`, `checkModels` on debug, release APK
   zipalign/apksigner verification).
-- Tests: 34 JVM tests green expected (`testDebugUnitTest`).
+- Tests: 34 JVM tests green, confirmed in CI run `30897003634` (2026-08-04).
 
 ## Next: validation and remaining debt
 
@@ -54,13 +54,15 @@ are asserted as applied values; wall-clock durations stay out of the harness.
 
 ### P2 / CI
 
-- ⏳ `cargo fmt --all -- --check` and `checkModels` added to workflows
-  (2026-08-04) — still to be exercised on a push.
+- ✅ `cargo fmt --all -- --check` and `checkModels` exercised green on run
+  `30897003634` (2026-08-04).
 - ⏳ `assembleRelease` + `checkModels` + signature/alignment verification in
-  the release workflow.
+  the release workflow (runs on the `v0.1.24` tag).
 - ⏳ Full-crate `cargo test` or a documented reproducible block of
   `transcribe-cpp-sys v0.1.3`.
-- ⏳ Version/tag sequence for v0.1.24 (versionCode 26; tag `v0.1.24`).
+- ⏳ Version/tag sequence for v0.1.24: **versionCode 26 committed**
+  (2026-08-04); tag `v0.1.24` pending user validation of the debug APK
+  (run `30897003634`).
 
 ## Rules to respect when touching implemented code
 

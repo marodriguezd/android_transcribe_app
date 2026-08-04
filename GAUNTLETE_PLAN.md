@@ -15,7 +15,9 @@ El 2026-08-03 se implementaron los cuatro bloqueadores P0 y las líneas P1.1–P
 `testDebugUnitTest` (34 tests), translations y rustfmt de los ficheros tocados
 pasaron localmente; `assembleDebug` y `lintDebug` quedaron **validados en CI**
 el 2026-08-03 (runs `30859369221`/`30859370506` del fix `aa08a08`, APK
-`app-debug-apk-v0.1.24` enviado a Telegram). Pendientes de CI/hardware:
+`app-debug-apk-v0.1.24` enviado a Telegram). Para la preparación de 0.1.25,
+las mejoras posteriores a 0.1.24 ya están implementadas; siguen pendientes de
+CI/hardware:
 `checkModels` (workflow release), `assembleRelease`, Rust real y los smoke
 tests en dispositivo — sin ellos no se declara el Guantelete cerrado.
 
@@ -167,8 +169,9 @@ Pendiente: verificación de host ARM64 o su límite documentado en README.
    bloqueado por `transcribe-cpp-sys` v0.1.3).
 7. Ejecutar smoke test en dispositivo y conservar modelo, API, ABI, Android y
    logs (especialmente subtítulos start/stop/start, revocación MediaProjection,
-   PP concurrente, descarga debug truncada).
-8. Revisar docs y sólo entonces cambiar este estado a **CERRADO**.
+   PP concurrente, descarga debug truncada y cancelación rápida de transcripción).
+8. Revisar docs y sólo entonces cambiar este estado a **CERRADO**; la publicación
+   de 0.1.25 requiere además crear el tag `v0.1.25` para activar el workflow firmado.
 
 ## 7. Comandos/gates de cierre previstos
 

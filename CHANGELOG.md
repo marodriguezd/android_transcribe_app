@@ -4,6 +4,24 @@ Full change history of **android_transcribe_app** (fork of [notune/android_trans
 
 ---
 
+# v0.1.25
+
+Follow-up to v0.1.24 focused on usability and diagnostics (see [RELEASE_NOTES.md](RELEASE_NOTES.md) for the concise release notes):
+
+### 🎙️ Transcription cancellation
+- Added cancellation controls for voice-popup, IME keyboard, and file transcription flows.
+- Cancellation is routed through the existing generation/operation lifecycle so stale results are not delivered after a user stops an operation.
+
+### 📥 Model download visibility
+- Debug model downloads now report progress, giving users clear feedback while the speech model is fetched.
+- Download status text is localized across the supported app languages.
+
+### 🤖 Post-processing diagnostics
+- Provider and configuration failures now expose clearer diagnostics and error details in the post-processing settings flow.
+- The existing safe fallback remains in place: when refinement fails, the raw transcript is preserved.
+
+---
+
 # v0.1.24
 
 Release hardening for the 0.1.24 launch (see [RELEASE_NOTES.md](RELEASE_NOTES.md) for the full notes):

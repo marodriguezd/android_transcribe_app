@@ -1,3 +1,16 @@
+# v0.1.25 — usability and diagnostics (2026-08-04)
+
+`versionCode 27` — a focused follow-up to v0.1.24 that makes transcription easier to control, model downloads easier to follow, and post-processing failures easier to understand.
+
+- **Transcription controls:** cancel an in-progress voice, keyboard, or file transcription without waiting for it to finish.
+- **Model downloads:** debug builds now show download progress instead of appearing idle while fetching the speech model.
+- **AI post-processing:** clearer diagnostics and error details make provider or configuration problems easier to troubleshoot, while preserving the safe raw-transcript fallback.
+- **Stability and usability:** localized UI updates and small lifecycle improvements across the affected surfaces.
+
+Full historical release details are preserved in [`CHANGELOG.md`](CHANGELOG.md).
+
+---
+
 # v0.1.24 — release hardening (2026-08-04)
 
 `versionCode 26` — a focused hardening release for privacy, reliability and publication quality.

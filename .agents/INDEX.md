@@ -14,7 +14,7 @@ escrito X?" sin navegar a ciegas.
 | [`progress.md`](./progress.md) | **ESTADO** actual: en-curso, recién completado, bloqueos, próximos pasos | Tras cada commit relevante al trabajo IA |
 | [`../AGENTS.md`](../AGENTS.md) | **REGLAS** para IAs: JNI contract, marker files, anti-patterns críticos, plantillas | Cambios de **convenciones para agentes** |
 | [`../README.md`](../README.md) | **CARA** del proyecto para humanos: features, prerequisitos, screenshots, license | Cambios de cara/UI (semanas) |
-| [`../RELEASE_NOTES.md`](../RELEASE_NOTES.md) | **HISTORIAL** versionado de releases, una sección por `vX.Y.Z` | Por cada release (cada tag) |
+| [`../RELEASE_NOTES.md`](../RELEASE_NOTES.md) | **NOTAS DE LA RELEASE ACTUAL** que consume GitHub Actions | Al preparar una release; el historial completo vive en `CHANGELOG.md` |
 
 ## Reglas de oro
 

@@ -45,6 +45,9 @@ public class PostProcessor {
 
     /** Broadcast action used to cancel calls in the isolated IME process. */
     public static final String CANCEL_ACTION = "dev.notune.transcribe.CANCEL_PP";
+    /** Stable callback error used by settings UI to show a localized fix. */
+    public static final String MISSING_API_KEY_ERROR =
+            "API key required; open post-processing settings";
 
     /**
      * Timeouts for the shared production client: 30 s to reach a provider
@@ -249,6 +252,15 @@ public class PostProcessor {
 
         final String completionUrl = buildCompletionUrl(settings.getEffectiveApiUrl());
         final String apiKey = settings.getApiKey();
+        if (apiKey == null || apiKey.trim().isEmpty()) {
+            // An upgraded installation can legitimately have lost the legacy
+            // Keystore key. Fail before touching the network so release builds
+            // do not look like a broken provider and the raw transcript is
+            // delivered immediately by every caller. The diagnostic button
+            // uses the same guard, so it never sends an unauthenticated probe.
+            dispatchToUi(() -> callback.onError(MISSING_API_KEY_ERROR));
+            return;
+        }
         final String model = settings.getModelName();
         final String systemInstruction = settings.getActivePromptBody();
         final boolean injected = systemInstruction != null
@@ -483,6 +495,10 @@ public class PostProcessor {
         }
 
         String apiKey = settings.getApiKey();
+        if (apiKey == null || apiKey.trim().isEmpty()) {
+            dispatchToUi(() -> callback.onError(MISSING_API_KEY_ERROR));
+            return;
+        }
         final Request request;
         try {
             Request.Builder requestBuilder = new Request.Builder().url(modelsUrl).get();

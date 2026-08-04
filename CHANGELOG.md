@@ -4,9 +4,19 @@ Full change history of **android_transcribe_app** (fork of [notune/android_trans
 
 ---
 
+# v0.1.26
+
+Release post-processing fix for upgrades from versions that stored the API key in encrypted preferences:
+
+- Legacy encrypted API keys are migrated into the cross-process marker store when recoverable.
+- Missing/unrecoverable keys fail fast with a clear settings prompt; raw transcript fallback remains intact.
+- `/models` and connection diagnostics no longer send unauthenticated requests.
+
+---
+
 # v0.1.25
 
-Follow-up to v0.1.24 focused on usability and diagnostics (see [RELEASE_NOTES.md](RELEASE_NOTES.md) for the concise release notes):
+Follow-up to v0.1.24 focused on usability and diagnostics:
 
 ### 🎙️ Transcription cancellation
 - Added cancellation controls for voice-popup, IME keyboard, and file transcription flows.
@@ -24,7 +34,7 @@ Follow-up to v0.1.24 focused on usability and diagnostics (see [RELEASE_NOTES.md
 
 # v0.1.24
 
-Release hardening for the 0.1.24 launch (see [RELEASE_NOTES.md](RELEASE_NOTES.md) for the full notes):
+Release hardening for the 0.1.24 launch:
 
 ### 🔒 Transcript privacy
 - Raw transcripts and provider endpoints are no longer logged in release builds (`BuildConfig.DEBUG` gating); debug APKs keep the diagnostics.

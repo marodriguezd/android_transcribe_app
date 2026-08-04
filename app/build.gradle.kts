@@ -18,8 +18,8 @@ android {
         applicationId = "dev.notune.transcribe"
         minSdk = 26
         targetSdk = 34
-        versionCode = 27
-        versionName = "0.1.25"
+        versionCode = 28
+        versionName = "0.1.26"
         ndk {
             abiFilters += "arm64-v8a"
         }
@@ -135,6 +135,12 @@ dependencies {
     // AI post-processing layer (fork addition): HTTP client for the
     // OpenAI-compatible /chat/completions endpoint.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
+
+    // One-time compatibility migration for API keys saved by v0.1.19–v0.1.21
+    // in EncryptedSharedPreferences. New writes remain marker-file based; this
+    // dependency is retained so upgrades can recover the old key instead of
+    // silently turning post-processing into unauthenticated 401 requests.
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
     // Unit test harness
     testImplementation("junit:junit:4.13.2")

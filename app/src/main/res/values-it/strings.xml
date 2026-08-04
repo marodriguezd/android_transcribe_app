@@ -118,6 +118,7 @@
     <string name="pp_provider">Provider</string>
     <string name="pp_api_url">URL di base (compatibile con OpenAI)</string>
     <string name="pp_api_key">Chiave API</string>
+    <string name="pp_api_key_required">Inserisci una chiave API per usare il post-processing.</string>
     <string name="pp_model">Nome del modello</string>
     <string name="pp_refresh_models">Ottieni i modelli disponibili</string>
     <string name="pp_models_loaded">Modelli caricati — tocca il campo per sceglierne uno</string>

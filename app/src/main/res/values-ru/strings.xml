@@ -118,6 +118,7 @@
     <string name="pp_provider">Провайдер</string>
     <string name="pp_api_url">Базовый URL (совместимый с OpenAI)</string>
     <string name="pp_api_key">Ключ API</string>
+    <string name="pp_api_key_required">Введите ключ API, чтобы использовать постобработку.</string>
     <string name="pp_model">Название модели</string>
     <string name="pp_refresh_models">Получить доступные модели</string>
     <string name="pp_models_loaded">Модели загружены — коснитесь поля, чтобы выбрать</string>

@@ -1,25 +1,9 @@
-# v0.1.25 — usability and diagnostics (2026-08-04)
+# v0.1.26 — release post-processing fix (2026-08-04)
 
-`versionCode 27` — a focused follow-up to v0.1.24 that makes transcription easier to control, model downloads easier to follow, and post-processing failures easier to understand.
+`versionCode 28` — fixes post-processing after upgrading from releases that stored the API key in encrypted preferences.
 
-- **Transcription controls:** cancel an in-progress voice, keyboard, or file transcription without waiting for it to finish.
-- **Model downloads:** debug builds now show download progress instead of appearing idle while fetching the speech model.
-- **AI post-processing:** clearer diagnostics and error details make provider or configuration problems easier to troubleshoot, while preserving the safe raw-transcript fallback.
-- **Stability and usability:** localized UI updates and small lifecycle improvements across the affected surfaces.
+- **API-key migration:** recovers legacy encrypted API keys into the cross-process marker store when possible.
+- **Safe fallback:** if Android cannot recover the old key, refinement fails immediately with a clear instruction instead of sending an unauthenticated request; the raw transcript is preserved.
+- **Settings diagnostics:** missing API keys are highlighted and `/models`/connection tests no longer run without authentication.
 
-Full historical release details are preserved in [`CHANGELOG.md`](CHANGELOG.md).
-
----
-
-# v0.1.24 — release hardening (2026-08-04)
-
-`versionCode 26` — a focused hardening release for privacy, reliability and publication quality.
-
-- **Privacy:** production builds no longer log transcripts, provider endpoints or post-processing error details.
-- **AI post-processing:** final-only atomic delivery, owner-scoped cancellation, exact `${output}` handling and safe raw-text fallback.
-- **Reliability:** generation-scoped subtitles, file-transcription operation IDs, atomic cross-process markers and safer IME/model-import lifecycles.
-- **Models:** debug Nemotron downloads are SHA-256 verified before activation.
-- **CI and release:** unified NDK 28.0.13004108, rustfmt/translations/JVM/checkModels gates, and a release workflow that verifies APK alignment and signatures before publishing.
-- **Usability:** corrected prompt formatting, transcript de-duplication, localized strings and IME streaming layout.
-
-Full historical release details are preserved in [`CHANGELOG.md`](CHANGELOG.md).
+The complete version history remains in [`CHANGELOG.md`](CHANGELOG.md).

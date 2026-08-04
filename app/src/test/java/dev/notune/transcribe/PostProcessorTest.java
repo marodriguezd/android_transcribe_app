@@ -112,6 +112,23 @@ public class PostProcessorTest {
     }
 
     @Test
+    public void missingApiKeyFailsBeforeNetworkRequest() throws Exception {
+        FakeSettings settings = new FakeSettings();
+        settings.url = server.url("/").toString();
+        settings.key = "";
+
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<String> outcome = new AtomicReference<>("pending");
+        newProcessor(settings, new Object()).process("raw",
+                callback("ok:", "err:", outcome, done));
+
+        assertTrue("missing-key callback must fire", done.await(2, TimeUnit.SECONDS));
+        assertEquals("err:" + PostProcessor.MISSING_API_KEY_ERROR, outcome.get());
+        assertEquals("missing key must not make an HTTP request", null,
+                server.takeRequest(200, TimeUnit.MILLISECONDS));
+    }
+
+    @Test
     public void singleNonStreamingRequestWithInjectedOutputOnce() throws Exception {
         FakeSettings settings = new FakeSettings();
         settings.url = server.url("/v1").toString();

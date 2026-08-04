@@ -5,6 +5,9 @@ import android.content.SharedPreferences;
 import android.util.Base64;
 import android.util.Log;
 
+import androidx.security.crypto.EncryptedSharedPreferences;
+import androidx.security.crypto.MasterKey;
+
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
@@ -38,6 +41,8 @@ public class SettingsManager implements PostProcessor.PostProcessorSettings {
     private static final String LEGACY_KEY_API_URL = "api_url";
     private static final String LEGACY_KEY_MODEL_NAME = "model_name";
     private static final String LEGACY_KEY_SYSTEM_PROMPT = "system_prompt";
+    private static final String LEGACY_KEY_API_KEY = "api_key";
+    private static final String LEGACY_ENCRYPTED_PREFS_NAME = PREFS_NAME + "_encrypted";
 
     // Marker file names in filesDir(). Presence of pp_enabled means ON.
     private static final String PP_ENABLED_FILE = "pp_enabled";
@@ -49,6 +54,7 @@ public class SettingsManager implements PostProcessor.PostProcessorSettings {
 
     // Sentinel that guarantees the legacy -> marker migration runs at most once.
     private static final String MIGRATION_SENTINEL = "pp_migrated";
+    private static final String API_KEY_MIGRATION_SENTINEL = "pp_api_key_migrated";
 
     private static final String DEFAULT_API_URL = "https://api.openai.com/v1";
     private static final String DEFAULT_MODEL = "gpt-4o-mini";
@@ -156,6 +162,7 @@ public class SettingsManager implements PostProcessor.PostProcessorSettings {
         try {
             return new String(Base64.decode(encoded, Base64.NO_WRAP), StandardCharsets.UTF_8);
         } catch (Exception e) {
+            // Never include the marker contents or decoded key in diagnostics.
             Log.e(TAG, "Failed to decode API key from marker", e);
             return "";
         }
@@ -235,7 +242,14 @@ public class SettingsManager implements PostProcessor.PostProcessorSettings {
         Context app = context.getApplicationContext();
         File filesDir = app.getFilesDir();
         File sentinel = new File(filesDir, MIGRATION_SENTINEL);
-        if (sentinel.exists()) return;
+        if (sentinel.exists()) {
+            // The ordinary settings migration may already be complete while a
+            // previous process could not open Android Keystore. Retry the API
+            // key migration independently under its own process lock so main
+            // and :ime cannot read/clean the legacy store concurrently.
+            migrateLegacyApiKeyLocked(app, filesDir);
+            return;
+        }
 
         File lockFile = new File(filesDir, MIGRATION_SENTINEL + ".lock");
         boolean migratedThisCall = false;
@@ -288,6 +302,18 @@ public class SettingsManager implements PostProcessor.PostProcessorSettings {
                 }
             }
 
+            // The API key was historically stored in EncryptedSharedPreferences,
+            // not in the ordinary legacy preferences above. Read it with the
+            // exact old MasterKey/prefs name before clearing legacy state, then
+            // immediately move it into the cross-process marker store. If the
+            // old Keystore entry is unavailable (device restore, key invalidation
+            // or a corrupted legacy file), leave the marker absent: the runtime
+            // fast-fail path will ask the user to re-enter the key rather than
+            // sending an unauthenticated request and hiding the real cause.
+            // The outer migration lock already serializes this process-wide
+            // block; do not acquire the API-key lock recursively here.
+            boolean apiKeyMigrationReady = migrateLegacyApiKey(app, filesDir, legacy);
+
             // Synchronously commit the legacy-key removal (see class comment).
             try {
                 SharedPreferences.Editor editor = legacy.edit();
@@ -296,6 +322,13 @@ public class SettingsManager implements PostProcessor.PostProcessorSettings {
                 editor.remove(LEGACY_KEY_API_URL);
                 editor.remove(LEGACY_KEY_MODEL_NAME);
                 editor.remove(LEGACY_KEY_SYSTEM_PROMPT);
+                // The API key is removed only after migrateLegacyApiKey has
+                // copied it successfully. If the old encrypted store cannot
+                // be opened, retaining this plain fallback lets the next app
+                // start recover it instead of destroying the last copy.
+                if (apiKeyMigrationReady) {
+                    editor.remove(LEGACY_KEY_API_KEY);
+                }
                 editor.commit();
             } catch (Exception e) {
                 Log.e(TAG, "Failed to clear legacy SharedPreferences", e);
@@ -329,6 +362,131 @@ public class SettingsManager implements PostProcessor.PostProcessorSettings {
                 // simply see EOF when it eventually closes.
                 lockFile.delete();
             }
+        }
+    }
+
+    private static void migrateLegacyApiKeyLocked(Context app, File filesDir) {
+        File lockFile = new File(filesDir, API_KEY_MIGRATION_SENTINEL + ".lock");
+        try (FileOutputStream fos = new FileOutputStream(lockFile, true)) {
+            FileLock lock = fos.getChannel().tryLock();
+            if (lock == null) return;
+            try {
+                migrateLegacyApiKey(app, filesDir,
+                        app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE));
+            } finally {
+                try { lock.release(); } catch (IOException ignored) { }
+            }
+        } catch (OverlappingFileLockException | IOException e) {
+            Log.w(TAG, "Legacy API key migration deferred");
+        }
+    }
+
+    private static void migrateLegacyApiKeyLocked(Context app, File filesDir,
+                                                  SharedPreferences legacy) {
+        File lockFile = new File(filesDir, API_KEY_MIGRATION_SENTINEL + ".lock");
+        try (FileOutputStream fos = new FileOutputStream(lockFile, true)) {
+            FileLock lock = fos.getChannel().tryLock();
+            if (lock == null) return;
+            try {
+                migrateLegacyApiKey(app, filesDir, legacy);
+            } finally {
+                try { lock.release(); } catch (IOException ignored) { }
+            }
+        } catch (OverlappingFileLockException | IOException e) {
+            Log.w(TAG, "Legacy API key migration deferred");
+        }
+    }
+
+    private static boolean migrateLegacyApiKey(Context app, File filesDir,
+                                               SharedPreferences legacy) {
+        if (hasUsableApiKeyMarker(app)) return true;
+        if (new File(filesDir, API_KEY_MIGRATION_SENTINEL).exists()) return false;
+
+        File legacyEncryptedFile = new File(
+                new File(app.getApplicationInfo().dataDir, "shared_prefs"),
+                LEGACY_ENCRYPTED_PREFS_NAME + ".xml");
+        boolean hasPlainFallback = legacy != null && legacy.contains(LEGACY_KEY_API_KEY);
+        if (!legacyEncryptedFile.exists() && !hasPlainFallback) {
+            // Fresh installs have no legacy key. Avoid creating a new
+            // EncryptedSharedPreferences file or touching Android Keystore.
+            try {
+                new File(filesDir, API_KEY_MIGRATION_SENTINEL).createNewFile();
+            } catch (IOException ignored) {
+                // Best effort only; the next startup can repeat this check.
+            }
+            return false;
+        }
+
+        String key = "";
+        SharedPreferences encrypted = null;
+        boolean encryptedReadCompleted = false;
+        try {
+            MasterKey masterKey = new MasterKey.Builder(app)
+                    .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+                    .build();
+            encrypted = EncryptedSharedPreferences.create(
+                    app,
+                    LEGACY_ENCRYPTED_PREFS_NAME,
+                    masterKey,
+                    EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                    EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM);
+            key = encrypted.getString(LEGACY_KEY_API_KEY, "");
+            encryptedReadCompleted = true;
+        } catch (Exception e) {
+            // Try the historical plaintext fallback below. Never expose the
+            // exception or any key material in logs.
+            Log.w(TAG, "Legacy encrypted API key unavailable; trying fallback");
+        }
+
+        if ((key == null || key.isEmpty()) && legacy != null) {
+            key = legacy.getString(LEGACY_KEY_API_KEY, "");
+        }
+
+        if (key != null && !key.isEmpty()) {
+            String encoded = Base64.encodeToString(
+                    key.getBytes(StandardCharsets.UTF_8), Base64.NO_WRAP);
+            MarkerFileHelper.writeString(app, PP_API_KEY_FILE, encoded);
+            // Verify the atomic marker write before removing the only legacy
+            // copy. MarkerFileHelper deliberately has a void API and can only
+            // report a best-effort write, so read it back and compare exactly.
+            String stored = MarkerFileHelper.readString(app, PP_API_KEY_FILE, null);
+            if (!encoded.equals(stored)) {
+                Log.w(TAG, "Legacy API key migration deferred; marker write could not be verified");
+                return false;
+            }
+            // Best-effort cleanup after the marker has been verified.
+            if (encrypted != null) {
+                try {
+                    encrypted.edit().remove(LEGACY_KEY_API_KEY).commit();
+                } catch (Exception ignored) {
+                    // Retaining the old encrypted copy is safer than risking
+                    // loss if cleanup fails.
+                }
+            }
+            return true;
+        }
+
+        if (encryptedReadCompleted) {
+            // No old key existed. Do not reopen Keystore on every process start.
+            try {
+                new File(filesDir, API_KEY_MIGRATION_SENTINEL).createNewFile();
+            } catch (IOException ignored) {
+                // The migration remains harmless if this best-effort marker fails.
+            }
+        }
+        // If encryptedReadCompleted is false, leave the marker absent so a
+        // later startup can retry after a transient Keystore failure.
+        return false;
+    }
+
+    private static boolean hasUsableApiKeyMarker(Context app) {
+        String encoded = MarkerFileHelper.readString(app, PP_API_KEY_FILE, null);
+        if (encoded == null || encoded.isEmpty()) return false;
+        try {
+            byte[] decoded = Base64.decode(encoded, Base64.NO_WRAP);
+            return decoded.length > 0;
+        } catch (Exception e) {
+            return false;
         }
     }
 

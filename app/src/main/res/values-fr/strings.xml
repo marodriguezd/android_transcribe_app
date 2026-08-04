@@ -118,6 +118,7 @@
     <string name="pp_provider">Fournisseur</string>
     <string name="pp_api_url">URL de base (compatible OpenAI)</string>
     <string name="pp_api_key">Clé API</string>
+    <string name="pp_api_key_required">Saisissez une clé API pour utiliser le post-traitement.</string>
     <string name="pp_model">Nom du modèle</string>
     <string name="pp_refresh_models">Récupérer les modèles disponibles</string>
     <string name="pp_models_loaded">Modèles chargés — touchez le champ pour en choisir un</string>

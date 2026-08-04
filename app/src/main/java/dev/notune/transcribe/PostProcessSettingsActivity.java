@@ -35,6 +35,7 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
     private MaterialSwitch switchEnabled;
     private AutoCompleteTextView dropdownProvider;
     private TextInputLayout layoutApiUrl;
+    private TextInputLayout layoutApiKey;
     private EditText editApiUrl;
     private EditText editApiKey;
     private AutoCompleteTextView editModel;
@@ -70,6 +71,7 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
         switchEnabled = findViewById(R.id.switch_pp_enabled);
         dropdownProvider = findViewById(R.id.dropdown_provider);
         layoutApiUrl = findViewById(R.id.layout_api_url);
+        layoutApiKey = findViewById(R.id.layout_api_key);
         editApiUrl = findViewById(R.id.edit_api_url);
         editApiKey = findViewById(R.id.edit_api_key);
         editModel = findViewById(R.id.edit_model);
@@ -99,6 +101,9 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
         editApiKey.setText(settings.getApiKey());
         editModel.setText(settings.getModelName());
         editPrompt.setText(settings.getActivePromptBody());
+        if (settings.isPostProcessEnabled() && settings.getApiKey().isEmpty()) {
+            layoutApiKey.setError(getString(R.string.pp_api_key_required));
+        }
 
         // Align the model field with the selected provider. A provider change
         // leaves the old provider's model behind (e.g. switching OpenAI ->
@@ -181,8 +186,10 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
             @Override
             public void onError(String error) {
                 btnRefreshModels.setEnabled(true);
+                String detail = PostProcessor.MISSING_API_KEY_ERROR.equals(error)
+                        ? getString(R.string.pp_api_key_required) : error;
                 Toast.makeText(PostProcessSettingsActivity.this,
-                        getString(R.string.pp_models_error) + ": " + error,
+                        getString(R.string.pp_models_error) + ": " + detail,
                         Toast.LENGTH_LONG).show();
             }
         });
@@ -204,8 +211,10 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
             @Override
             public void onError(String error) {
                 button.setEnabled(true);
+                String detail = PostProcessor.MISSING_API_KEY_ERROR.equals(error)
+                        ? getString(R.string.pp_api_key_required) : error;
                 Toast.makeText(PostProcessSettingsActivity.this,
-                        getString(R.string.pp_test_error, error), Toast.LENGTH_LONG).show();
+                        getString(R.string.pp_test_error, detail), Toast.LENGTH_LONG).show();
             }
         });
     }
@@ -216,7 +225,10 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
         settings.setPostProcessEnabled(nowEnabled);
         settings.setProviderId(selectedProviderId);
         settings.setApiUrl(editApiUrl.getText().toString().trim());
-        settings.setApiKey(editApiKey.getText().toString().trim());
+        String apiKey = editApiKey.getText().toString().trim();
+        settings.setApiKey(apiKey);
+        layoutApiKey.setError(apiKey.isEmpty() && nowEnabled
+                ? getString(R.string.pp_api_key_required) : null);
         settings.setModelName(editModel.getText().toString().trim());
 
         // Only persist the prompt if the user actually changed it; otherwise

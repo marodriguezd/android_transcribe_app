@@ -1,16 +1,18 @@
 # agent_prompt.md — Instructions for the next agent
 
 > Read first: `AGENTS.md`, `GAUNTLETE_PLAN.md`, `.agents/progress.md`,
+> `memory/live-subtitle-translation-2026-08-04.md`,
 > `memory/release-0.1.24-prep-2026-08-04.md`,
 > `memory/gauntlet-p0-implemented-2026-08-03.md` and the audit
 > `memory/static-audit-debt-2026-08-03.md`.
 >
-> The repository is on the **v0.1.25 release track** (`versionCode 27`). The P0 blockers and
-> P1.1–P1.3 are implemented and gated by JVM (**34 tests** since 2026-08-04:
-> the DNS-failure and connect-timeout tests closed the P1.5 JVM harness);
-> `assembleDebug` and `lintDebug` were validated in CI on 2026-08-03 (runs
-> `30859369221`/`30859370506`, fix `aa08a08`). Do not confuse implementation
-> with executed CI/hardware validation.
+> The repository is on the **v0.1.25 release track** (`versionCode 27`) with
+> the **live-subtitle on-device translation** feature implemented on top
+> (cascade ASR → Google ML Kit; `Auto` = original language; marker
+> `subtitle_translation_target`; **71 JVM tests** since 2026-08-04). Local
+> gates are green (unit tests, translations, `cargo fmt`, `lintDebug`);
+> CI confirmation on push and device validation are pending. Do not confuse
+> implementation with executed CI/hardware validation.
 
 ## Already implemented — do not redo
 
@@ -30,6 +32,16 @@
   (`cargo fmt --check`, `checkModels` on debug, release APK
   zipalign/apksigner verification).
 - Tests: 34 JVM tests green, confirmed in CI run `30897928321` for commit `371a119` (2026-08-04).
+- **2026-08-04 — Live-subtitle translation (feature):** `Auto` keeps the
+  original language; explicit targets EN/ES/FR/DE/IT/PT/RU translate
+  on-device via ML Kit. Bundled Nemotron is ASR-only (no translate), so the
+  design is a cascade: chunked ASR → `OnDeviceSubtitleTranslator`.
+  `SubtitleTranslationTargets`, `SourceLanguageResolver` (script +
+  distinctive-diacritic detection), ordered segment pipeline + serial FIFO
+  queue + session generation in `LiveSubtitleService`, marker
+  `subtitle_translation_target`, Rust `transcribe_subtitle` forcing
+  `Task::Transcribe`. JVM suite grew 34 → **71 tests** (resolver, targets,
+  prefs).
 
 ## Next: validation and remaining debt
 
@@ -57,6 +69,10 @@ are asserted as applied values; wall-clock durations stay out of the harness.
 - ✅ `cargo fmt --all -- --check`, translations, 34 JVM tests, `assembleDebug`,
   `lintDebug` and `checkModels` exercised green on run `30897928321` for
   commit `371a119` (2026-08-04).
+- 🟡 Live-subtitle translation gates green **locally** (71 JVM tests,
+  translations PASS, `cargo fmt`, `lintDebug`); pending CI on push and
+  device validation (Play Services pack download, latency, Red Note
+  Chinese audio end-to-end).
 - ⏳ `assembleRelease` + `checkModels` + signature/alignment verification in
   the release workflow (runs on the `v0.1.25` tag).
 - ⏳ Full-crate `cargo test` or a documented reproducible block of
@@ -70,6 +86,11 @@ are asserted as applied values; wall-clock durations stay out of the harness.
   global-vs-owner-scoped separation of `cancelAll`.
 - Preserve subtitle generations: never reintroduce stale worker deliveries or
   remove the re-checks before transcribing/delivering.
+- Preserve the subtitle translation contract: `Auto` = original language;
+  translation failures always fall back to the original text (never a wrong
+  translation); segment delivery stays strictly ordered; `transcribe_subtitle`
+  keeps forcing `Task::Transcribe` so the global `model_translate` cannot
+  translate subtitles.
 - Never activate a model without verifying its hash; `active_model` stays
   atomic.
 - Never log transcribed text in release builds (`BuildConfig.DEBUG` gating).

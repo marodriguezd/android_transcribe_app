@@ -1,9 +1,10 @@
 # Progress — current AI-assisted work state
 
-**Last update:** 2026-08-04 (v0.1.25 release preparation)
+**Last update:** 2026-08-04 (live-subtitle translation implemented, pushed for debug CI)
 
 ## 🟢 Recently completed
 
+- **2026-08-04 — Live-subtitle on-device translation (feature):** optional translation for live subtitles with `Auto = original language` (user decision) and explicit targets EN/ES/FR/DE/IT/PT/RU. Research proved the bundled Nemotron 3.5 ASR cannot translate (`supports_translate = false`; Whisper-family only translates to English), so the design is a **cascade**: existing chunked ASR → Google ML Kit text translation (`com.google.mlkit:translate:17.0.2`). New `SubtitleTranslationTargets`, `SourceLanguageResolver`, `SubtitleTranslator` + `OnDeviceSubtitleTranslator`; ordered segment pipeline + FIFO queue + session generation in `LiveSubtitleService`; `subtitle_translation_target` marker; Rust `transcribe_subtitle` forces `Task::Transcribe` so `model_translate` never leaks into subtitles; spinner + 7-locale strings; JVM tests (71 total, 0 failures), translations PASS, `cargo fmt` clean, `lintDebug` BUILD SUCCESSFUL. Details: [`memory/live-subtitle-translation-2026-08-04.md`](./memory/live-subtitle-translation-2026-08-04.md).
 - **2026-08-04 — v0.1.25 release preparation:** bumped Gradle to `versionName 0.1.25` / `versionCode 27`, added concise release notes and store metadata, and documented the three follow-up improvements since v0.1.24: cancellation controls, debug model-download progress, and clearer post-processing diagnostics.
 - **2026-08-04 — CI green on the privacy work:** run `30897928321` (commit `371a119`) passed every gate — `cargo fmt --check`, translations, **34 JVM tests**, `assembleDebug`, `lintDebug`, `checkModels` — and sent the APK to Telegram. The earlier run `30895862658` failed because AGP 8.x disables `BuildConfig` generation by default; fixed with `buildFeatures { buildConfig = true }` and the network tests were made deterministic (injected DNS + `NO_PROXY`), so they pass even under a runner proxy.
 - **2026-08-04 — v0.1.24 release hardening:** privacy logging (`BuildConfig.DEBUG` gating for transcripts/PP errors), model-import hardening (`sanitizeModelFileName`, weak-ref UI dispatch), defensive IME cleanup, signing warnings, `cargo fmt --check` + `checkModels` CI gates, release APK verification (`zipalign`/`apksigner`), JVM harness closure (DNS fail + connect timeout, 34 tests total), English `RELEASE_NOTES`/`CHANGELOG`/store changelog, README language fix, agentic docs in English. Details: [`memory/release-0.1.24-prep-2026-08-04.md`](./memory/release-0.1.24-prep-2026-08-04.md).
@@ -48,6 +49,7 @@ Implemented 2026-08-03, gated by JVM; `assembleDebug`, `lintDebug` and `checkMod
 
 ## Canonical links
 
+- Live-subtitle translation: [`memory/live-subtitle-translation-2026-08-04.md`](./memory/live-subtitle-translation-2026-08-04.md)
 - v0.1.24 prep: [`memory/release-0.1.24-prep-2026-08-04.md`](./memory/release-0.1.24-prep-2026-08-04.md)
 - P1.4/P1.5 feasibility: [`memory/p14-p15-feasibility-2026-08-04.md`](./memory/p14-p15-feasibility-2026-08-04.md)
 - Implementation P0/P1: [`memory/gauntlet-p0-implemented-2026-08-03.md`](./memory/gauntlet-p0-implemented-2026-08-03.md)

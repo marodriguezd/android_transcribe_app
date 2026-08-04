@@ -46,6 +46,9 @@ Se rellena conforme se acumulen sesiones de trabajo. Listado en orden cronológi
 > written in English (maintainer decision). Historical Spanish documents stay
 > as the recorded history; do not silently translate them.
 
+- [`memory/live-subtitle-translation-2026-08-04.md`](./memory/live-subtitle-translation-2026-08-04.md) —
+  live-subtitle on-device translation (cascade ASR → ML Kit; `Auto` =
+  original language; 71 JVM tests; gates green locally, CI/device pending).
 - [`memory/release-0.1.24-prep-2026-08-04.md`](./memory/release-0.1.24-prep-2026-08-04.md) —
   v0.1.24 release preparation: privacy logging, model-import hardening,
   CI gates (rustfmt/checkModels/APK verification), JVM harness closure

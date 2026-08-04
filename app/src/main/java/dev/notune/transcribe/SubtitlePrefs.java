@@ -39,4 +39,22 @@ public final class SubtitlePrefs {
     public static void setOverlayY(Context ctx, int y) {
         MarkerFileHelper.writeInt(ctx, OVERLAY_Y_FILE, y);
     }
+
+    private static final String TRANSLATION_TARGET_FILE = "subtitle_translation_target";
+
+    /**
+     * Live-subtitle translation target (fork addition): a BCP-47 tag from
+     * {@link SubtitleTranslationTargets#TAGS}, or {@code auto} = keep the
+     * original language (no translation). Read by {@code LiveSubtitleService}
+     * at session start, so changing it needs no engine reload.
+     */
+    public static String getTranslationTarget(Context ctx) {
+        String v = MarkerFileHelper.readString(ctx, TRANSLATION_TARGET_FILE, "");
+        return SubtitleTranslationTargets.isValid(v) ? v : SubtitleTranslationTargets.AUTO;
+    }
+
+    public static void setTranslationTarget(Context ctx, String tag) {
+        MarkerFileHelper.writeString(ctx, TRANSLATION_TARGET_FILE,
+                SubtitleTranslationTargets.isValid(tag) ? tag : SubtitleTranslationTargets.AUTO);
+    }
 }

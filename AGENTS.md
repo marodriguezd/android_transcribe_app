@@ -195,6 +195,7 @@ Los ajustes son **marker files en `filesDir()`**, no `SharedPreferences`. Ejempl
 | `model_threads` | contenido = nº entero; ausente/inválido = automático |
 | `stream_context_right` | contenido = `13`/`6`/`1`/`0` → chunks cache-aware {1.12 s, 560 ms, 160 ms, 80 ms} (Nemotron, `chunk = (right+1) × 80 ms`); ausente/inválido = `13` (default de precisión del modelo). Valores fuera de menú se reintentan con el default del modelo en `run_stream`, no rompen el stream |
 | `custom_words` | contenido = términos correctos, uno por línea (líneas `#` = comentarios); ausente/vacío = corrección fonética desactivada |
+| `subtitle_translation_target` | contenido = `auto` (idioma original, sin traducción — decisión de producto) o un locale BCP-47 (`es-ES`, `en-US`, `fr-FR`, `de-DE`, `it-IT`, `pt-PT`, `ru-RU`) → traducción on-device de subtítulos **finalizados** (ML Kit, paquetes vía Google Play Services; fallback siempre al texto original). Lo lee `LiveSubtitleService` al iniciar sesión; no requiere recarga del engine |
 
 Bindings típicos (ver `MainActivity.bindMarkerSwitch`): un `CompoundButton` cuja presencia del file representa el estado.
 
@@ -244,6 +245,7 @@ No renombrar archivos Rust/Java sin actualizar la entrada JNI (§4.3).**Post-pro
   una respuesta vacía/no válida, siempre se comete el texto crudo. Así se evita pegar tokens
   parciales, duplicados o texto "Frankenstein" y se conserva la fluidez del streaming ASR.
 - **Cancelación/lifecycle:** la cancelación es **por propietario** (`PostProcessor.cancelAllFor(owner)`, identidad de la Activity/Service dueña de la llamada; registro en `CallRegistry`): destruir una superficie o cancelar un reconocimiento nunca cancela una petición legítima de otra superficie. `PostProcessor.cancelAll()` (global) queda reservado para eventos realmente globales: toggle PP-off (con broadcast `CANCEL_ACTION` al proceso `:ime`) y muerte del servicio IME. Los validadores de Activity/IME impiden callbacks tardíos sobre componentes destruidos, y el `Response` de OkHttp se cierra siempre, incluidos errores y parseos fallidos.
+- **Traducción de subtítulos (fork addition, contrato AGENT-ONLY):** el modelo bundled (Nemotron) **no traduce**; la traducción es una etapa Java-side exclusiva de subtítulos sobre segmentos **finalizados** (`LiveSubtitleService` + `OnDeviceSubtitleTranslator` con ML Kit). El destino vive en el marker `subtitle_translation_target` (`auto` = idioma original; locale fijo = traducir) y lo lee el servicio al iniciar sesión — **no** reutilizar `model_translate` (eso es ASR-global y **nunca** debe aplicar a subtítulos: `engine::transcribe_subtitle` fuerza `Task::Transcribe`). Cola FIFO serial (máx. 8), resultados aplicados en orden en main thread, fallback **siempre** al texto original (sin Play Services, sin paquete, error, saturación), generación de sesión para callbacks tardíos, y origen automático resuelto por script del texto (`SourceLanguageResolver`) cuando `model_language` no es fijo.
 
 ### 4.7 Rust: contratos del singleton Engine (no romper)
 

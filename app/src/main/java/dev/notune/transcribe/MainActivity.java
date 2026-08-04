@@ -16,10 +16,13 @@ import android.speech.RecognizerIntent;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.View;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
 import android.widget.Button;
 import android.widget.CompoundButton;
 import android.widget.ImageView;
 import android.widget.RadioGroup;
+import android.widget.Spinner;
 import android.widget.TextView;
 
 import androidx.appcompat.app.AppCompatActivity;
@@ -39,6 +42,8 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import okhttp3.OkHttpClient;
@@ -174,6 +179,12 @@ public class MainActivity extends AppCompatActivity {
                     : checkedId == R.id.rb_subs_all ? 0 : 2;
             SubtitlePrefs.setMaxLines(this, lines);
         });
+
+        // Live-subtitle translation target (fork addition): "Auto" keeps the
+        // original language; an explicit tag arms the on-device translator at
+        // the next subtitle session (no engine reload needed — the service
+        // reads the marker itself).
+        setupSubtitleTranslationSpinner(findViewById(R.id.spinner_subtitle_translation));
 
         RadioGroup themeGroup = findViewById(R.id.rg_theme);
         switch (ThemePrefs.getMode(this)) {
@@ -394,6 +405,43 @@ public class MainActivity extends AppCompatActivity {
         sw.setOnCheckedChangeListener((buttonView, isChecked) -> {
             boolean shouldExist = isChecked != inverted;
             MarkerFileHelper.setExists(this, fileName, shouldExist);
+        });
+    }
+
+    /**
+     * Live-subtitle translation target (fork addition). "Auto (original
+     * language)" keeps the spoken language (the product decision for this
+     * feature); a fixed target translates finalized subtitles on-device.
+     * Display names come from {@link Locale#getDisplayName()}, so they follow
+     * the device language without needing translations — same pattern as the
+     * Models screen's language dropdown.
+     */
+    private void setupSubtitleTranslationSpinner(Spinner spinner) {
+        List<String> tags = new ArrayList<>(SubtitleTranslationTargets.TAGS);
+        List<String> labels = new ArrayList<>(tags.size());
+        for (String tag : tags) {
+            labels.add(SubtitleTranslationTargets.AUTO.equals(tag)
+                    ? getString(R.string.subtitle_translation_auto)
+                    : Locale.forLanguageTag(tag).getDisplayName() + " (" + tag + ")");
+        }
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(
+                this, android.R.layout.simple_spinner_item, labels);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spinner.setAdapter(adapter);
+        String stored = SubtitlePrefs.getTranslationTarget(this);
+        spinner.setSelection(Math.max(0, tags.indexOf(stored)), false);
+        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                String tag = tags.get(position);
+                if (tag.equals(SubtitlePrefs.getTranslationTarget(MainActivity.this))) return;
+                SubtitlePrefs.setTranslationTarget(MainActivity.this, tag);
+                snackbar(getString(R.string.subtitle_translation_saved));
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+            }
         });
     }
 

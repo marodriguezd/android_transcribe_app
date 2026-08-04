@@ -162,6 +162,35 @@ y el orden operativo en [`../GAUNTLETE_PLAN.md`](../GAUNTLETE_PLAN.md).
 | MainActivity ↔ ModelsActivity ↔ Rust | `engine::reset()` (condvar-coordinated) | Doble carga de modelo |
 | CustomWordsActivity ↔ `corrector.rs` | marker file `filesDir/custom_words` | Corrección fonética no aplica o usa diccionario stale |
 
+## Traducción de subtítulos (2026-08-04, fork addition)
+
+El modelo bundled (Nemotron 3.5 ASR) **no traduce**; solo reconoce el idioma
+hablado. La traducción de subtítulos es una segunda etapa Java-side sobre el
+texto **finalizado** (nunca sobre parciales):
+
+```
+Nemotron (siempre Task::Transcribe — engine::transcribe_subtitle)
+  → onSubtitleText(final, true)
+  → CaptionSegment (shown = texto original al instante)
+  → cola FIFO serial (máx. 8) → SourceLanguageResolver
+  → OnDeviceSubtitleTranslator (ML Kit, paquetes vía Google Play Services;
+    sin Play Services / sin paquete / error → fallback al texto original)
+  → applyTranslation en main thread, en orden estricto, con generación de
+    sesión (misma idea que el worker Rust) → re-render de la ventana
+```
+
+- **Marker:** `subtitle_translation_target` (`auto` = idioma original;
+  `es-ES`/`en-US`/`fr-FR`/`de-DE`/`it-IT`/`pt-PT`/`ru-RU` = traducir). Lo lee
+  `LiveSubtitleService` al iniciar sesión — sin reload del engine.
+- **Aislamiento ASR:** `engine::transcribe_subtitle` fuerza `Task::Transcribe`;
+  el switch global `model_translate` nunca aplica a subtítulos.
+- **Origen automático:** sin `model_language` fijo, el origen se resuelve por
+  script del texto (CJK→zh, kana→ja, hangul→ko, cirílico→ru + heurística
+  latina conservadora). Si no se resuelve → se muestra el original.
+- **Garantías:** resultados en orden estricto (cola serial), sin pérdida de
+  texto (fallback al original), sin callbacks de sesión antigua (generación),
+  cola acotada (saturación → original).
+
 ## Post-procesado AI final-only (2026-08-03)
 
 El modelo ASR streaming y el postprocesador cumplen funciones distintas: los parciales de ASR se muestran como previsualización para conservar la sensación de tiempo real, pero no se pegan al editor. Al terminar la captura, `onTextTranscribed` recibe el transcript final y Java hace una única petición no-streaming a `PostProcessor.process()`. El editor recibe exactamente un resultado completo: el refinado si la llamada responde con contenido válido, o el transcript crudo si el postprocesado está desactivado, se cancela, falla, expira o devuelve una respuesta inválida. Esta separación elimina la carrera entre tokens SSE, revisiones del proveedor y `deleteSurroundingText`, sin modificar el pipeline de audio/ASR.

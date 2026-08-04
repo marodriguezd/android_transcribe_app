@@ -249,7 +249,11 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_ini
                 }
                 let audio_secs = job.samples.len() as f64 / SAMPLE_RATE as f64;
                 let started = std::time::Instant::now();
-                let res = engine::transcribe_shared(&engine_arc, job.samples);
+                // Subtitle ASR is always Task::Transcribe: the global
+                // `model_translate` switch (Whisper imports) must not silently
+                // translate captions — subtitle translation is a Java-side,
+                // user-selected target feature instead.
+                let res = engine::transcribe_subtitle(&engine_arc, job.samples);
                 let elapsed = started.elapsed().as_secs_f64();
                 log::info!(
                     "Subtitle {} job: {:.1}s audio in {:.2}s (lag {:.1}s)",

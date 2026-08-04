@@ -245,10 +245,26 @@ impl Engine {
     }
 
     /// Transcribes 16 kHz mono f32 samples to text. Input longer than
-    /// [`MAX_RUN_SAMPLES`] is transcribed in quiet-point chunks.
+    /// [`MAX_RUN_SAMPLES`] is transcribed in quiet-point chunks. Uses the
+    /// engine's configured task (which honors the global `model_translate`
+    /// marker where the model supports it).
     pub fn transcribe(&mut self, samples: Vec<f32>) -> Result<String, String> {
+        self.transcribe_with_task(samples, None)
+    }
+
+    /// Same as [`Engine::transcribe`] but with an explicit task override.
+    /// `Some(Task::Transcribe)` is what the live-subtitle path passes so a
+    /// global "translate to English" switch (Whisper imports) can never turn
+    /// subtitles into translated text behind the user's back — subtitle
+    /// translation is a Java-side, target-selective feature instead
+    /// (see `transcribe_subtitle`).
+    pub fn transcribe_with_task(
+        &mut self,
+        samples: Vec<f32>,
+        task: Option<transcribe_cpp::Task>,
+    ) -> Result<String, String> {
         if samples.len() <= MAX_RUN_SAMPLES {
-            return self.run(&samples);
+            return self.run_with_task(&samples, task);
         }
 
         let mut text = String::new();
@@ -263,7 +279,7 @@ impl Engine {
                     MAX_RUN_SAMPLES,
                 )
             };
-            let piece = self.run(&rest[..take])?;
+            let piece = self.run_with_task(&rest[..take], task)?;
             let piece = piece.trim();
             if !piece.is_empty() {
                 if !text.is_empty() {
@@ -279,15 +295,21 @@ impl Engine {
     /// One model run. A rejected language hint is degraded instead of
     /// failing the transcription: `de-DE` retries as `de`, then as no hint
     /// (each model knows a different set of tags — e.g. Parakeet v3 takes
-    /// locales/short codes, English-only models take none).
-    fn run(&mut self, samples: &[f32]) -> Result<String, String> {
+    /// locales/short codes, English-only models take none). `None` task = the
+    /// engine's configured task.
+    fn run_with_task(
+        &mut self,
+        samples: &[f32],
+        task: Option<transcribe_cpp::Task>,
+    ) -> Result<String, String> {
+        let task = task.unwrap_or(self.task);
         // Re-read the hint on every run (see effective_language). The hint is
         // degraded locally per run; the marker file stays the source of truth.
         let mut hint = self.effective_language();
         loop {
             let opts = transcribe_cpp::RunOptions {
                 language: hint.clone(),
-                task: self.task,
+                task,
                 family: self.run_ext.clone(),
                 ..Default::default()
             };
@@ -483,13 +505,34 @@ pub fn get_engine() -> Option<Arc<Mutex<Engine>>> {
 /// normal error, and a lock poisoned by an earlier panic is recovered instead
 /// of propagating the poison forever.
 pub fn transcribe_shared(engine: &Arc<Mutex<Engine>>, samples: Vec<f32>) -> Result<String, String> {
+    transcribe_shared_with_task(engine, samples, None)
+}
+
+/// Runs a transcription on the shared engine for the live-subtitle path,
+/// forcing `Task::Transcribe`: the global `model_translate` switch must never
+/// apply to subtitles — their translation is handled Java-side with an
+/// explicit target selected by the user (see `OnDeviceSubtitleTranslator`).
+/// Same hardening layers as [`transcribe_shared`].
+pub fn transcribe_subtitle(
+    engine: &Arc<Mutex<Engine>>,
+    samples: Vec<f32>,
+) -> Result<String, String> {
+    transcribe_shared_with_task(engine, samples, Some(transcribe_cpp::Task::Transcribe))
+}
+
+/// Shared implementation behind [`transcribe_shared`] / [`transcribe_subtitle`].
+fn transcribe_shared_with_task(
+    engine: &Arc<Mutex<Engine>>,
+    samples: Vec<f32>,
+    task: Option<transcribe_cpp::Task>,
+) -> Result<String, String> {
     let audio_secs = samples.len() as f64 / 16_000.0;
     let started = std::time::Instant::now();
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let mut guard = engine
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        guard.transcribe(samples)
+        guard.transcribe_with_task(samples, task)
     }))
     .unwrap_or_else(|_| {
         log::error!("transcription panicked; reporting as error");

@@ -10,7 +10,7 @@ App Android para **transcripción de voz offline** que devuelve texto a
 cualquier app del sistema. Incluye:
 
 1. Voice input modal que aparece al pulsar el micro del teclado o sitio web.
-2. Subtítulos en vivo sobre cualquier audio/video del dispositivo.
+2. Subtítulos en vivo sobre cualquier audio/video del dispositivo, con **traducción opcional on-device** del texto finalizado a un idioma elegido (fork addition): el destino se guarda en el marker `subtitle_translation_target` (`auto` = conserva el idioma original; un locale fijo activa la traducción ML Kit de los segmentos finales, con fallback siempre al texto original).
 3. Un teclado propio (IME) opcional para hablar como método de entrada.
 4. **Post-procesado IA opcional** (fork addition): refina la transcripción
    con un LLM compatible OpenAI — opt-in, desactivado por defecto.

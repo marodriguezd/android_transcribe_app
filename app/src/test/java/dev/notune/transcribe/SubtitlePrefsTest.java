@@ -47,4 +47,29 @@ public class SubtitlePrefsTest {
         int y = MarkerFileHelper.readIntFromFile(tempDirectory, "subtitle_overlay_y", SubtitlePrefs.DEFAULT_OVERLAY_Y);
         assertEquals(150, y);
     }
+
+    @Test
+    public void testTranslationTargetDefaultsToAuto() {
+        // Absent marker = "auto" (keep the original language; no translation).
+        String target = MarkerFileHelper.readStringFromFile(
+                tempDirectory, "subtitle_translation_target", SubtitleTranslationTargets.AUTO);
+        assertEquals("auto", target);
+    }
+
+    @Test
+    public void testTranslationTargetRoundTrip() {
+        MarkerFileHelper.writeStringToFile(tempDirectory, "subtitle_translation_target", "es-ES");
+        String target = MarkerFileHelper.readStringFromFile(
+                tempDirectory, "subtitle_translation_target", SubtitleTranslationTargets.AUTO);
+        assertEquals("es-ES", target);
+    }
+
+    @Test
+    public void testTranslationTargetBackToAutoDeletesFile() {
+        MarkerFileHelper.writeStringToFile(tempDirectory, "subtitle_translation_target", "es-ES");
+        MarkerFileHelper.writeStringToFile(tempDirectory, "subtitle_translation_target", "");
+        String target = MarkerFileHelper.readStringFromFile(
+                tempDirectory, "subtitle_translation_target", SubtitleTranslationTargets.AUTO);
+        assertEquals("auto", target);
+    }
 }

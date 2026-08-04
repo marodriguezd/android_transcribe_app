@@ -136,6 +136,13 @@ dependencies {
     // OpenAI-compatible /chat/completions endpoint.
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
 
+    // Live-subtitle translation (fork addition): on-device text translation
+    // (ML Kit). Language packs are downloaded through Google Play Services on
+    // first use; the actual translation runs fully on-device and works offline
+    // afterwards. On devices without Play Services the translator falls back
+    // to showing the original subtitle text (see OnDeviceSubtitleTranslator).
+    implementation("com.google.mlkit:translate:17.0.2")
+
     // One-time compatibility migration for API keys saved by v0.1.19–v0.1.21
     // in EncryptedSharedPreferences. New writes remain marker-file based; this
     // dependency is retained so upgrades can recover the old key instead of

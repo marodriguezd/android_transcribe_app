@@ -43,6 +43,12 @@
     <string name="subtitle_lines_4">4 lignes</string>
     <string name="subtitle_lines_all">Toutes</string>
 
+    <string name="setting_subtitle_translation">Traduction des sous-titres</string>
+    <string name="setting_subtitle_translation_desc">Traduit les sous-titres en direct après leur reconnaissance. « Auto (langue d\'origine) » conserve la langue parlée. Choisir une langue fixe télécharge un petit pack la première fois (Google Play Services ; la traduction elle-même est locale et fonctionne hors ligne ensuite).</string>
+    <string name="subtitle_translation_auto">Auto (langue d\'origine)</string>
+    <string name="subtitle_translation_saved">Traduction des sous-titres enregistrée</string>
+    <string name="subs_translation_unavailable">La traduction des sous-titres n\'est pas disponible sur cet appareil ; la langue d\'origine s\'affiche.</string>
+
     <string name="models_title">Modèles vocaux</string>
     <string name="models_section">Modèle vocal</string>
     <string name="models_active_section">Modèle actif</string>

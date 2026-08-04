@@ -43,6 +43,12 @@
     <string name="subtitle_lines_4">4 строки</string>
     <string name="subtitle_lines_all">Все</string>
 
+    <string name="setting_subtitle_translation">Перевод субтитров</string>
+    <string name="setting_subtitle_translation_desc">Переводит живые субтитры после распознавания. «Авто (исходный язык)» сохраняет язык речи. При выборе фиксированного языка при первом использовании загружается небольшой пакет (Google Play Services; сам перевод выполняется на устройстве и затем работает офлайн).</string>
+    <string name="subtitle_translation_auto">Авто (исходный язык)</string>
+    <string name="subtitle_translation_saved">Перевод субтитров сохранён</string>
+    <string name="subs_translation_unavailable">Перевод субтитров недоступен на этом устройстве; отображается исходный язык.</string>
+
     <string name="models_title">Речевые модели</string>
     <string name="models_section">Речевая модель</string>
     <string name="models_active_section">Активная модель</string>

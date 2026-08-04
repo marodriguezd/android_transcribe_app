@@ -30,6 +30,8 @@ import androidx.core.content.ContextCompat;
 import com.google.android.material.color.DynamicColors;
 import com.google.android.material.color.MaterialColors;
 
+import dev.notune.transcribe.BuildConfig;
+
 public class RustInputMethodService extends InputMethodService {
     
     private static final String TAG = "OfflineVoiceInput";
@@ -464,7 +466,10 @@ public class RustInputMethodService extends InputMethodService {
         super.onDestroy();
         isDestroyed = true;
         currentSessionId++;
-        cleanupNative();
+        // Defensive: the native side may already be gone (wrong-ABI
+        // emulator, service killed during teardown); never crash the IME
+        // process while cleaning up.
+        try { cleanupNative(); } catch (Throwable ignored) { }
         if (pauseAudioActive) {
             audioPauser.abandon(this);
             pauseAudioActive = false;
@@ -631,7 +636,12 @@ public class RustInputMethodService extends InputMethodService {
                     @Override
                     public void onError(String error) {
                         if (processingSessionId != currentSessionId) return;
-                        Log.w(TAG, "Post-processing failed, delivering raw transcript: " + error);
+                        // Privacy (v0.1.24): the error string can carry
+                        // provider details; the raw transcript is never
+                        // logged in release builds.
+                        if (BuildConfig.DEBUG) {
+                            Log.w(TAG, "Post-processing failed, delivering raw transcript: " + error);
+                        }
                         commitFinalText(text);
                     }
                 });

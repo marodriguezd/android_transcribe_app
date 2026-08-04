@@ -10,6 +10,8 @@ import android.speech.RecognitionService;
 import android.speech.SpeechRecognizer;
 import android.util.Log;
 
+import dev.notune.transcribe.BuildConfig;
+
 import java.util.ArrayList;
 
 /**
@@ -207,7 +209,12 @@ public class VoiceRecognitionService extends RecognitionService {
                 @Override
                 public void onError(String error) {
                     if (sessionId != currentSessionId) return;
-                    Log.w(TAG, "Post-process failed, delivering raw text: " + error);
+                    // Privacy (v0.1.24): the error string can carry provider
+                    // details; the raw transcript itself is never logged in
+                    // release builds.
+                    if (BuildConfig.DEBUG) {
+                        Log.w(TAG, "Post-process failed, delivering raw text: " + error);
+                    }
                     postResults(cb, text);
                 }
             });

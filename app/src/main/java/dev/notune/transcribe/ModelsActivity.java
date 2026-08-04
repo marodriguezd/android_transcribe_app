@@ -455,6 +455,18 @@ public class ModelsActivity extends AppCompatActivity {
                     .show();
             return;
         }
+        // Sanitize the provider-supplied file name (P1.3 hardening): SAF
+        // documents that DISPLAY_NAME has no path separators, but a hostile
+        // or buggy provider could return one and escape filesDir/models.
+        name = sanitizeModelFileName(name);
+        if (name == null) {
+            new MaterialAlertDialogBuilder(this)
+                    .setTitle(R.string.models_import_bad_title)
+                    .setMessage(R.string.models_import_bad_body)
+                    .setPositiveButton(android.R.string.ok, null)
+                    .show();
+            return;
+        }
         if (size > 0 && getFilesDir().getUsableSpace() < size + FREE_SPACE_MARGIN) {
             snackbar(getString(R.string.models_import_no_space));
             return;
@@ -473,10 +485,19 @@ public class ModelsActivity extends AppCompatActivity {
 
         File dest = new File(modelsDir(), name);
         File tmp = new File(modelsDir(), name + ".part");
+        // A large GGUF import can outlive this Activity (rotation, task
+        // switch, low-memory kill). The thread must not touch the Activity
+        // or its views after destruction: resolve views on the UI thread
+        // through a weak reference guarded by isFinishing/isDestroyed.
+        final java.lang.ref.WeakReference<ModelsActivity> weak = new java.lang.ref.WeakReference<>(this);
+        // Application context for pure-storage work (progress is UI-only and
+        // must not touch a dead Activity's views).
+        final android.content.Context appContext = getApplicationContext();
+        final String finalName = name;
 
         new Thread(() -> {
             boolean ok = false;
-            try (InputStream in = getContentResolver().openInputStream(uri);
+            try (InputStream in = appContext.getContentResolver().openInputStream(uri);
                  OutputStream out = new FileOutputStream(tmp)) {
                 byte[] buf = new byte[1024 * 1024];
                 long copied = 0;
@@ -485,8 +506,8 @@ public class ModelsActivity extends AppCompatActivity {
                     out.write(buf, 0, read);
                     copied += read;
                     if (size > 0) {
-                        int pct = (int) (copied * 100 / size);
-                        runOnUiThread(() -> importBar.setProgress(pct));
+                        final int pct = (int) (copied * 100 / size);
+                        postOnUi(weak, activity -> activity.importBar.setProgress(pct));
                     }
                 }
                 ok = true;
@@ -496,17 +517,29 @@ public class ModelsActivity extends AppCompatActivity {
 
             boolean success = ok && tmp.renameTo(dest);
             if (!success) tmp.delete();
-            runOnUiThread(() -> {
-                importButton.setEnabled(true);
-                importArea.setVisibility(View.GONE);
+            postOnUi(weak, activity -> {
+                activity.importButton.setEnabled(true);
+                activity.importArea.setVisibility(View.GONE);
                 if (success) {
-                    snackbar(getString(R.string.models_import_done, name));
-                    refreshList();
+                    activity.snackbar(activity.getString(R.string.models_import_done, finalName));
+                    activity.refreshList();
                 } else {
-                    snackbar(getString(R.string.models_import_failed));
+                    activity.snackbar(activity.getString(R.string.models_import_failed));
                 }
             });
         }, "model-import").start();
+    }
+
+    /** Runs {@code action} on the UI thread only while the Activity is alive. */
+    private static void postOnUi(java.lang.ref.WeakReference<ModelsActivity> weak,
+                                 java.util.function.Consumer<ModelsActivity> action) {
+        final ModelsActivity activity = weak.get();
+        if (activity == null || activity.isFinishing() || activity.isDestroyed()) return;
+        activity.runOnUiThread(() -> {
+            if (weak.get() == activity && !activity.isFinishing() && !activity.isDestroyed()) {
+                action.accept(activity);
+            }
+        });
     }
 
     private String queryDisplayName(Uri uri) {
@@ -531,6 +564,23 @@ public class ModelsActivity extends AppCompatActivity {
             Log.w(TAG, "Failed to query size", e);
         }
         return -1;
+    }
+
+    /**
+     * Rejects file names that could escape {@code filesDir/models/}: path
+     * separators, parent-dir components, control characters and backslashes.
+     * Returns {@code null} when the name is unsafe, so callers can surface
+     * the import error instead of writing outside the sandbox.
+     */
+    private static String sanitizeModelFileName(String name) {
+        if (name == null) return null;
+        String trimmed = name.trim();
+        if (trimmed.isEmpty() || trimmed.equals(".") || trimmed.equals("..")) return null;
+        for (int i = 0; i < trimmed.length(); i++) {
+            char c = trimmed.charAt(i);
+            if (c == '/' || c == '\\' || c < 0x20 || c == 0x7f) return null;
+        }
+        return trimmed;
     }
 
     private void snackbar(String message) {

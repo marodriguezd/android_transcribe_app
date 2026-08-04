@@ -21,6 +21,8 @@ import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 
+import dev.notune.transcribe.BuildConfig;
+
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -156,7 +158,12 @@ public class TranscribeFileActivity extends AppCompatActivity {
 
                     @Override
                     public void onError(String error) {
-                        Log.w(TAG, "Post-process failed, showing raw text: " + error);
+                        // Privacy (v0.1.24): the error string can carry
+                        // provider details; the transcript itself is never
+                        // logged in release builds.
+                        if (BuildConfig.DEBUG) {
+                            Log.w(TAG, "Post-process failed, showing raw text: " + error);
+                        }
                         showResult(text);
                     }
                 });

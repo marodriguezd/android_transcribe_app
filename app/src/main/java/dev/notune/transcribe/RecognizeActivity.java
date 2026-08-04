@@ -6,6 +6,7 @@ import android.os.Bundle;
 import android.speech.RecognizerIntent;
 import android.util.Log;
 import android.view.WindowManager;
+import dev.notune.transcribe.BuildConfig;
 import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.TextView;
@@ -205,9 +206,15 @@ public class RecognizeActivity extends AppCompatActivity {
             SettingsManager settings = new SettingsManager(this);
             if (settings.isPostProcessEnabled()) {
                 status.setText(getString(R.string.rec_refining));
-                Log.i(TAG, "Post-processing enabled, sending final transcript ("
-                        + text.length() + " chars) to " + settings.getEffectiveApiUrl());
-                Log.i(TAG, "PP-RAW: " + text);
+                // Privacy (v0.1.24): never log the transcript or the provider
+                // endpoint in release builds. Debug-only diagnostics keep the
+                // ability to trace PP issues on dev builds without leaking
+                // user speech into production logcat.
+                if (BuildConfig.DEBUG) {
+                    Log.i(TAG, "Post-processing enabled, sending final transcript ("
+                            + text.length() + " chars) to " + settings.getEffectiveApiUrl());
+                    Log.i(TAG, "PP-RAW: " + text);
+                }
 
                 // The ASR partials remain the live preview. Wait for one
                 // complete post-processing response before returning the result.

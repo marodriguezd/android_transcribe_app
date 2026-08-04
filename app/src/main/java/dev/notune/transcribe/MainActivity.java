@@ -1,9 +1,15 @@
 package dev.notune.transcribe;
 
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
+import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.res.ColorStateList;
+import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.speech.RecognizerIntent;
@@ -43,6 +49,11 @@ public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
     private static final int PERM_REQ_CODE = 101;
     private static final int REQ_VOICE_TEST = 202;
+    private static final int REQ_DOWNLOAD_NOTIFICATIONS = 303;
+    private static final String ACTION_CANCEL_DEBUG_DOWNLOAD =
+            "dev.notune.transcribe.CANCEL_DEBUG_DOWNLOAD";
+    private static final String DEBUG_DOWNLOAD_CHANNEL_ID = "DebugModelDownload";
+    private static final int DEBUG_DOWNLOAD_NOTIFICATION_ID = 30303;
 
     /**
      * Debug-model identity (P0.3). Must match {@code modelPackFiles} in
@@ -60,6 +71,10 @@ public class MainActivity extends AppCompatActivity {
     // concurrent downloads (e.g. after a configuration change the Activity is
     // recreated but the background thread keeps running).
     private static final AtomicBoolean isDownloadingDebugModel = new AtomicBoolean(false);
+    private static final AtomicBoolean cancelDebugModelDownload = new AtomicBoolean(false);
+    private static final Object debugModelFinalizationLock = new Object();
+    private static volatile okhttp3.Call debugModelCall;
+    private boolean pendingDebugModelDownload = false;
 
     // Live reference to whichever MainActivity instance is currently in the
     // foreground. The model download thread reads this field on completion
@@ -186,6 +201,9 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // Handle notification actions after the views are ready.
+        handleDownloadIntent(getIntent());
+
         // Initial check
         updateVoiceInputStatus();
 
@@ -194,6 +212,20 @@ public class MainActivity extends AppCompatActivity {
         // onResume() so a configuration change that occurs while downloading
         // still initializes the engine once the model is ready.
         maybeDownloadDebugModel();
+    }
+
+    @Override
+    protected void onNewIntent(Intent intent) {
+        super.onNewIntent(intent);
+        setIntent(intent);
+        handleDownloadIntent(intent);
+    }
+
+    private void handleDownloadIntent(Intent intent) {
+        if (intent != null && ACTION_CANCEL_DEBUG_DOWNLOAD.equals(intent.getAction())) {
+            cancelDebugModelDownload();
+            intent.setAction(null);
+        }
     }
 
     @Override
@@ -376,6 +408,16 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == PERM_REQ_CODE) {
             updateVoiceInputStatus();
+        } else if (requestCode == REQ_DOWNLOAD_NOTIFICATIONS) {
+            if (pendingDebugModelDownload) {
+                pendingDebugModelDownload = false;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                        && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                                != PackageManager.PERMISSION_GRANTED) {
+                    snackbar(getString(R.string.debug_model_notification_denied));
+                }
+                startDebugModelDownload();
+            }
         }
     }
 
@@ -499,7 +541,7 @@ public class MainActivity extends AppCompatActivity {
                         getString(R.string.debug_model_size)))
                 .setCancelable(false)
                 .setPositiveButton(R.string.debug_model_download,
-                        (d, w) -> startDebugModelDownload())
+                        (d, w) -> requestNotificationPermissionThenStartDownload())
                 .setNegativeButton(R.string.debug_model_cancel,
                         (d, w) -> statusText.setText(R.string.debug_model_cancelled))
                 .show();
@@ -528,6 +570,18 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private void requestNotificationPermissionThenStartDownload() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                        != PackageManager.PERMISSION_GRANTED) {
+            pendingDebugModelDownload = true;
+            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},
+                    REQ_DOWNLOAD_NOTIFICATIONS);
+            return;
+        }
+        startDebugModelDownload();
+    }
+
     private void startDebugModelDownload() {
         if (!isDownloadingDebugModel.compareAndSet(false, true)) {
             statusText.setText(R.string.debug_model_downloading);
@@ -536,6 +590,9 @@ public class MainActivity extends AppCompatActivity {
         }
         statusText.setText(R.string.debug_model_downloading);
         benchButton.setEnabled(false);
+        cancelDebugModelDownload.set(false);
+        showDebugDownloadNotification(0, -1, -1);
+        final Context appContext = getApplicationContext();
 
         new Thread(() -> {
             // Wrap the entire body in try/finally so the AtomicBoolean is
@@ -543,17 +600,29 @@ public class MainActivity extends AppCompatActivity {
             // the HTTP path runs. Otherwise the guard stays at true and the
             // user is locked out of retrying ("Downloading model…" forever).
             try {
-            File modelsDir = new File(getFilesDir(), "models");
+            File modelsDir = new File(appContext.getFilesDir(), "models");
             if (!modelsDir.exists() && !modelsDir.mkdirs()) {
-                runOnUiThread(() -> onModelDownloadFailed(
-                        getString(R.string.debug_model_cannot_create_dir)));
+                final MainActivity ui = sActiveInstance;
+                if (ui != null) {
+                    ui.runOnUiThread(() -> {
+                        if (ui.isFinishing() || ui.isDestroyed()) return;
+                        ui.onModelDownloadFailed(
+                                ui.getString(R.string.debug_model_cannot_create_dir));
+                    });
+                }
                 return;
             }
 
             // Rough sanity check: the model is ~751 MB; leave extra headroom.
             long requiredBytes = 800L * 1024 * 1024;
-            if (getFilesDir().getUsableSpace() < requiredBytes) {
-                runOnUiThread(() -> onModelDownloadFailed(getString(R.string.debug_model_no_space)));
+            if (appContext.getFilesDir().getUsableSpace() < requiredBytes) {
+                final MainActivity ui = sActiveInstance;
+                if (ui != null) {
+                    ui.runOnUiThread(() -> {
+                        if (ui.isFinishing() || ui.isDestroyed()) return;
+                        ui.onModelDownloadFailed(ui.getString(R.string.debug_model_no_space));
+                    });
+                }
                 return;
             }
 
@@ -572,18 +641,37 @@ public class MainActivity extends AppCompatActivity {
                     .writeTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
                     .build();
             Request request = new Request.Builder().url(url).build();
-            try (Response response = client.newCall(request).execute()) {
+            debugModelCall = client.newCall(request);
+            try (Response response = debugModelCall.execute()) {
                 if (!response.isSuccessful() || response.body() == null) {
-                    throw new IOException(getString(R.string.debug_model_http_error,
+                    throw new IOException(appContext.getString(R.string.debug_model_http_error,
                             response.code()));
                 }
+                long totalBytes = response.body().contentLength();
+                long downloadedBytes = 0;
+                int lastPercent = -1;
                 try (InputStream is = response.body().byteStream();
                      FileOutputStream fos = new FileOutputStream(tmp)) {
-                    byte[] buffer = new byte[8192];
+                    byte[] buffer = new byte[64 * 1024];
                     int read;
                     while ((read = is.read(buffer)) != -1) {
+                        if (cancelDebugModelDownload.get()) {
+                            throw new java.util.concurrent.CancellationException();
+                        }
                         fos.write(buffer, 0, read);
+                        downloadedBytes += read;
+                        int percent = totalBytes > 0
+                                ? (int) Math.min(100, downloadedBytes * 100 / totalBytes)
+                                : -1;
+                        if (percent != lastPercent
+                                && (percent < 0 || percent % 2 == 0 || percent == 100)) {
+                            lastPercent = percent;
+                            showDebugDownloadNotification(percent, downloadedBytes, totalBytes);
+                        }
                     }
+                }
+                if (cancelDebugModelDownload.get()) {
+                    throw new java.util.concurrent.CancellationException();
                 }
 
                 // Verify the download BEFORE it can become the active model
@@ -591,20 +679,39 @@ public class MainActivity extends AppCompatActivity {
                 // never activated — matching the release build's checkModels
                 // guarantee.
                 String actualHash = FileSha256.sha256Hex(tmp);
+                if (cancelDebugModelDownload.get()) {
+                    tmp.delete();
+                    throw new java.util.concurrent.CancellationException();
+                }
                 if (!DEBUG_MODEL_SHA256.equalsIgnoreCase(actualHash)) {
                     tmp.delete();
-                    throw new IOException(getString(R.string.debug_model_checksum_mismatch,
+                    throw new IOException(appContext.getString(R.string.debug_model_checksum_mismatch,
                             DEBUG_MODEL_SHA256, actualHash));
                 }
 
-                if (!tmp.renameTo(dest)) {
-                    throw new IOException(getString(R.string.debug_model_rename_failed));
-                }
+                synchronized (debugModelFinalizationLock) {
+                    if (cancelDebugModelDownload.get()) {
+                        throw new java.util.concurrent.CancellationException();
+                    }
+                    if (!tmp.renameTo(dest)) {
+                        throw new IOException(appContext.getString(R.string.debug_model_rename_failed));
+                    }
 
-                // Mark this downloaded file as the active imported model
-                // atomically (temp + rename), the same way every other
-                // cross-process marker is written (P1.2).
-                MarkerFileHelper.writeString(this, "active_model", DEBUG_MODEL_NAME);
+                    // Mark this downloaded file as the active imported model
+                    // atomically (temp + rename), the same way every other
+                    // cross-process marker is written (P1.2).
+                    MarkerFileHelper.writeString(appContext, "active_model", DEBUG_MODEL_NAME);
+                    if (cancelDebugModelDownload.get()) {
+                        MarkerFileHelper.delete(appContext, "active_model");
+                        dest.delete();
+                        throw new java.util.concurrent.CancellationException();
+                    }
+                    if (!DEBUG_MODEL_NAME.equals(
+                            MarkerFileHelper.readString(appContext, "active_model", ""))) {
+                        dest.delete();
+                        throw new IOException(appContext.getString(R.string.debug_model_rename_failed));
+                    }
+                }
 
                 // Notify whichever MainActivity is currently in the foreground
                 // (resolved at completion, NOT the captured MainActivity.this
@@ -632,7 +739,21 @@ public class MainActivity extends AppCompatActivity {
                         ui.initNative(ui);
                     });
                 }
+            } catch (java.util.concurrent.CancellationException e) {
+                tmp.delete();
+                final MainActivity ui = sActiveInstance;
+                if (ui != null) {
+                    ui.runOnUiThread(() -> {
+                        if (ui.isFinishing() || ui.isDestroyed()) return;
+                        ui.statusText.setText(R.string.debug_model_cancelled);
+                        ui.benchButton.setEnabled(true);
+                    });
+                }
             } catch (Exception e) {
+                if (cancelDebugModelDownload.get()) {
+                    tmp.delete();
+                    return;
+                }
                 Log.e(TAG, "Debug model download failed", e);
                 tmp.delete();
                 // Same live-Activity dispatch as the success path: notify the
@@ -642,7 +763,7 @@ public class MainActivity extends AppCompatActivity {
                 // the initial download dialog — a graceful fallback rather
                 // than a silent loss of the failure reason for one cycle.
                 final String reason = e.getMessage() != null ? e.getMessage()
-                        : getString(R.string.debug_model_unknown_reason);
+                        : appContext.getString(R.string.debug_model_unknown_reason);
                 final MainActivity ui = sActiveInstance;
                 if (ui != null) {
                     // Symmetric with the success path: liveness is checked on
@@ -654,6 +775,8 @@ public class MainActivity extends AppCompatActivity {
                 }
             }
             } finally {
+                debugModelCall = null;
+                cancelDebugDownloadNotification();
                 // Reset regardless of whether we succeeded, caught an exception,
                 // or hit one of the early-return paths (mkdirs() failure or low
                 // disk space) — without this, the AtomicBoolean stays at true on
@@ -662,6 +785,70 @@ public class MainActivity extends AppCompatActivity {
                 isDownloadingDebugModel.set(false);
             }
         }, "debug-model-download").start();
+    }
+
+    private void showDebugDownloadNotification(int percent, long downloadedBytes, long totalBytes) {
+        android.content.Context context = getApplicationContext();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && ContextCompat.checkSelfPermission(context,
+                        android.Manifest.permission.POST_NOTIFICATIONS)
+                        != PackageManager.PERMISSION_GRANTED) {
+            return;
+        }
+        NotificationManager manager = (NotificationManager)
+                context.getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager == null) return;
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            NotificationChannel channel = new NotificationChannel(DEBUG_DOWNLOAD_CHANNEL_ID,
+                    context.getString(R.string.app_name), NotificationManager.IMPORTANCE_LOW);
+            channel.setDescription(context.getString(R.string.debug_model_downloading));
+            manager.createNotificationChannel(channel);
+        }
+
+        Intent cancelIntent = new Intent(context, MainActivity.class);
+        cancelIntent.setAction(ACTION_CANCEL_DEBUG_DOWNLOAD);
+        PendingIntent cancelPendingIntent = PendingIntent.getActivity(context, REQ_DOWNLOAD_NOTIFICATIONS,
+                cancelIntent, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        String progressText;
+        if (percent >= 0 && totalBytes > 0) {
+            progressText = context.getString(R.string.debug_model_downloading) + " " + percent + "%";
+        } else if (downloadedBytes > 0) {
+            progressText = context.getString(R.string.debug_model_downloading) + " ("
+                    + formatBytes(downloadedBytes) + ")";
+        } else {
+            progressText = context.getString(R.string.debug_model_downloading);
+        }
+        Notification notification = new Notification.Builder(context, DEBUG_DOWNLOAD_CHANNEL_ID)
+                .setSmallIcon(android.R.drawable.stat_sys_download)
+                .setContentTitle(context.getString(R.string.app_name))
+                .setContentText(progressText)
+                .setOngoing(true)
+                .setOnlyAlertOnce(true)
+                .setProgress(100, Math.max(0, percent), percent < 0)
+                .addAction(new Notification.Action.Builder(null,
+                        context.getString(R.string.debug_model_cancel), cancelPendingIntent).build())
+                .build();
+        manager.notify(DEBUG_DOWNLOAD_NOTIFICATION_ID, notification);
+    }
+
+    private static String formatBytes(long bytes) {
+        if (bytes < 1024 * 1024) return (bytes / 1024) + " KB";
+        return String.format(java.util.Locale.US, "%.1f MB", bytes / (1024.0 * 1024.0));
+    }
+
+    private void cancelDebugDownloadNotification() {
+        NotificationManager manager = (NotificationManager)
+                getApplicationContext().getSystemService(Context.NOTIFICATION_SERVICE);
+        if (manager != null) manager.cancel(DEBUG_DOWNLOAD_NOTIFICATION_ID);
+    }
+
+    private void cancelDebugModelDownload() {
+        if (!isDownloadingDebugModel.get()) return;
+        cancelDebugModelDownload.set(true);
+        synchronized (debugModelFinalizationLock) {
+            okhttp3.Call call = debugModelCall;
+            if (call != null) call.cancel();
+        }
     }
 
     private void onModelDownloadFailed(String reason) {
@@ -676,7 +863,7 @@ public class MainActivity extends AppCompatActivity {
                 .setMessage(getString(R.string.debug_model_error, reason))
                 .setCancelable(false)
                 .setPositiveButton(R.string.debug_model_retry,
-                        (d, w) -> startDebugModelDownload())
+                        (d, w) -> requestNotificationPermissionThenStartDownload())
                 .setNegativeButton(R.string.debug_model_cancel,
                         (d, w) -> {
                             statusText.setText(R.string.debug_model_cancelled);

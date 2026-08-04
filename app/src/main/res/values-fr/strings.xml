@@ -151,6 +151,7 @@
     <string name="debug_model_error">Échec du téléchargement : %1$s</string>
     <string name="debug_model_retry">Réessayer</string>
     <string name="debug_model_cancelled">Téléchargement du modèle annulé</string>
+    <string name="debug_model_notification_denied">Autorisation de notification refusée ; le téléchargement continuera sans notification de progression.</string>
     <string name="debug_model_no_space">Espace de stockage insuffisant pour télécharger le modèle</string>
     <string name="debug_model_size" translatable="false">751 MB</string>
 

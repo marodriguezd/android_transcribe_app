@@ -151,6 +151,7 @@
     <string name="debug_model_error">Error de descarga: %1$s</string>
     <string name="debug_model_retry">Reintentar</string>
     <string name="debug_model_cancelled">Descarga del modelo cancelada</string>
+    <string name="debug_model_notification_denied">Se denegaron las notificaciones; la descarga continuará sin notificación de progreso.</string>
     <string name="debug_model_no_space">No hay suficiente espacio libre para descargar el modelo</string>
     <string name="debug_model_size" translatable="false">751 MB</string>
 

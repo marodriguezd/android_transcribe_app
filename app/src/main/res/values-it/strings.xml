@@ -151,6 +151,7 @@
     <string name="debug_model_error">Download non riuscito: %1$s</string>
     <string name="debug_model_retry">Riprova</string>
     <string name="debug_model_cancelled">Download del modello annullato</string>
+    <string name="debug_model_notification_denied">Permesso per le notifiche negato; il download continuerà senza notifica di avanzamento.</string>
     <string name="debug_model_no_space">Spazio di archiviazione insufficiente per scaricare il modello</string>
     <string name="debug_model_size" translatable="false">751 MB</string>
 

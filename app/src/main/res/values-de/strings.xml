@@ -151,6 +151,7 @@
     <string name="debug_model_error">Download fehlgeschlagen: %1$s</string>
     <string name="debug_model_retry">Wiederholen</string>
     <string name="debug_model_cancelled">Modell-Download abgebrochen</string>
+    <string name="debug_model_notification_denied">Benachrichtigungen verweigert; der Download wird ohne Fortschrittsbenachrichtigung fortgesetzt.</string>
     <string name="debug_model_no_space">Nicht genug freier Speicherplatz zum Herunterladen des Modells</string>
     <string name="debug_model_size" translatable="false">751 MB</string>
 

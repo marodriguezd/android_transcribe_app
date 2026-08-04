@@ -151,6 +151,7 @@
     <string name="debug_model_error">Falha no download: %1$s</string>
     <string name="debug_model_retry">Tentar novamente</string>
     <string name="debug_model_cancelled">Download do modelo cancelado</string>
+    <string name="debug_model_notification_denied">Permissão de notificações negada; o download continuará sem notificação de progresso.</string>
     <string name="debug_model_no_space">Armazenamento livre insuficiente para baixar o modelo</string>
     <string name="debug_model_size" translatable="false">751 MB</string>
 

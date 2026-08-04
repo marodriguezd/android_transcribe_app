@@ -160,6 +160,7 @@
     <string name="debug_model_error">Download failed: %1$s</string>
     <string name="debug_model_retry">Retry</string>
     <string name="debug_model_cancelled">Model download cancelled</string>
+    <string name="debug_model_notification_denied">Notification permission denied; the download will continue without a progress notification.</string>
     <string name="debug_model_no_space">Not enough free storage to download the model</string>
     <string name="debug_model_size" translatable="false">751 MB</string>
 

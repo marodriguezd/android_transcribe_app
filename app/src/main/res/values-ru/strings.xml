@@ -151,6 +151,7 @@
     <string name="debug_model_error">Ошибка загрузки: %1$s</string>
     <string name="debug_model_retry">Повторить</string>
     <string name="debug_model_cancelled">Загрузка модели отменена</string>
+    <string name="debug_model_notification_denied">Разрешение на уведомления отклонено; загрузка продолжится без уведомления о прогрессе.</string>
     <string name="debug_model_no_space">Недостаточно свободного места для загрузки модели</string>
     <string name="debug_model_size" translatable="false">751 MB</string>
 

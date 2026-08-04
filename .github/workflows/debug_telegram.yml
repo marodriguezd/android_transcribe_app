@@ -45,6 +45,9 @@ jobs:
     - name: Install cargo-ndk
       run: cargo install cargo-ndk
 
+    - name: Rust format check (hard gate)
+      run: cargo fmt --all -- --check
+
     - name: Cache Rust dependencies
       uses: actions/cache@v4
       with:
@@ -82,6 +85,12 @@ jobs:
 
     - name: Lint (hard gate)
       run: ./gradlew lintDebug
+
+    # Debug APKs ship without the bundled GGUF, so this gate is a safe
+    # no-op here (it only verifies *present* assets); running it keeps the
+    # checkModels contract exercised on every push, not just release tags.
+    - name: Verify bundled model hash (checkModels gate)
+      run: ./gradlew checkModels
 
     - name: Extract Version Name
       id: version

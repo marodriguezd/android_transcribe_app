@@ -49,6 +49,9 @@ jobs:
     - name: Install cargo-ndk
       run: cargo install cargo-ndk
 
+    - name: Rust format check (hard gate)
+      run: cargo fmt --all -- --check
+
     - name: Cache Rust dependencies
       uses: actions/cache@v4
       with:
@@ -74,7 +77,11 @@ jobs:
       env:
         KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
       run: |
+        if [ -z "$KEYSTORE_BASE64" ]; then
+          echo "KEYSTORE_BASE64 secret is missing — cannot sign the release"; exit 1
+        fi
         echo "$KEYSTORE_BASE64" | base64 --decode > release.keystore
+        test -s release.keystore || { echo "KEYSTORE_BASE64 decoded to an empty keystore — cannot sign the release"; exit 1; }
 
     - name: Check translations (i18n parity gate)
       run: python3 scripts/check_translations.py
@@ -92,6 +99,19 @@ jobs:
 
     - name: Verify bundled model hash (checkModels gate)
       run: ./gradlew checkModels
+
+    # Guardrail: never publish an unsigned or misaligned APK. apksigner and
+    # zipalign ship with the Android SDK build-tools installed by
+    # setup-android. The release APK is signed by AGP's signingConfig, so
+    # this must pass; a failure here aborts the job before the release is
+    # created.
+    - name: Verify APK alignment and signature
+      run: |
+        APK=app/build/outputs/apk/release/app-release.apk
+        BT=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)
+        "$BT"zipalign -c 4 "$APK"
+        "$BT"apksigner verify --print-certs "$APK" | tee apk-cert.txt
+        grep -q 'CN=' apk-cert.txt || { echo "APK is not signed — aborting release"; exit 1; }
 
     - name: Extract Version Name
       id: extract_version

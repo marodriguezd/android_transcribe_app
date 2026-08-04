@@ -6,11 +6,13 @@ import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.net.InetAddress;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+import okhttp3.Dns;
 import okhttp3.OkHttpClient;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
@@ -247,11 +249,19 @@ public class PostProcessorTest {
 
     @Test
     public void dnsFailureReportsError() throws Exception {
-        // RFC 6761 reserves the .invalid TLD: resolution is guaranteed to
-        // fail, so this exercises a real UnknownHostException (DNS failure)
-        // without depending on any particular network configuration. A
-        // scaled client bounds the test even if a runner's resolver hangs.
+        // Deterministic DNS failure: inject an OkHttp Dns that always throws
+        // UnknownHostException, so the test exercises the real onFailure
+        // contract without depending on the runner's resolver/proxy. The
+        // .invalid-style host name is what a real failure produces.
         PostProcessor.setSharedClientForTests(new OkHttpClient.Builder()
+                .dns(new Dns() {
+                    @Override
+                    public java.util.List<InetAddress> lookup(String hostname)
+                            throws java.net.UnknownHostException {
+                        throw new java.net.UnknownHostException(hostname);
+                    }
+                })
+                .proxy(java.net.Proxy.NO_PROXY)
                 .connectTimeout(2, TimeUnit.SECONDS)
                 .readTimeout(5, TimeUnit.SECONDS)
                 .writeTimeout(5, TimeUnit.SECONDS)
@@ -284,6 +294,9 @@ public class PostProcessorTest {
         // productionClientAppliesTimeoutGuarantees; waiting it out would
         // stall CI, so this uses a scaled client via the seam).
         PostProcessor.setSharedClientForTests(new OkHttpClient.Builder()
+                // Bypass any runner proxy so the connect attempt goes to the
+                // TEST-NET address directly and reliably times out.
+                .proxy(java.net.Proxy.NO_PROXY)
                 .connectTimeout(500, TimeUnit.MILLISECONDS)
                 .readTimeout(2, TimeUnit.SECONDS)
                 .writeTimeout(2, TimeUnit.SECONDS)

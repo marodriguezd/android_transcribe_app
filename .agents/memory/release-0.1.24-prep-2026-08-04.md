@@ -67,3 +67,16 @@ User decisions (2026-08-04):
 1. **Privacy gating is per-message, not per-file:** error strings can carry provider response details, so even "delivering raw text" warnings get gated; non-sensitive errors (permissions, lifecycle) stay always-on for support.
 2. **CI verification of the artifact beats trusting the build:** `apksigner verify` + `zipalign -c` after `assembleRelease` makes an unsigned/unaligned APK impossible to publish silently.
 3. **Device-only validation must be spelled out in the docs as "pending"**, never implied done — the audit's evidence taxonomy applies to every gate.
+4. **AGP 8.x disables `BuildConfig` generation by default** (https://developer.android.com/build/releases/gradle-plugin#buildconfig-fields). The first CI run of the privacy work failed exactly here: `compileDebugJavaWithJavac` could not resolve `dev.notune.transcribe.BuildConfig`. Fix: `buildFeatures { buildConfig = true }` in `app/build.gradle.kts`. Any future use of `BuildConfig.DEBUG` (or any new `BuildConfig` field) depends on this flag staying on.
+5. **Network tests must not depend on the runner's resolver/proxy.** The original `.invalid`-host DNS test and the plain `192.0.2.1` connect test are sensitive to CI proxies (GitHub-hosted runners can route them through a proxy, changing the failure mode and making the test flaky or wrong). Deterministic fix applied 2026-08-04:
+   - DNS: inject an OkHttp `Dns` that always throws `UnknownHostException` (real `onFailure` path, no resolver dependency).
+   - Connect: `proxy(NO_PROXY)` + TEST-NET `192.0.2.1` + 500 ms scaled connect timeout via `setSharedClientForTests`.
+   - Verified: `testDebugUnitTest` passes (34 tests) even with `HTTP(S)_PROXY` pointed at an unreachable proxy.
+
+## CI incident log (2026-08-04, run 30895862658)
+
+- Run `30895862658` (push `625ad68`, "Debug APK → Telegram") **failed at step 14 `testDebugUnitTest`**.
+- Root cause: `BuildConfig.DEBUG` used in 4 production files (`RecognizeActivity`, `VoiceRecognitionService`, `TranscribeFileActivity`, `RustInputMethodService`) but AGP 8.x does not generate `BuildConfig` unless `buildFeatures.buildConfig = true`. Clean CI build → unresolved symbol.
+- Secondary latent issue caught while fixing: the two new network tests could be made flaky by runner proxies; made deterministic (lesson 5).
+- Fix commits: (to be listed after push) — `buildConfig = true` + deterministic network tests.
+- Local re-validation: `testDebugUnitTest` → BUILD SUCCESSFUL, 34/34 tests green with `HTTP_PROXY`/`HTTPS_PROXY` set to an unreachable proxy.

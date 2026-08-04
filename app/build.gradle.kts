@@ -64,6 +64,14 @@ android {
         }
     }
 
+    buildFeatures {
+        // BuildConfig.DEBUG is used to gate transcript/PP-error logging to
+        // debug builds only (privacy, 2026-08-04). AGP 8.x disables
+        // BuildConfig generation by default; without this flag the
+        // referenced classes do not compile.
+        buildConfig = true
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8

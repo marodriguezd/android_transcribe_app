@@ -31,7 +31,7 @@ public class SubtitlePrefsTest {
     @Test
     public void testDefaultSubtitleMaxLines() {
         int maxLines = MarkerFileHelper.readIntFromFile(tempDirectory, "subtitle_lines", SubtitlePrefs.DEFAULT_MAX_LINES);
-        assertEquals(2, maxLines);
+        assertEquals(4, maxLines);
     }
 
     @Test

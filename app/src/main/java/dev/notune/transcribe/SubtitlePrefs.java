@@ -13,8 +13,8 @@ import java.nio.file.Files;
  */
 public final class SubtitlePrefs {
     private static final String FILE_NAME = "subtitle_lines";
-    /** Default: classic caption style, last two lines visible. */
-    public static final int DEFAULT_MAX_LINES = 2;
+    /** Default: keep four lines visible so translation has more context. */
+    public static final int DEFAULT_MAX_LINES = 4;
 
     private SubtitlePrefs() {}
 

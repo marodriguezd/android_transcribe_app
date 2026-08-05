@@ -4,6 +4,16 @@ Full change history of **android_transcribe_app** (fork of [notune/android_trans
 
 ---
 
+# v0.1.27
+
+Live-subtitle translation and caption-context improvements:
+
+- Added optional on-device translation of finalized live-subtitle captions to a selected language, with ordered results and safe fallback to the original text.
+- Live subtitles now show four lines by default, preserving more original-language context before translation.
+- Stale translation callbacks are ignored so a restarted subtitle session cannot be overwritten by an older one.
+
+---
+
 # v0.1.26
 
 Release post-processing fix for upgrades from versions that stored the API key in encrypted preferences:

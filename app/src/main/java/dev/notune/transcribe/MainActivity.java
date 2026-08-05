@@ -159,7 +159,7 @@ public class MainActivity extends AppCompatActivity {
         bindMarkerSwitch(R.id.switch_record_background, "stop_on_hide", true);
         bindMarkerSwitch(R.id.switch_auto_stop, "auto_stop", false);
 
-        // Live subtitle line limit: 2 (default), 4, or 0 = unlimited.
+        // Live subtitle line limit: 4 (default), 2, or 0 = unlimited.
         RadioGroup subsLinesGroup = findViewById(R.id.rg_subtitle_lines);
         int subsLines = SubtitlePrefs.getMaxLines(this);
         if (subsLines == 4) {

@@ -1,4 +1,6 @@
-# v0.1.27 — live-subtitle translation (next)
+# v0.1.27 — live-subtitle translation and context (2026-08-05)
+
+`versionCode 29` — improves live subtitles with optional on-device translation and a larger default caption context window.
 
 Adds on-device translation of live subtitles, targeting a language you choose.
 
@@ -6,6 +8,7 @@ Adds on-device translation of live subtitles, targeting a language you choose.
 - **Ordered, failure-safe captions:** segments show immediately in the original language and swap to the translation as it lands; translations are applied strictly in order, stale sessions are dropped by generation, and any failure (no Play Services, no pack, slow/failing translation) keeps the original text on screen.
 - **ASR isolation:** live subtitles always run `Task::Transcribe` in the engine, so the global "translate to English" model switch can never translate captions behind the user's back.
 - **Auto source detection:** with an automatic model language, the source is detected from the text itself (Chinese/Japanese/Korean/Russian scripts plus a conservative Latin heuristic); for reliable translation of Latin-script speech, set the language in Speech models.
+- **Four-line default context:** live subtitles now show four lines by default, so the original-language phrase provides more context before the finalized caption is translated.
 
 # v0.1.26 — release post-processing fix (2026-08-04)
 

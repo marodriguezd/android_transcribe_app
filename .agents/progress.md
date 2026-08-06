@@ -43,7 +43,23 @@ to `main`)**: every gate passed — `cargo fmt --check`, translations,
 needs a `v0.1.28` tag (or manual dispatch), which also requires the
 `KEYSTORE_BASE64`/`KEY_ALIAS`/`KEY_PASS`/`STORE_PASS` secrets in the repo.
 
-## 🟢 Recently completed
+## 🟢 Completed — 2026-08-06 review follow-up (LOW fixes) — CI green
+
+Code-review of commit `92e9da2` (code-reviewer) found: a MEDIUM signing-fail-fast gap
+(`assemble`/`build` not covered), a MEDIUM file-transcription cap that may OOM before
+60 min on small heaps, a MEDIUM/LOW async-migration race in `App.java`, and two LOWs
+that the user chose to fix now:
+- `src/voice_session.rs`: session monitor now uses `attach_current_thread_permanently`
+  (was attach/detach every 100 ms — consistent with O1).
+- `src/audio.rs`: sliding-window energy accumulator switched from `f32` to `f64` to
+  eliminate rounding drift/catastrophic cancellation on long quiet recordings.
+
+Pushed as `d8078b9`; CI run `31097691815` — **all gates green** (fmt, translations, JVM
+tests, `assembleDebug` incl. Rust, `lintDebug`, `checkModels`), APK to Telegram.
+
+**Still open from the review (not yet fixed):** V1 signing fail-fast does not cover
+`./gradlew assemble`/`build`; file cap is 60 min ≈ 230 MB (may OOM before cap);
+`App.java` async-migration race. Candidates for the v0.1.28 release push.
 
 ## 🟢 Recently completed
 

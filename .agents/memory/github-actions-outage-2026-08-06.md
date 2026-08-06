@@ -88,3 +88,25 @@ been created for `e150c98` — push/tag events are queued and should be processe
 when Actions recovers (the release workflow triggers on `push: tags v*` and
 fails fast if `KEYSTORE_BASE64` is missing; secrets were verified present).
 Resume steps live in `progress.md` (section "🟡 Pending — v0.1.29 release CI").
+
+## Addendum 2 — v0.1.29 tag re-created to re-fire the release event (22:10 UTC)
+
+Timeline follow-up (all 2026-08-06, UTC):
+
+- **21:59** — the **debug** workflow for `e150c98` ran and passed (run
+  `31128673456`, success): the `main` push event eventually got processed
+  despite the outage.
+- **21:59–22:10** — no `Build Android App` run was ever created for `e150c98`:
+  the original **tag** push event was dropped by the outage (only the debug run
+  exists for that SHA).
+- **22:10** — the tag was **deleted and re-created** on the remote
+  (`git push origin :refs/tags/v0.1.29 && git push origin v0.1.29`, same SHA
+  `e150c98`; webhooks were operational) to re-fire `push: tags v*`. No empty
+  commit — lesson learned from `e1243c0`.
+- **22:29** — still no release run: the Actions component remains `major_outage`
+  (incident updated 22:18Z) and is not creating runs.
+
+Lesson: **a tag-push event can be lost while a `push: main` event for the same
+commit survives** — when a release run never appears, re-create the tag instead
+of waiting indefinitely. If the re-created tag's event is also dropped, repeat
+the delete/re-create once the Actions component shows `operational`.

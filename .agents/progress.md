@@ -1,6 +1,6 @@
 # Progress — current AI-assisted work state
 
-**Last update:** 2026-08-06 (v0.1.29 prepared & tagged; release CI pending on GitHub Actions outage)
+**Last update:** 2026-08-06 22:29 UTC (v0.1.29 debug CI green; release run missing — Actions `major_outage`; tag re-created to re-fire event)
 
 ## ⚠️ Working mode (2026-08-06, fire rule)
 
@@ -39,28 +39,45 @@ to `main`)**: every gate passed — `cargo fmt --check`, translations,
   block, AGENTS.md rules (incl. §3 "Regla de validación por entorno"),
   7-locale strings.
 
-## 🟡 Pending — v0.1.29 release CI (blocked by GitHub Actions outage, 2026-08-06 ~21:37 UTC)
+## 🟡 Pending — v0.1.29 release CI (release run missing; Actions `major_outage`, 2026-08-06 22:29 UTC)
 
-Release **v0.1.29** is **prepared and pushed, but the CI has not started yet** —
-GitHub Actions is in a `major_outage` (Partial System Outage) and push/tag
-events are being queued, not processed. Resume when Actions recovers:
+Release **v0.1.29** is prepared, pushed, and the **debug CI already passed**;
+only the **release workflow run is still missing** because the original tag
+push event was lost during the GitHub Actions outage. State as of 22:29 UTC:
 
+- **Debug CI ✅ passed for `e150c98`:** run `31128673456` (Debug APK →
+  Telegram), completed `success` 2026-08-06T21:59:12Z — all gates green (fmt,
+  translations, JVM tests, `assembleDebug`, `lintDebug`, `checkModels`), APK
+  to Telegram.
+- **Release run ❌ never created:** `Build Android App` (trigger
+  `push: tags v*`) has no run for `e150c98`; the original tag-push event was
+  dropped by the outage (only the debug run exists for that SHA).
+- **Remedy applied 22:10 UTC:** the tag **`v0.1.29` was deleted and re-created**
+  on the remote (`git push origin :refs/tags/v0.1.29 && git push origin
+  v0.1.29`, same SHA `e150c98`; webhooks were operational) to re-fire the tag
+  event. As of 22:29 UTC the run still has not appeared — Actions component
+  remains `major_outage` (incident updated 22:18Z) and is not creating runs.
 - **Prepared (commits on `main`):** `1bc4106` (docs: outage incident) +
   `e150c98` (chore: prepare v0.1.29 release — versionCode `31` / versionName
   `0.1.29` in `app/build.gradle.kts`, `RELEASE_NOTES.md` v0.1.29 block, store
   changelog `fastlane/metadata/android/en-US/changelogs/31.txt`).
-- **Pushed:** `main` = `e150c98`, tag **`v0.1.29`** = `e150c98` (the tag triggers
-  the `Build Android App` release workflow). All 4 release secrets verified
-  present (`KEYSTORE_BASE64`, `KEY_ALIAS`, `KEY_PASS`, `STORE_PASS`).
-- **Resume steps:** `gh run list --workflow=debug_telegram.yml` for the debug
-  run of `e150c98` and `gh api repos/marodriguezd/android_transcribe_app/actions/runs?head_sha=e150c98…`
-  for the release run; if a run was **cancelled by the outage**, rerun it
-  (`gh run rerun <id>` — it queues and starts when Actions drains, per
-  [`memory/github-actions-outage-2026-08-06.md`](./memory/github-actions-outage-2026-08-06.md)).
-  The release workflow must pass every gate (fmt, translations, tests,
-  `assembleRelease`, `checkModels`, **zipalign + apksigner verification**) and
-  create the GitHub Release `Release v0.1.29` with asset
-  `android_transcribe_app_v0.1.29.apk` (body from `RELEASE_NOTES.md`).
+- **Pushed:** `main` = `e150c98`, tag **`v0.1.29`** = `e150c98`. All 4 release
+  secrets verified present (`KEYSTORE_BASE64`, `KEY_ALIAS`, `KEY_PASS`,
+  `STORE_PASS`) → signing works without intervention.
+- **Resume steps (once Actions recovers):**
+  1. `gh run list --workflow=android_release.yml --limit 3` (or
+     `gh api 'repos/marodriguezd/android_transcribe_app/actions/runs?head_sha=e150c98…'`)
+     → look for the `Build Android App` run of `e150c98`.
+  2. If it exists but was **cancelled by the outage** → `gh run rerun <id>`
+     (it queues and starts when Actions drains, per
+     [`memory/github-actions-outage-2026-08-06.md`](./memory/github-actions-outage-2026-08-06.md)).
+  3. If it **still does not exist** after Actions recovers → the tag event was
+     lost again; re-fire it: delete + re-create the tag (same SHA, no empty
+     commits) as done at 22:10 UTC.
+  4. Follow to completion: every gate (fmt, translations, JVM tests,
+     `assembleRelease`, `checkModels`, **zipalign + apksigner verification**)
+     then GitHub Release `Release v0.1.29` with asset
+     `android_transcribe_app_v0.1.29.apk` (body from `RELEASE_NOTES.md`).
 - **Feature shipped by v0.1.29:** IME Cancel button visible during recording +
   no-flicker `resultPending` window (validated green on `9c65f61` in run
   `31127092655`).

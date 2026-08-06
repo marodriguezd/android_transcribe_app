@@ -99,11 +99,23 @@ Post-procesado IA (fork addition): opcional, *off-line-by-default*, refina texto
 - 🤖 **Compilaciones de Depuración (Debug):** Se realizan SIEMPRE a través de GitHub Actions (`Build Debug APK` workflow), el cual recompila y envía automáticamente el archivo APK de depuración al usuario a través del bot de Telegram.
 - 🚀 **Compilaciones de Lanzamiento (Release):** Se realizan SIEMPRE a través de GitHub Actions (`Build Signed Release APK` workflow / `android_release.yml`) mediante tags `vX.Y.Z` o disparadores manuales.
 
+### Regla de validación por entorno (2026-08-06, REGLA GRABADA A FUEGO)
+
+Los agentes deben validar compilaciones según el host donde se ejecutan:
+
+- 📱 **Host tipo dispositivo móvil / embebido (p. ej. un Android userspace ARM64 sin KVM — como el host de desarrollo actual): NUNCA ejecutar compilaciones pesadas locales.** `./gradlew assembleDebug`, `cargo build`, `cargo ndk ...`, `cargo check` con NDK, `assembleRelease`, etc. sobrecargan el sistema y pueden dejarlo inoperativo (verificado 2026-08-06). Toda validación de compilación se hace **de forma dinámica vía GitHub**: `git commit` + `git push` a `main` dispara el workflow debug (`debug_telegram.yml`), que corre todos los gates — `cargo fmt --check`, `check_translations.py`, `testDebugUnitTest`, `assembleDebug` (compila el Rust vía cargo-ndk), `lintDebug`, `checkModels` — y envía el APK a Telegram. El agente lee el resultado con `gh run list` / `gh run view` y **itera: arreglar → push → leer CI → repetir**, subiendo pruebas que pasen o no.
+- 💻 **Equipo físico (portátil/ordenador del mantenedor):** se puede compilar localmente (`./gradlew assembleDebug`, `cargo ndk ...`, tests JVM, etc.) respetando la protección térmica (los tests JVM no disparan `cargoNdkBuild`) y los gates de la sección "Validación y estilo".
+- ✅ **Gates ligeros permitidos en el host embebido:** lectura estática de código, `git diff`, `cargo fmt --check` (no compila), `python3 scripts/check_translations.py`, edición de strings XML. Nada que invoque Gradle/Cargo/CMake en modo build.
+- 🛠️ `gh` está autenticado como el mantenedor en el host embebido; úsalo para inspeccionar runs del CI en vez de compilar localmente.
+
 ### Signing (AGENT-ONLY)
 
 - Si `release.keystore` existe en la raíz **y** las 3 env vars (`KEY_ALIAS`,
   `KEY_PASS`, `STORE_PASS`) están exportadas, AGP firma el release con
-  `signingConfigs.release`. Sin keystore/env = release sin firmar (debug-only).
+  `signingConfigs.release`. Si el keystore existe pero falta alguna env var,
+  **los builds release fallan con un error claro** (hardening 2026-08-06):
+  nunca se firma con credenciales por defecto. Sin keystore = release sin
+  firmar (debug-only).
 - En CI la keystore es base64-decoded desde un repo secret; ver
   `.github/workflows/android_release.yml` §Decode Keystore.
 
@@ -111,7 +123,7 @@ Post-procesado IA (fork addition): opcional, *off-line-by-default*, refina texto
 
 - 🛡️ **La Regla del Guantelete (*The Gauntlet Validation Rule*):** De acuerdo con la filosofía de arnés de pruebas (*Test Harness*) postulada por Robert C. Martin ("Uncle Bob") para el desarrollo con IA, los asistentes de código **no** deben solicitar revisiones manuales línea por línea al usuario. Toda modificación debe someterse a portones automatizados de prueba/compilación y presentar evidencia empírica (`BUILD SUCCESSFUL`) en los registros de salida antes de declarar completada la tarea.
 - **Soporte Multi-Arquitectura (ARM64 + x86_64):** La aplicación y sus pipelines de construcción deben ser compatibles y validables tanto en dispositivos/máquinas anfitrionas ARM64 como en portátiles/emuladores x86_64.
-- **Protección Térmica y de CPU en Móviles:** Las pruebas unitarias locales (`testDebugUnitTest`) se ejecutan aisladas en la JVM sin desencadenar la compilación pesada nativa en Rust (`cargoNdkBuild`), protegiendo el procesador del dispositivo. La generación de binarios APK/AAB completos se realiza en CI/CD (GitHub Actions).
+- **Protección Térmica y de CPU en Móviles:** Las pruebas unitarias locales (`testDebugUnitTest`) se ejecutan aisladas en la JVM sin desencadenar la compilación pesada nativa en Rust (`cargoNdkBuild`), protegiendo el procesador del dispositivo. La generación de binarios APK/AAB completos se realiza en CI/CD (GitHub Actions). **En hosts tipo dispositivo móvil/embebido (regla 2026-08-06, ver "Regla de validación por entorno"), el agente no compila nada localmente: valida únicamente push a `main` + resultado del workflow debug de GitHub Actions.**
 - **Anulación de AAPT2 del Sistema:** En entornos ARM64 Linux, configurar `android.aapt2FromMavenOverride=/usr/bin/aapt2` en `gradle.properties` para usar el procesador de recursos nativo del sistema.
 - **Validación automatizada:** Ejecutar `./gradlew assembleDebug` o suites de unit test sin nuevos advertencias o fallos + smoke test funcional en dispositivo/emulador.
 - **Java:** Sigue las convenciones de §4.
@@ -397,3 +409,4 @@ Crear un nuevo ajuste toggle en UI → marker file en `filesDir()` con un nombre
 - Subtítulos usan un modelo de partial/final con lag-policies calibradas; subir esos números rompe el contrato.
 - Bug histórico a evitar: v0.1.20 → v0.1.21 (idioma cacheado en `:ime`). La regla "re-read on every run" está escrita en muchos comentarios a propósito.
 - Antes de PR: `./gradlew assembleDebug` debe pasar limpio sin warnings nuevos y las cadenas nuevas deben estar en los 7 locales.
+- **Validar builds por entorno (2026-08-06):** en un host tipo dispositivo móvil/embebido NUNCA compiles localmente — `git push` a `main` y lee el workflow debug de GitHub Actions con `gh run list`/`gh run view`. En un equipo físico (portátil/ordenador) sí puedes compilar local.

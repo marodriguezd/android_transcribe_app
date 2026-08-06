@@ -50,15 +50,25 @@ public class MicLevelView extends View {
     public void setLevel(float level) {
         if (level < 0f) level = 0f;
         if (level > 1f) level = 1f;
+        if (level == target && Math.abs(current - target) < 0.0001f) {
+            return; // no effective change — skip the animation churn
+        }
         target = level;
 
-        if (animator != null) animator.cancel();
-        animator = ValueAnimator.ofFloat(current, target);
-        animator.setDuration(60); // fast, makes it feel "live"
-        animator.addUpdateListener(a -> {
-            current = (float) a.getAnimatedValue();
-            invalidate();
-        });
+        // One reused animator instead of a fresh ValueAnimator per call (O4):
+        // the mic level updates ~20 times per second, and cancel+recreate
+        // churns allocations on the UI thread (visible as dropped frames).
+        if (animator == null) {
+            animator = new ValueAnimator();
+            animator.setDuration(60); // fast, makes it feel "live"
+            animator.addUpdateListener(a -> {
+                current = (float) a.getAnimatedValue();
+                invalidate();
+            });
+        } else {
+            animator.cancel();
+        }
+        animator.setFloatValues(current, target);
         animator.start();
     }
 

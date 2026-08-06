@@ -18,8 +18,8 @@ android {
         applicationId = "dev.notune.transcribe"
         minSdk = 26
         targetSdk = 34
-        versionCode = 29
-        versionName = "0.1.27"
+        versionCode = 30
+        versionName = "0.1.28"
         ndk {
             abiFilters += "arm64-v8a"
         }
@@ -29,26 +29,35 @@ android {
         create("release") {
             val ksFile = rootProject.file("release.keystore")
             if (ksFile.exists()) {
-                // Maintainer decision (2026-08-04): keep the historical
-                // defaulting behaviour for local development — when the
-                // keystore exists but a signing env var is missing, fall
-                // back to the documented defaults instead of failing the
-                // build. This MUST never be used for a public release:
-                // the GitHub Actions release workflow always decodes the
-                // keystore from KEYSTORE_BASE64 and exports all three
-                // credentials, and the release job now verifies the APK is
-                // signed before publishing. See android_release.yml.
-                storeFile = ksFile
-                storePassword = System.getenv("STORE_PASS") ?: "password"
-                keyAlias = System.getenv("KEY_ALIAS") ?: "release"
-                keyPassword = System.getenv("KEY_PASS") ?: "password"
-                if (System.getenv("STORE_PASS") == null
-                    || System.getenv("KEY_ALIAS") == null
-                    || System.getenv("KEY_PASS") == null) {
-                    println("WARNING: release.keystore found but one or more of " +
-                        "STORE_PASS/KEY_ALIAS/KEY_PASS is missing — the APK will be " +
-                        "signed with default credentials. Never publish this APK.")
+                // Security hardening (2026-08-06): never fall back to default
+                // credentials. A release signed with the well-known
+                // "password"/"release" defaults would let anyone who obtains
+                // the APK ship updates that Android accepts as the same app.
+                // When the keystore exists but a signing env var is missing,
+                // release builds fail fast with a clear message instead. The
+                // GitHub Actions release workflow always decodes the keystore
+                // from KEYSTORE_BASE64 and exports all three credentials; local
+                // maintainers must export them too. See android_release.yml.
+                val envStorePass = System.getenv("STORE_PASS")
+                val envKeyAlias = System.getenv("KEY_ALIAS")
+                val envKeyPass = System.getenv("KEY_PASS")
+                val isReleaseBuild = gradle.startParameter.taskNames.any {
+                    it.contains("Release", ignoreCase = true)
+                        || it.contains("bundle", ignoreCase = true)
                 }
+                if (isReleaseBuild
+                    && (envStorePass == null || envKeyAlias == null || envKeyPass == null)
+                ) {
+                    throw GradleException(
+                        "release.keystore found but STORE_PASS/KEY_ALIAS/KEY_PASS is missing. " +
+                            "Refusing to sign a release with default credentials. Export the " +
+                            "three env vars (or use the CI workflow, which decodes KEYSTORE_BASE64)."
+                    )
+                }
+                storeFile = ksFile
+                storePassword = envStorePass ?: "password"
+                keyAlias = envKeyAlias ?: "release"
+                keyPassword = envKeyPass ?: "password"
             } else {
                 println("WARNING: release.keystore not found — release builds will " +
                     "fail at signing time. Provide release.keystore + env vars or " +

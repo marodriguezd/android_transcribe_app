@@ -37,6 +37,12 @@ public class TranscribeFileActivity extends AppCompatActivity {
 
     private static final String TAG = "OfflineVoiceInput";
     private static final int TARGET_SAMPLE_RATE = 16000;
+    // Hard cap on decoded audio (60 min = 57.6M samples, ~230 MB as float[]):
+    // the full decode is held in RAM (a Java float[] plus a native copy in
+    // transcribeAudio), so an unbounded file would OOM. This Activity is
+    // exported (SEND/VIEW audio/*), so any app can hand us an arbitrarily
+    // long file — the cap keeps a hostile/buggy input from exhausting memory.
+    private static final int MAX_DECODE_SAMPLES = 60 * 60 * TARGET_SAMPLE_RATE;
 
     static {
         try {
@@ -204,19 +210,13 @@ public class TranscribeFileActivity extends AppCompatActivity {
     }
 
     private void showResult(String text) {
-        // Hide progress, show result
+        // Hide progress, show result. The transcript is NOT auto-copied to the
+        // system clipboard (privacy, V10): other apps can read the clipboard,
+        // so copying stays an explicit user action via the copy button.
         progressArea.setVisibility(View.GONE);
         resultArea.setVisibility(View.VISIBLE);
         copyButton.setVisibility(View.VISIBLE);
-
         resultText.setText(text);
-
-        // Auto-copy to clipboard
-        ClipboardManager clipboard = (ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
-        ClipData clip = ClipData.newPlainText("Transcription", text);
-        clipboard.setPrimaryClip(clip);
-
-        Toast.makeText(this, getString(R.string.file_transcription_copied), Toast.LENGTH_LONG).show();
     }
 
     private void startDecodeAndTranscribe() {
@@ -390,6 +390,9 @@ public class TranscribeFileActivity extends AppCompatActivity {
 
                     allChunks.add(chunk);
                     totalSamples += monoCount;
+                    if (totalSamples > MAX_DECODE_SAMPLES) {
+                        throw new IOException(getString(R.string.file_error_too_long));
+                    }
                 }
 
                 codec.releaseOutputBuffer(outputBufferIndex, false);

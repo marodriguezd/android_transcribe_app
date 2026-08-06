@@ -30,8 +30,12 @@ public class App extends Application {
         applyDeviceLanguageIfUnset();
         // Migrate post-processing settings from SharedPreferences to marker
         // files once. Runs in the main and ":ime" processes; the sentinel
-        // makes it idempotent.
-        SettingsManager.migrateIfNeeded(this);
+        // makes it idempotent. Off the UI thread (O6): App.onCreate runs on
+        // the main thread in both processes, and the migration can touch
+        // Android Keystore (legacy encrypted API key), which is not instant.
+        // All settings are read lazily from marker files afterwards, so a few
+        // milliseconds of delay is invisible to every consumer.
+        new Thread(() -> SettingsManager.migrateIfNeeded(this), "pp-migration").start();
     }
 
     /// Writes "auto" as the transcription language the first time the app

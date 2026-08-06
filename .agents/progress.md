@@ -1,6 +1,44 @@
 # Progress — current AI-assisted work state
 
-**Last update:** 2026-08-04 (live-subtitle translation implemented, pushed for debug CI)
+**Last update:** 2026-08-06 (full audit fixes implemented, awaiting CI validation via push)
+
+## ⚠️ Working mode (2026-08-06, fire rule)
+
+- This dev host is a mobile-device-like environment: **heavy local builds crash it**.
+- ALL build/test validation now happens via GitHub Actions: `git push` to `main`
+  triggers the debug workflow (fmt check, translations, JVM tests, `assembleDebug`,
+  `lintDebug`, `checkModels` → APK to Telegram). Read results with `gh run list` /
+  `gh run view`; iterate fix → push → read CI.
+- Local is allowed on the maintainer's physical machine (laptop/desktop).
+- Canonical rule: root `AGENTS.md` §3 "Regla de validación por entorno".
+
+## 🟡 In progress — 2026-08-06 audit fix round (V1–V10, R1–R5, O1–O9)
+
+Full-codebase security/optimization audit done (2026-08-06, no files changed in
+the audit itself); all fixes implemented but **not yet CI-validated** — the run
+was interrupted by local build attempts crashing this host (see working mode
+above). Implemented so far:
+
+- **Security:** release signing fail-fast when env vars missing (V1);
+  `allowBackup=false` (V2); audio-buffer session cap in `voice_session.rs`
+  (V3); file-transcription duration cap (V4); `UserDictionaryHelper`→
+  `MarkerFileHelper` atomic writes (V5); `stopSubtitleSession` guards (V6);
+  `network_security_config.xml` for localhost/cleartext loopback (V7);
+  benchmark transcript not logged in release (V8); `glEsVersion required=false`
+  (V9); no auto-copy to clipboard (V10).
+- **Robustness:** `catch_unwind` in `do_load` (R1); poisoned-mutex recovery in
+  audio callbacks (R2); asset size checks + open-error propagation (R3/R4);
+  stream-context telemetry after retry (R5).
+- **Performance:** permanent thread attach in audio callbacks (O1); corrector
+  precomputed lowercase/length filter/`Arc<Dictionary>` (O2); sliding-sum
+  `find_quietest_split` (O3); single `ValueAnimator` in `MicLevelView` (O4);
+  debug-gated periodic audioLoop log (O5); settings migration off UI thread
+  (O6); 10 Hz rms throttle (O9).
+- **Housekeeping:** version bump to 0.1.28 (`versionCode 30`), `RELEASE_NOTES.md`
+  block, AGENTS.md rules, 7-locale strings.
+
+**Next step:** commit + push to `main`, then read the debug workflow result with
+`gh` and fix whatever the CI flags.
 
 ## 🟢 Recently completed
 

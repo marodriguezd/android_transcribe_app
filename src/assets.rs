@@ -127,12 +127,46 @@ fn extraction_matches_assets(
     for i in 0..len {
         let file_name_obj = env.get_object_array_element(&list_array, i)?;
         let file_name: String = env.get_string(&file_name_obj.into())?.into();
-        if !model_dir.join(&file_name).exists() {
+        let disk_entry = model_dir.join(&file_name);
+        if !disk_entry.exists() {
             log::info!(
                 "Bundled asset {} missing from extraction dir — re-extracting",
                 file_name
             );
             return Ok(false);
+        }
+        // Existence alone is not enough (R3): an interrupted copy can leave a
+        // file with the right name but truncated content. Compare sizes when
+        // the asset is a regular file (open() + available()); the size check
+        // failing is treated as a mismatch too.
+        if disk_entry.is_file() {
+            let asset_path = format!("{}/{}", BUILTIN_MODEL_DIR, file_name);
+            let path_jstring = env.new_string(&asset_path)?;
+            if let Ok(stream_val) = env.call_method(
+                &asset_manager_obj,
+                "open",
+                "(Ljava/lang/String;)Ljava/io/InputStream;",
+                &[(&path_jstring).into()],
+            ) {
+                if let Ok(stream) = stream_val.l() {
+                    let size_matches = env
+                        .call_method(&stream, "available", "()I", &[])
+                        .and_then(|v| v.i())
+                        .map(|avail| {
+                            avail < 0
+                                || disk_entry
+                                    .metadata()
+                                    .map(|m| m.len() == avail as u64)
+                                    .unwrap_or(true)
+                        })
+                        .unwrap_or(true);
+                    let _ = env.call_method(&stream, "close", "()V", &[]);
+                    if !size_matches {
+                        log::info!("Bundled asset {} size mismatch — re-extracting", file_name);
+                        return Ok(false);
+                    }
+                }
+            }
         }
     }
     Ok(true)
@@ -242,6 +276,10 @@ fn copy_asset_file(
             log::info!("Extracted: {:?}", target_file_path);
             Ok(())
         }
-        Err(_) => Ok(()),
+        // A listed asset that cannot be opened is a real failure, not a
+        // no-op (R4): silently returning Ok would leave the model directory
+        // incomplete with no extraction marker, and the user would only ever
+        // see a confusing re-extraction loop.
+        Err(e) => Err(anyhow::anyhow!("asset not found: {} ({})", asset_path, e)),
     }
 }

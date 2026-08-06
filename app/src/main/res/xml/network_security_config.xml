@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Cleartext policy: Android 9+ blocks all HTTP by default, including
+     loopback, which silently broke the "Ollama (local)" provider preset
+     (http://localhost:11434). Allow cleartext ONLY to the local LLM server;
+     every other destination stays HTTPS-only. -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">localhost</domain>
+        <domain includeSubdomains="false">127.0.0.1</domain>
+    </domain-config>
+</network-security-config>

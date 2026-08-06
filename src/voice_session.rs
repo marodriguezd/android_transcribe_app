@@ -21,6 +21,11 @@ const AUTO_STOP_SILENCE_MS: u64 = 2000;
 const MIN_SPEECH_SAMPLES: usize = 1_600; // 100 ms at 16 kHz
 /// If no speech is ever detected, auto-stop after this long.
 const AUTO_STOP_NO_SPEECH_MS: u64 = 8000;
+/// Hard cap on one recording (~5 min): bounds the audio buffer (~19 MB at
+/// 16 kHz f32) even when auto-stop is off, so a forgotten recording can never
+/// grow until OOM. On expiry the Java surface receives `onAutoStop()` and
+/// commits whatever was captured, so no text is lost.
+const MAX_SESSION_MS: u64 = 300_000;
 
 pub struct SendStream(#[allow(dead_code)] pub cpal::Stream);
 unsafe impl Send for SendStream {}
@@ -176,7 +181,10 @@ pub fn start_recording(
     let stream = device.build_input_stream(
         &config,
         move |data: &[f32], _: &_| {
-            buffer_clone.lock().unwrap().extend_from_slice(data);
+            buffer_clone
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .extend_from_slice(data);
 
             // compute RMS
             let mut sum = 0.0f32;
@@ -187,13 +195,13 @@ pub fn start_recording(
             let level = (rms * 6.0).clamp(0.0, 1.0);
 
             if let Some(ep) = &endpoint_cb {
-                let floor = *ep.noise_floor.lock().unwrap();
+                let floor = *ep.noise_floor.lock().unwrap_or_else(|p| p.into_inner());
                 let is_speech = level > MIN_SPEECH_LEVEL && level > floor + SPEECH_MARGIN;
                 if is_speech {
                     if ep.speech_started.load(Ordering::SeqCst) {
                         // Once speech has been confirmed, every speech frame
                         // refreshes the trailing-silence clock.
-                        *ep.last_voice.lock().unwrap() = Instant::now();
+                        *ep.last_voice.lock().unwrap_or_else(|p| p.into_inner()) = Instant::now();
                     } else {
                         // Do not arm trailing-silence endpointing for a single
                         // microphone pop or an initial noise spike. Require a
@@ -205,7 +213,8 @@ pub fn start_recording(
                         if run >= MIN_SPEECH_SAMPLES
                             && ep.speech_started.swap(true, Ordering::SeqCst) == false
                         {
-                            *ep.last_voice.lock().unwrap() = Instant::now();
+                            *ep.last_voice.lock().unwrap_or_else(|p| p.into_inner()) =
+                                Instant::now();
                         }
                     }
                 } else {
@@ -214,17 +223,21 @@ pub fn start_recording(
                         ep.speech_run_samples.store(0, Ordering::SeqCst);
                     }
                     // Slowly adapt the noise floor while no speech is present.
-                    let mut nf = ep.noise_floor.lock().unwrap();
+                    let mut nf = ep.noise_floor.lock().unwrap_or_else(|p| p.into_inner());
                     *nf = *nf * 0.95 + level * 0.05;
                 }
             }
 
             // throttle updates
-            let mut last = last_sent.lock().unwrap();
+            let mut last = last_sent.lock().unwrap_or_else(|p| p.into_inner());
             if last.elapsed() >= std::time::Duration::from_millis(50) {
                 *last = std::time::Instant::now();
 
-                if let Ok(mut env) = jvm.attach_current_thread() {
+                // Permanently attach the audio thread once instead of
+                // attach/detach churn ~20 times per second (O1). The cpal
+                // callback thread lives for the whole stream, so the daemon
+                // attachment is reused by every subsequent block.
+                if let Ok(mut env) = jvm.attach_current_thread_permanently() {
                     let obj = target_ref.as_obj();
                     notify_level_with_session(&mut env, obj, level, session_id);
                 }
@@ -279,21 +292,35 @@ pub fn start_recording(
                 )
             });
 
-            if let Some(ep) = endpoint {
+            // Always arm a session monitor (V3): with auto_stop the silence
+            // heuristics run; without it only the hard session cap applies,
+            // bounding the audio buffer (see MAX_SESSION_MS). Claiming via
+            // session_active_monitor.swap keeps it racing-safe with a manual
+            // stop, and the same onAutoStop path commits the captured audio.
+            {
                 let jvm = state.jvm.clone();
                 let target_ref = state.target_ref.clone();
+                let ep_monitor = endpoint;
                 let started_at = Instant::now();
                 std::thread::spawn(move || loop {
                     std::thread::sleep(Duration::from_millis(100));
                     if !session_active_monitor.load(Ordering::SeqCst) {
                         return;
                     }
-                    let speech = ep.speech_started.load(Ordering::SeqCst);
-                    let silence = ep.last_voice.lock().unwrap().elapsed();
-                    let done = (speech && silence >= Duration::from_millis(AUTO_STOP_SILENCE_MS))
-                        || (!speech
-                            && started_at.elapsed()
-                                >= Duration::from_millis(AUTO_STOP_NO_SPEECH_MS));
+                    let mut done = started_at.elapsed() >= Duration::from_millis(MAX_SESSION_MS);
+                    if let Some(ep) = &ep_monitor {
+                        let speech = ep.speech_started.load(Ordering::SeqCst);
+                        let silence = ep
+                            .last_voice
+                            .lock()
+                            .unwrap_or_else(|p| p.into_inner())
+                            .elapsed();
+                        done = done
+                            || (speech && silence >= Duration::from_millis(AUTO_STOP_SILENCE_MS))
+                            || (!speech
+                                && started_at.elapsed()
+                                    >= Duration::from_millis(AUTO_STOP_NO_SPEECH_MS));
+                    }
                     if done {
                         // Claim the session so a simultaneous manual stop and
                         // this monitor can't both fire.
@@ -484,7 +511,11 @@ pub fn stop_recording(mut env: JNIEnv, state: &mut VoiceSessionState) {
         }
     }
 
-    let buffer = state.audio_buffer.lock().unwrap().clone();
+    let buffer = state
+        .audio_buffer
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clone();
     *state.stream_cmd_tx.lock().unwrap() = None;
 
     // Guard against empty buffer (mic permission denied, instant stop, etc.)
@@ -561,7 +592,11 @@ pub fn cancel_recording(mut env: JNIEnv, state: &mut VoiceSessionState) {
     state.session_active.store(false, Ordering::SeqCst);
     state.session_cancelled.store(true, Ordering::SeqCst);
     state.stream = None;
-    state.audio_buffer.lock().unwrap().clear();
+    state
+        .audio_buffer
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clear();
     // Abort the streaming pump (if any); it delivers nothing on cancel.
     if let Some(tx) = state.stream_cmd_tx.lock().unwrap().clone() {
         let _ = tx.send(crate::engine::StreamCmd::Cancel);

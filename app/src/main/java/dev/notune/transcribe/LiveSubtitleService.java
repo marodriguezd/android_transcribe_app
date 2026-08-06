@@ -152,12 +152,26 @@ public class LiveSubtitleService extends Service {
             mAudioThread = null;
         }
         if (mAudioRecord != null) {
-            mAudioRecord.stop();
-            mAudioRecord.release();
+            // stop() throws IllegalStateException when the AudioRecord was
+            // never initialized/started (e.g. capture failed); a teardown path
+            // must never crash the service (V6).
+            try {
+                if (mAudioRecord.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
+                    mAudioRecord.stop();
+                }
+            } catch (Exception ignored) {
+            }
+            try {
+                mAudioRecord.release();
+            } catch (Exception ignored) {
+            }
             mAudioRecord = null;
         }
         if (mMediaProjection != null) {
-            mMediaProjection.stop();
+            try {
+                mMediaProjection.stop();
+            } catch (Exception ignored) {
+            }
             mMediaProjection = null;
         }
         // Tear down the translator and invalidate its in-flight results so no
@@ -368,7 +382,7 @@ public class LiveSubtitleService extends Service {
             int read = mAudioRecord.read(buffer, 0, bufferSize);
             if (read > 0) {
                 totalRead += read;
-                if (totalRead % (16000 * 5) < read) { // Log approx every 5 seconds of audio
+                if (BuildConfig.DEBUG && totalRead % (16000 * 5) < read) { // Log approx every 5 seconds of audio
                     Log.d(TAG, "Reading audio... Total samples: " + totalRead);
                 }
                 

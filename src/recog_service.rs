@@ -40,8 +40,9 @@ const MIN_SPEECH_SAMPLES: usize = 1_600; // 100 ms at 16 kHz
 const NO_SPEECH_TIMEOUT_MS: u64 = 7000;
 /// Hard cap on a single utterance (the engine internally chunks long audio).
 const MAX_SESSION_MS: u64 = 60000;
-/// Throttle interval for `rmsChanged` UI callbacks.
-const LEVEL_UPDATE_MS: u64 = 50;
+/// Throttle interval for `rmsChanged` UI callbacks (10 Hz is plenty for a
+/// keyboard waveform).
+const LEVEL_UPDATE_MS: u64 = 100;
 
 // Mirror of android.speech.SpeechRecognizer error codes we report.
 const ERROR_AUDIO: i32 = 3;
@@ -340,7 +341,11 @@ fn audio_callback(shared: &Arc<Endpoint>, data: &[f32]) {
         return;
     }
 
-    shared.audio_buffer.lock().unwrap().extend_from_slice(data);
+    shared
+        .audio_buffer
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .extend_from_slice(data);
     shared.total_pushed.fetch_add(data.len(), Ordering::SeqCst);
 
     // RMS -> smoothed level in 0..1 (same scaling as voice_session).
@@ -351,14 +356,14 @@ fn audio_callback(shared: &Arc<Endpoint>, data: &[f32]) {
     let rms = (sum / (data.len().max(1) as f32)).sqrt();
     let level = (rms * 6.0).clamp(0.0, 1.0);
 
-    let floor = *shared.noise_floor.lock().unwrap();
+    let floor = *shared.noise_floor.lock().unwrap_or_else(|p| p.into_inner());
     let is_speech = level > MIN_SPEECH_LEVEL && level > floor + SPEECH_MARGIN;
 
     if is_speech {
         if shared.speech_started.load(Ordering::SeqCst) {
             // Once speech has been confirmed, every speech frame refreshes the
             // trailing-silence clock.
-            *shared.last_voice.lock().unwrap() = Instant::now();
+            *shared.last_voice.lock().unwrap_or_else(|p| p.into_inner()) = Instant::now();
         } else {
             // Do not arm trailing-silence endpointing for a single microphone
             // pop or initial noise spike. Require a continuous 100 ms speech
@@ -370,8 +375,8 @@ fn audio_callback(shared: &Arc<Endpoint>, data: &[f32]) {
             if run >= MIN_SPEECH_SAMPLES
                 && shared.speech_started.swap(true, Ordering::SeqCst) == false
             {
-                *shared.last_voice.lock().unwrap() = Instant::now();
-                if let Ok(mut env) = shared.jvm.attach_current_thread() {
+                *shared.last_voice.lock().unwrap_or_else(|p| p.into_inner()) = Instant::now();
+                if let Ok(mut env) = shared.jvm.attach_current_thread_permanently() {
                     let _ = env.call_method(
                         shared.target.as_obj(),
                         "onBeginningOfSpeech",
@@ -387,16 +392,19 @@ fn audio_callback(shared: &Arc<Endpoint>, data: &[f32]) {
             shared.speech_run_samples.store(0, Ordering::SeqCst);
         }
         // Slowly adapt the noise floor while no speech is present.
-        let mut nf = shared.noise_floor.lock().unwrap();
+        let mut nf = shared.noise_floor.lock().unwrap_or_else(|p| p.into_inner());
         *nf = *nf * 0.95 + level * 0.05;
     }
 
     // Throttled mic-level updates for the keyboard's waveform UI.
-    let mut last = shared.last_level_sent.lock().unwrap();
+    let mut last = shared
+        .last_level_sent
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
     if last.elapsed() >= Duration::from_millis(LEVEL_UPDATE_MS) {
         *last = Instant::now();
         drop(last);
-        if let Ok(mut env) = shared.jvm.attach_current_thread() {
+        if let Ok(mut env) = shared.jvm.attach_current_thread_permanently() {
             call_rms(
                 &mut env,
                 shared.target.as_obj(),
@@ -417,7 +425,11 @@ fn endpoint_monitor(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>
 
         let elapsed = shared.started_at.elapsed();
         let speech = shared.speech_started.load(Ordering::SeqCst);
-        let silence = shared.last_voice.lock().unwrap().elapsed();
+        let silence = shared
+            .last_voice
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .elapsed();
 
         let done = (speech && silence >= Duration::from_millis(SILENCE_MS))
             || elapsed >= Duration::from_millis(MAX_SESSION_MS)
@@ -583,7 +595,11 @@ fn finalize(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>>) {
     }
 
     // Whole-buffer path (non-streaming models, or the pump never started).
-    let buffer = shared.audio_buffer.lock().unwrap().clone();
+    let buffer = shared
+        .audio_buffer
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clone();
     match engine::get_engine() {
         Some(eng_arc) => {
             let res = engine::transcribe_shared(&eng_arc, buffer);

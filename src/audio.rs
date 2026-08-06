@@ -7,16 +7,30 @@ pub fn find_quietest_split(samples: &[f32], from: usize, to: usize) -> usize {
     if from + WIN > to {
         return to;
     }
+    // Sliding-window energy (O3): instead of re-summing every 100 ms window
+    // from scratch (O(n·WIN)), subtract the samples leaving the window and
+    // add the ones entering (O(n)). Steps of WIN/2 keep exactly the same
+    // candidate positions the old scan produced, so results are unchanged.
+    let mut energy: f32 = samples[from..from + WIN].iter().map(|&x| x * x).sum();
     let mut best_pos = to;
     let mut best_energy = f32::MAX;
     let mut i = from;
     while i + WIN <= to {
-        let energy: f32 = samples[i..i + WIN].iter().map(|&x| x * x).sum();
         if energy < best_energy {
             best_energy = energy;
             best_pos = i + WIN / 2;
         }
-        i += WIN / 2;
+        let step = WIN / 2;
+        if i + WIN + step > to {
+            break;
+        }
+        for &x in &samples[i..i + step] {
+            energy -= x * x;
+        }
+        for &x in &samples[i + WIN..i + WIN + step] {
+            energy += x * x;
+        }
+        i += step;
     }
     best_pos
 }

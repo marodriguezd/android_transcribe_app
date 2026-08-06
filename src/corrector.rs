@@ -27,7 +27,7 @@
 use once_cell::sync::Lazy;
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use std::time::SystemTime;
 
 // HashMap key = word count of the term.
@@ -55,7 +55,7 @@ static FILES_DIR: Lazy<Mutex<Option<PathBuf>>> = Lazy::new(|| Mutex::new(None));
 #[derive(Clone)]
 struct CachedDict {
     mtime: SystemTime,
-    dict: Dictionary,
+    dict: Arc<Dictionary>,
 }
 
 #[derive(Clone, Default)]
@@ -73,6 +73,9 @@ struct Term {
     /// The dictionary term as the user wrote it (preserves capitalization,
     /// e.g. "Madrid", "New York").
     text: String,
+    /// Lowercased term, precomputed once so the per-word hot path never
+    /// re-lowercases (exact match and the orthographic tiebreak need it).
+    lower: String,
     /// Phonetic key of the lowercased term.
     key: String,
 }
@@ -108,7 +111,7 @@ pub fn correct_if_enabled(text: &str) -> String {
 /// Loads the dictionary from disk, returning the cached copy when the file's
 /// mtime is unchanged. Returns `None` if no filesDir is set, the file is
 /// absent, or reading fails — all treated as "no correction" (safe fallback).
-fn load_dict() -> Option<Dictionary> {
+fn load_dict() -> Option<Arc<Dictionary>> {
     let dir = FILES_DIR
         .lock()
         .unwrap_or_else(|p| p.into_inner())
@@ -139,10 +142,13 @@ fn load_dict() -> Option<Dictionary> {
         dict.single.len(),
         dict.multi.values().map(|v| v.len()).sum::<usize>()
     );
+    let dict = Arc::new(dict);
     *CACHE.lock().unwrap_or_else(|p| p.into_inner()) = Some(CachedDict {
         mtime,
         dict: dict.clone(),
     });
+    // Arc keeps repeated transcriptions (e.g. live-subtitle partials) from
+    // deep-cloning the whole dictionary on every call (O2).
     Some(dict)
 }
 
@@ -157,16 +163,19 @@ fn parse_dict(raw: &str) -> Dictionary {
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
-        let key = phonetic_key(trimmed);
+        let lower = trimmed.to_lowercase();
+        let key = phonetic_key(&lower);
         let word_count = trimmed.split_whitespace().count();
         if word_count > 1 {
             multi.entry(word_count).or_default().push(Term {
                 text: trimmed.to_string(),
+                lower,
                 key,
             });
         } else {
             single.push(Term {
                 text: trimmed.to_string(),
+                lower,
                 key,
             });
         }
@@ -353,22 +362,30 @@ fn bigram_counts(s: &str) -> HashMap<String, u32> {
 /// upgraded to the dictionary's "Madrid" without fuzzy matching), then a
 /// phonetic Levenshtein pass with an orthographic cosine tiebreak.
 fn best_term(word_lower: &str, terms: &[Term]) -> Option<String> {
-    // Exact match (Unicode-aware case folding).
+    // Exact match (precomputed lowercase, same Unicode-aware folding).
     for t in terms {
-        if t.text.to_lowercase() == word_lower {
+        if t.lower == word_lower {
             return Some(t.text.clone());
         }
     }
     // Phonetic match: minimize Levenshtein on phonetic keys, break ties with
     // the highest orthographic cosine (stored negated so min-selection wins).
     let key = phonetic_key(word_lower);
+    let key_len = key.len();
     let mut best: Option<(usize, f64, usize)> = None; // (distance, -cosine, index)
     for (idx, t) in terms.iter().enumerate() {
+        // Cheap necessity filter: |len(a) - len(b)| <= dist for Levenshtein,
+        // so candidates whose key length cannot reach are skipped before the
+        // quadratic-ish scan (O2 hot path).
+        let len_diff = key_len.abs_diff(t.key.len());
+        if len_diff > MAX_PHONETIC_DISTANCE {
+            continue;
+        }
         let dist = strsim::levenshtein(&key, &t.key);
         if dist > MAX_PHONETIC_DISTANCE {
             continue;
         }
-        let sim = bigram_cosine(word_lower, &t.text.to_lowercase());
+        let sim = bigram_cosine(word_lower, &t.lower);
         let neg = -sim;
         match best {
             Some((bd, bn, _)) if (dist, neg) >= (bd, bn) => {}
@@ -550,6 +567,7 @@ mod tests {
                 .iter()
                 .map(|w| Term {
                     text: w.to_string(),
+                    lower: w.to_lowercase(),
                     key: phonetic_key(w),
                 })
                 .collect(),
@@ -613,6 +631,7 @@ mod tests {
             2,
             vec![Term {
                 text: "New York".to_string(),
+                lower: "new york".to_string(),
                 key: phonetic_key("New York"),
             }],
         );

@@ -1,3 +1,16 @@
+# v0.1.28 — security and robustness hardening (2026-08-06)
+
+`versionCode 30` — hardens release signing, backup privacy and memory bounds; fixes a subtitle teardown crash; makes the Ollama local preset work again; and trims hot-path allocations.
+
+- **Release signing:** local release builds now fail fast when the keystore exists but a signing env var is missing — the app never signs with default credentials, so an APK cannot be republished by someone who obtained it.
+- **Backup privacy:** app data is excluded from Android Auto Backup (`allowBackup=false`), so the post-processing API key and the imported speech models (up to ~750 MB) no longer leave the device in a cloud backup.
+- **Memory bounds:** voice recordings are hard-capped at 5 minutes (auto-stop commits the captured audio) and file transcription at 60 minutes, so a forgotten recording or an oversized shared file can no longer grow until OOM.
+- **Local LLM preset:** the "Ollama (local)" provider works again on Android 9+ — cleartext is allowed for localhost only, everything else stays HTTPS-only.
+- **Crash fix:** stopping live subtitles no longer crashes when audio capture failed to initialize (uninitialized `AudioRecord.stop()`).
+- **Clipboard privacy:** file transcription no longer auto-copies the transcript to the shared system clipboard; use the copy button.
+- **Robustness:** model loading is panic-safe (a failed load can always retry instead of freezing on "Waiting for model…"); bundled-asset extraction verifies file sizes and reports missing assets; custom-words sync uses atomic marker writes and drops stale words when the system dictionary is emptied.
+- **Performance:** audio callbacks attach to the JVM once per stream instead of ~20 times per second; quietest split-point search is O(n) via a sliding window; the phonetic corrector precomputes lowercase terms and skips impossible candidates; the mic-level glow reuses a single animator; settings migration moved off the UI thread.
+
 # v0.1.27 — live-subtitle translation and context (2026-08-05)
 
 `versionCode 29` — improves live subtitles with optional on-device translation and a larger default caption context window.

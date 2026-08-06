@@ -12,6 +12,34 @@ Maintainer decision: new and updated documents in this folder are written in
 **English**. Historical documents in Spanish remain as recorded history — keep
 them unchanged; only add English sections or new English files.
 
+## Workflow rule: where to build (2026-08-06, fire rule)
+
+Agents must choose where to validate builds based on the host they run on:
+
+- 📱 **Mobile-device-like / embedded host (e.g. an ARM64 Android userspace
+  without KVM — like the current dev host): NEVER run heavy local builds.**
+  `./gradlew assembleDebug`, `cargo build`, `cargo ndk ...`, NDK-based
+  `cargo check`, `assembleRelease`, etc. overload the system and can leave it
+  unresponsive (verified 2026-08-06). All build validation is done
+  **dynamically through GitHub**: `git commit` + `git push` to `main` triggers
+  the debug workflow (`debug_telegram.yml`), which runs every gate — `cargo
+  fmt --check`, `check_translations.py`, `testDebugUnitTest`, `assembleDebug`
+  (compiles the Rust via cargo-ndk), `lintDebug`, `checkModels` — and sends
+  the APK to Telegram. Read the result with `gh run list` / `gh run view` and
+  **iterate: fix → push → read CI → repeat**, pushing tests that pass or fail.
+- 💻 **Physical machine (maintainer's laptop/desktop):** local builds are fine
+  (`./gradlew assembleDebug`, `cargo ndk ...`, JVM tests, etc.) while
+  respecting thermal protection (JVM tests do not trigger `cargoNdkBuild`).
+- ✅ **Light gates allowed on the embedded host:** static code reading,
+  `git diff`, `cargo fmt --check` (does not compile), `python3
+  scripts/check_translations.py`, editing XML strings. Nothing that invokes
+  Gradle/Cargo/CMake in build mode.
+- 🛠️ `gh` is authenticated as the maintainer on the embedded host; use it to
+  inspect CI runs instead of compiling locally.
+
+See root `AGENTS.md` §3 "Regla de validación por entorno" for the Spanish
+canonical version.
+
 ## Cómo usar estos ficheros (orden de lectura al abrir el repo)
 
 1. **`progress.md`** — primero. Refleja el estado actual, lo que está en

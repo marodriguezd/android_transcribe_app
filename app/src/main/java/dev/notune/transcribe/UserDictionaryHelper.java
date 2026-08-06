@@ -11,7 +11,6 @@ import android.util.Log;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
-import java.io.FileOutputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.util.LinkedHashSet;
@@ -109,25 +108,20 @@ public class UserDictionaryHelper {
             Log.w(TAG, "UserDictionary ContentProvider query skipped/unavailable", e);
         }
 
-        // 3. Write merged list atomically into custom_words marker file
-        if (words.isEmpty()) return;
-
-        File tempFile = new File(context.getFilesDir(), CUSTOM_WORDS_FILE + ".tmp");
-        try (FileOutputStream fos = new FileOutputStream(tempFile)) {
-            for (String word : words) {
-                fos.write((word + "\n").getBytes(StandardCharsets.UTF_8));
-            }
-            fos.flush();
-            if (!tempFile.renameTo(markerFile)) {
-                try (FileOutputStream out = new FileOutputStream(markerFile)) {
-                    for (String word : words) {
-                        out.write((word + "\n").getBytes(StandardCharsets.UTF_8));
-                    }
-                }
-                tempFile.delete();
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Failed to write merged user dictionary to custom_words marker file", e);
+        // 3. Write the merged list through MarkerFileHelper (V5): unique temp
+        // name + fsync + atomic rename, so the main process and the ":ime"
+        // process — which both sync concurrently — never observe a
+        // partially-written dictionary (the same P1.2 guarantee
+        // MarkerAtomicityTest enforces for the other markers). An empty merged
+        // list deletes the marker so stale words never persist.
+        if (words.isEmpty()) {
+            MarkerFileHelper.delete(context, CUSTOM_WORDS_FILE);
+            return;
         }
+        StringBuilder merged = new StringBuilder(words.size() * 16);
+        for (String word : words) {
+            merged.append(word).append('\n');
+        }
+        MarkerFileHelper.writeString(context, CUSTOM_WORDS_FILE, merged.toString());
     }
 }

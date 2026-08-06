@@ -234,4 +234,5 @@
     <string name="debug_model_http_error">HTTP %1$d</string>
     <string name="debug_model_unknown_reason">unknown</string>
     <string name="bench_no_data_chunk">no data chunk in %1$s</string>
+    <string name="file_error_too_long">The audio file is longer than 60 minutes. Please transcribe a shorter file.</string>
 </resources>

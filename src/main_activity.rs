@@ -104,12 +104,16 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_MainActivity_benchmarkN
 
         match result {
             Ok(text) => {
+                // The transcript itself stays out of release logs (privacy,
+                // same rule as the post-processing path): timings are logged,
+                // the text only at debug level, which android_logger filters
+                // out in release builds (max level Info).
                 log::info!(
-                    "benchmark: {:.1}s audio in {:.2}s -> {:?}",
+                    "benchmark: {:.1}s audio in {:.2}s",
                     audio_secs,
-                    compute_secs,
-                    text
+                    compute_secs
                 );
+                log::debug!("benchmark transcript: {:?}", text);
                 deliver_benchmark_result(
                     &mut env,
                     &activity_ref.as_obj(),

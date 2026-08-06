@@ -141,7 +141,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_ini
     let pending_finals = Arc::new(AtomicUsize::new(0));
     let rtf_milli = Arc::new(AtomicU32::new(0));
 
-    *LIVE_STATE.lock().unwrap() = Some(LiveSubtitleState {
+    *LIVE_STATE.lock().unwrap_or_else(|p| p.into_inner()) = Some(LiveSubtitleState {
         segment: Vec::new(),
         preroll: Vec::new(),
         has_speech: false,
@@ -312,7 +312,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_cle
     // delivery. Then drop the state, which drops the sender; the worker
     // exits once its queue drains and releases its GlobalRef (P0.2).
     GENERATION.fetch_add(1, Ordering::SeqCst);
-    *LIVE_STATE.lock().unwrap() = None;
+    *LIVE_STATE.lock().unwrap_or_else(|p| p.into_inner()) = None;
 }
 
 #[no_mangle]
@@ -331,7 +331,10 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_pus
         return;
     }
 
-    let mut guard = LIVE_STATE.lock().unwrap();
+    // The lock is held while cloning the segment for partial jobs (an
+    // allocation that can panic on OOM), so recover from poison instead of
+    // panicking the audio thread (R2).
+    let mut guard = LIVE_STATE.lock().unwrap_or_else(|p| p.into_inner());
     let state = match guard.as_mut() {
         Some(s) => s,
         None => return,

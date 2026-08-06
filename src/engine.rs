@@ -358,6 +358,10 @@ impl Engine {
         }
         let mut hint = self.effective_language();
         let mut ctx_retried = false;
+        // Track the chunk selector actually in effect for the stop-log
+        // telemetry: a menu retry below resets it to the model default, and
+        // the log must report what was really used, not the configured value.
+        let mut effective_ctx = self.stream_ctx_right;
         let mut stream = loop {
             let run_opts = transcribe_cpp::RunOptions {
                 language: hint.clone(),
@@ -389,6 +393,7 @@ impl Engine {
                 // are surfaced immediately, not masked by a wasted retry.
                 Err(transcribe_cpp::Error::InvalidArgument(e)) if !ctx_retried => {
                     ctx_retried = true;
+                    effective_ctx = None;
                     self.stream_ext = self.stream_ext.take().map(|ext| match ext {
                         transcribe_cpp::StreamExtension::ParakeetStream(mut opts) => {
                             opts.att_context_right = None;
@@ -460,7 +465,7 @@ impl Engine {
                         rtf,
                         partial_count,
                         avg_cadence,
-                        self.stream_ctx_right
+                        effective_ctx
                     );
                     return Ok(final_text);
                 }
@@ -686,8 +691,21 @@ pub fn ensure_loaded_from_thread(
             *state = LoadState::Loading;
             drop(state);
 
+            // The load path must be panic-safe too (R1): a panic in do_load
+            // (e.g. an allocation failure inside the C model loader) would
+            // leave LOAD_STATE = Loading forever, and every later
+            // ensure_loaded* call would wait on the condvar indefinitely —
+            // the same freeze the two resilience layers prevent in
+            // transcribe_shared. Catch it and report Failure so the next
+            // call retries cleanly.
             let result = if let Ok(mut env) = jvm.attach_current_thread() {
-                do_load(&mut env, target_ref.as_obj())
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    do_load(&mut env, target_ref.as_obj())
+                }))
+                .unwrap_or_else(|_| {
+                    log::error!("model load panicked; reporting failure for retry");
+                    Err("model load failed unexpectedly, please try again".to_string())
+                })
             } else {
                 Err("Failed to attach JNI thread".to_string())
             };

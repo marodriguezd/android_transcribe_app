@@ -1,11 +1,14 @@
 package dev.notune.transcribe;
 
 import android.app.Application;
+import android.util.Log;
 
 import com.google.android.material.color.DynamicColors;
 
 import java.io.File;
 import java.util.Locale;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Applies the saved dark-mode choice before any activity is created, and enables
@@ -19,8 +22,20 @@ import java.util.Locale;
  * without native detection (e.g. Canary) — the old device-locale default.
  */
 public class App extends Application {
+    private static final String TAG = "App";
     private static final String LANGUAGE_FILE = "model_language";
     private static final String DEVICE_LANGUAGE_FILE = "device_language";
+
+    // Completes when the one-time legacy→marker migration finishes in this
+    // process. PostProcessSettingsActivity awaits it (with a timeout) before
+    // letting the user edit settings, so the migration can never overwrite
+    // fresh user changes with stale legacy values (race found in review,
+    // 2026-08-06). Each process (main and ":ime") has its own latch, which is
+    // exactly right: the migration is per-process and guarded by a file lock.
+    private static final CountDownLatch PP_MIGRATION_LATCH = new CountDownLatch(1);
+    // Ceiling so a hung Keystore can never block the settings screen; the
+    // typical migration is <10 ms.
+    private static final long PP_MIGRATION_WAIT_MS = 3000;
 
     @Override
     public void onCreate() {
@@ -35,7 +50,35 @@ public class App extends Application {
         // Android Keystore (legacy encrypted API key), which is not instant.
         // All settings are read lazily from marker files afterwards, so a few
         // milliseconds of delay is invisible to every consumer.
-        new Thread(() -> SettingsManager.migrateIfNeeded(this), "pp-migration").start();
+        new Thread(() -> {
+            try {
+                SettingsManager.migrateIfNeeded(this);
+            } catch (Throwable t) {
+                // Never let the background migration kill the process (review
+                // finding, 2026-08-06): an unexpected RuntimeException (e.g.
+                // ClassCastException while reading a legacy pref) would
+                // otherwise crash the app from this thread. The migration is
+                // best-effort — settings are read lazily from markers, so a
+                // failed migration only means the legacy values stay unmoved.
+                Log.e(TAG, "Post-processing migration failed", t);
+            } finally {
+                PP_MIGRATION_LATCH.countDown();
+            }
+        }, "pp-migration").start();
+    }
+
+    /**
+     * Blocks (bounded) until the post-processing legacy→marker migration has
+     * finished in this process, so a surface that both reads and writes PP
+     * settings cannot race it. No-op after the first launch (the latch is
+     * already at zero) and never blocks longer than the timeout.
+     */
+    public static void awaitPostProcessMigration() {
+        try {
+            PP_MIGRATION_LATCH.await(PP_MIGRATION_WAIT_MS, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
     }
 
     /// Writes "auto" as the transcription language the first time the app

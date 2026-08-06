@@ -61,6 +61,14 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_post_process_settings);
 
+        // Wait for the one-time legacy→marker migration before reading AND
+        // writing settings: otherwise, right after an upgrade, the migration
+        // thread could overwrite settings the user just changed with stale
+        // legacy values (race found in review, 2026-08-06). The wait is
+        // bounded (3 s) and typically returns in <10 ms; after the first
+        // launch the latch is already open, so this is a no-op.
+        App.awaitPostProcessMigration();
+
         settings = new SettingsManager(this);
 
         MaterialToolbar toolbar = findViewById(R.id.toolbar);

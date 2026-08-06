@@ -41,11 +41,23 @@ android {
                 val envStorePass = System.getenv("STORE_PASS")
                 val envKeyAlias = System.getenv("KEY_ALIAS")
                 val envKeyPass = System.getenv("KEY_PASS")
-                val isReleaseBuild = gradle.startParameter.taskNames.any {
-                    it.contains("Release", ignoreCase = true)
-                        || it.contains("bundle", ignoreCase = true)
+                // Detect every task that can produce a release artifact, not
+                // just the ones whose name contains "Release"/"bundle": the
+                // aggregators `assemble` and `build` (with or without a project
+                // prefix, e.g. `:app:assemble`) also build the release
+                // variant, and would otherwise sign with the default
+                // credentials below without failing. Debug-only tasks such as
+                // `assembleDebug` never touch the release signing config, so
+                // they stay exempt and local debug builds keep working
+                // without exported env vars.
+                val taskTargetsRelease = gradle.startParameter.taskNames.any { name ->
+                    val base = name.substringAfterLast(':')
+                    base.equals("assemble", ignoreCase = true)
+                        || base.equals("build", ignoreCase = true)
+                        || base.contains("Release", ignoreCase = true)
+                        || base.contains("bundle", ignoreCase = true)
                 }
-                if (isReleaseBuild
+                if (taskTargetsRelease
                     && (envStorePass == null || envKeyAlias == null || envKeyPass == null)
                 ) {
                     throw GradleException(

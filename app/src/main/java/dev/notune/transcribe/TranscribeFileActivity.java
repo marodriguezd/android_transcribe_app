@@ -37,12 +37,15 @@ public class TranscribeFileActivity extends AppCompatActivity {
 
     private static final String TAG = "OfflineVoiceInput";
     private static final int TARGET_SAMPLE_RATE = 16000;
-    // Hard cap on decoded audio (60 min = 57.6M samples, ~230 MB as float[]):
+    // Hard cap on decoded audio (30 min = 28.8M samples, ~115 MB as float[]):
     // the full decode is held in RAM (a Java float[] plus a native copy in
-    // transcribeAudio), so an unbounded file would OOM. This Activity is
-    // exported (SEND/VIEW audio/*), so any app can hand us an arbitrarily
-    // long file — the cap keeps a hostile/buggy input from exhausting memory.
-    private static final int MAX_DECODE_SAMPLES = 60 * 60 * TARGET_SAMPLE_RATE;
+    // transcribeAudio), so an unbounded file would OOM. 30 min was chosen over
+    // 60 min (57.6M samples ≈ 230 MB) so the cap is actually reachable on
+    // devices with a ~192–256 MB default heap — at 60 min the process could
+    // OOM before the check ever fired. This Activity is exported (SEND/VIEW
+    // audio/*), so any app can hand us an arbitrarily long file — the cap
+    // keeps a hostile/buggy input from exhausting memory.
+    private static final int MAX_DECODE_SAMPLES = 30 * 60 * TARGET_SAMPLE_RATE;
 
     static {
         try {

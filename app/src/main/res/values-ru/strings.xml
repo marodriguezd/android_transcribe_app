@@ -213,5 +213,5 @@
     <string name="debug_model_http_error">HTTP %1$d</string>
     <string name="debug_model_unknown_reason">неизвестно</string>
     <string name="bench_no_data_chunk">нет блока данных в %1$s</string>
-    <string name="file_error_too_long">Аудиофайл длится более 60 минут. Транскрибируйте более короткий файл.</string>
+    <string name="file_error_too_long">Аудиофайл длится более 30 минут. Транскрибируйте более короткий файл.</string>
 </resources>

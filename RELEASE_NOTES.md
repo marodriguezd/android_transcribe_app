@@ -4,7 +4,7 @@
 
 - **Release signing:** local release builds now fail fast when the keystore exists but a signing env var is missing — the app never signs with default credentials, so an APK cannot be republished by someone who obtained it.
 - **Backup privacy:** app data is excluded from Android Auto Backup (`allowBackup=false`), so the post-processing API key and the imported speech models (up to ~750 MB) no longer leave the device in a cloud backup.
-- **Memory bounds:** voice recordings are hard-capped at 5 minutes (auto-stop commits the captured audio) and file transcription at 60 minutes, so a forgotten recording or an oversized shared file can no longer grow until OOM.
+- **Memory bounds:** voice recordings are hard-capped at 5 minutes (auto-stop commits the captured audio) and file transcription at 30 minutes, so a forgotten recording or an oversized shared file can no longer grow until OOM.
 - **Local LLM preset:** the "Ollama (local)" provider works again on Android 9+ — cleartext is allowed for localhost only, everything else stays HTTPS-only.
 - **Crash fix:** stopping live subtitles no longer crashes when audio capture failed to initialize (uninitialized `AudioRecord.stop()`).
 - **Clipboard privacy:** file transcription no longer auto-copies the transcript to the shared system clipboard; use the copy button.

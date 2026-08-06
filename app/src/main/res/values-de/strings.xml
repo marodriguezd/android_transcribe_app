@@ -213,5 +213,5 @@
     <string name="debug_model_http_error">HTTP %1$d</string>
     <string name="debug_model_unknown_reason">unbekannt</string>
     <string name="bench_no_data_chunk">kein Datenblock in %1$s</string>
-    <string name="file_error_too_long">Die Audiodatei ist länger als 60 Minuten. Bitte transkribiere eine kürzere Datei.</string>
+    <string name="file_error_too_long">Die Audiodatei ist länger als 30 Minuten. Bitte transkribiere eine kürzere Datei.</string>
 </resources>

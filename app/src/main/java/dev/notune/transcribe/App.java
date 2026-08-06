@@ -34,8 +34,9 @@ public class App extends Application {
     // exactly right: the migration is per-process and guarded by a file lock.
     private static final CountDownLatch PP_MIGRATION_LATCH = new CountDownLatch(1);
     // Ceiling so a hung Keystore can never block the settings screen; the
-    // typical migration is <10 ms.
-    private static final long PP_MIGRATION_WAIT_MS = 3000;
+    // typical migration is <10 ms, so 1 s is generous while keeping the worst
+    // case on the UI thread short (2nd review round, 2026-08-06).
+    private static final long PP_MIGRATION_WAIT_MS = 1000;
 
     @Override
     public void onCreate() {
@@ -53,13 +54,15 @@ public class App extends Application {
         new Thread(() -> {
             try {
                 SettingsManager.migrateIfNeeded(this);
-            } catch (Throwable t) {
+            } catch (Exception t) {
                 // Never let the background migration kill the process (review
                 // finding, 2026-08-06): an unexpected RuntimeException (e.g.
                 // ClassCastException while reading a legacy pref) would
                 // otherwise crash the app from this thread. The migration is
                 // best-effort — settings are read lazily from markers, so a
                 // failed migration only means the legacy values stay unmoved.
+                // Errors (OOM, ThreadDeath) are deliberately not caught so a
+                // genuinely fatal condition still surfaces to the system.
                 Log.e(TAG, "Post-processing migration failed", t);
             } finally {
                 PP_MIGRATION_LATCH.countDown();

@@ -67,6 +67,12 @@ public class RustInputMethodService extends InputMethodService {
     private boolean viewIsNight = false;
     private Handler mainHandler;
     private boolean isRecording = false;
+    // True from the moment the mic is released (manual stop or auto-stop)
+    // until the final text is committed or the session is cancelled/errors
+    // out. Keeps the Cancel button visible continuously across the stop →
+    // transcribe → refine window so it never blinks when the "Ready" status
+    // lands between ASR and post-processing.
+    private boolean resultPending = false;
     private int currentSessionId = 0;
     private boolean pendingSwitchBack = false;
     private String lastStatus = "Initializing...";
@@ -124,6 +130,12 @@ public class RustInputMethodService extends InputMethodService {
                             recordContainer.setEnabled(true);
                             recordContainer.setAlpha(1.0f);
                         }
+                        // PP was turned off: the pending refine is gone, so
+                        // drop the pending flag and hide Cancel immediately
+                        // instead of waiting for the cancelled HTTP call's
+                        // error callback to reset the UI.
+                        resultPending = false;
+                        if (cancelButton != null) cancelButton.setVisibility(View.GONE);
                     }
                 }
             });
@@ -195,6 +207,7 @@ public class RustInputMethodService extends InputMethodService {
             switchKeyboardButton.setOnClickListener(v -> {
                 if (isRecording) {
                     pendingSwitchBack = true;
+                    resultPending = true;
                     stopRecording();
                     updateRecordButtonUI(false);
                 } else {
@@ -310,11 +323,11 @@ public class RustInputMethodService extends InputMethodService {
                         audioPauser.abandon(this);
                         pauseAudioActive = false;
                     }
+                    // Mark the result as pending so the Cancel button stays
+                    // visible continuously through transcription/refining
+                    // (see updateRecordButtonUI).
+                    resultPending = true;
                     updateRecordButtonUI(false);
-                    if (cancelButton != null) {
-                        cancelButton.setVisibility(View.VISIBLE);
-                        cancelButton.setEnabled(!isDestroyed);
-                    }
                 } else {
                     UserDictionaryHelper.syncSystemUserDictionaryAsync(this);
                     if (isPauseAudioEnabled()) {
@@ -380,6 +393,9 @@ public class RustInputMethodService extends InputMethodService {
                     Log.w(TAG, "cancelRecording failed, falling back to stopRecording", t);
                     try { stopRecording(); } catch (Throwable ignored) { }
                 }
+                // The capture was discarded: nothing is pending, so the Cancel
+                // button must not linger when the keyboard is shown again.
+                resultPending = false;
                 updateRecordButtonUI(false);
             } else {
                 // Default: keep recording in the background. The transcription
@@ -429,16 +445,29 @@ public class RustInputMethodService extends InputMethodService {
         }
         tintRecordButton(recording);
         if (recording) {
+            // A fresh capture starts a new pending cycle (a new recording can
+            // begin while an earlier result is still finishing).
+            resultPending = false;
             statusView.setText(getString(R.string.ime_listening));
             hintView.setText(getString(R.string.ime_tap_to_stop));
-            if (cancelButton != null) cancelButton.setVisibility(View.GONE);
+            // Keep the cancel action available while capturing: it discards the
+            // current recording (and any post-processing request if already in
+            // flight) instead of forcing the user to stop, transcribe and only
+            // then cancel — which would waste an LLM call on discarded text.
+            if (cancelButton != null) {
+                cancelButton.setVisibility(View.VISIBLE);
+                cancelButton.setEnabled(!isDestroyed);
+            }
         } else {
             statusView.setText(getString(R.string.ime_processing));
             hintView.setText(getString(R.string.ime_tap_to_record));
+            // resultPending is the single source of truth from mic release
+            // until commit/cancel: every stop path sets it synchronously, so
+            // a stale lastStatus ("Processing...") must never re-show the
+            // button after the text was already committed.
             if (cancelButton != null) {
-                cancelButton.setVisibility(lastStatus.contains("Transcribing")
-                        || lastStatus.contains("Processing")
-                        || lastStatus.contains("Waiting") ? View.VISIBLE : View.GONE);
+                cancelButton.setVisibility(resultPending ? View.VISIBLE : View.GONE);
+                cancelButton.setEnabled(!isDestroyed);
             }
             if (micLevelView != null) micLevelView.setLevel(0f);
             clearPartialText();
@@ -512,11 +541,8 @@ public class RustInputMethodService extends InputMethodService {
                     audioPauser.abandon(this);
                     pauseAudioActive = false;
                 }
+                resultPending = true;
                 updateRecordButtonUI(false);
-                if (cancelButton != null) {
-                    cancelButton.setVisibility(View.VISIBLE);
-                    cancelButton.setEnabled(!isDestroyed);
-                }
             }
         });
     }
@@ -536,6 +562,12 @@ public class RustInputMethodService extends InputMethodService {
     private void applyStatus(String status) {
         Log.d(TAG, "Status: " + status);
         lastStatus = status;
+        // A terminal error ends the transcription without a text callback:
+        // clear the pending flag so the Cancel button does not stay visible
+        // with nothing to cancel.
+        if (status != null && status.startsWith("Error")) {
+            resultPending = false;
+        }
         updateUiState();
         if (pendingSwitchBack && status.startsWith("Error")) {
             pendingSwitchBack = false;
@@ -578,8 +610,13 @@ public class RustInputMethodService extends InputMethodService {
             recordContainer.setAlpha(disable ? 0.5f : 1.0f);
         }
         if (cancelButton != null) {
-            cancelButton.setVisibility(!isRecording && (isTranscribing || isWaiting)
-                    ? View.VISIBLE : View.GONE);
+            // Visible while recording (discard the capture before it is
+            // transcribed/post-processed) and for the whole pending window
+            // from mic release until the result is committed or cancelled —
+            // so it never blinks when "Ready" lands between ASR and
+            // post-processing.
+            cancelButton.setVisibility(isRecording || resultPending
+                    || isTranscribing || isWaiting ? View.VISIBLE : View.GONE);
             cancelButton.setEnabled(!isDestroyed);
         }
 
@@ -620,6 +657,7 @@ public class RustInputMethodService extends InputMethodService {
     private void cancelCurrentTranscription() {
         currentSessionId++;
         lastStatus = "Canceled";
+        resultPending = false;
         try { cancelRecording(); } catch (Throwable ignored) { }
         PostProcessor.cancelAllFor(this);
         if (pauseAudioActive) {
@@ -642,6 +680,7 @@ public class RustInputMethodService extends InputMethodService {
             if (sessionId != currentSessionId) return;
             if (text == null || text.trim().isEmpty()) {
                 // Nothing recognized — don't insert a stray space.
+                resultPending = false;
                 updateRecordButtonUI(false);
                 if (statusView != null) statusView.setText(getString(R.string.ime_tap_to_record));
                 if (pauseAudioActive) {
@@ -702,6 +741,7 @@ public class RustInputMethodService extends InputMethodService {
 
     // Commits (or defers) the final transcribed/refined text and resets UI.
     private void commitFinalText(String text) {
+        resultPending = false;
         String committed = text + " ";
         InputConnection ic = getCurrentInputConnection();
         if (inputActive && ic != null) {

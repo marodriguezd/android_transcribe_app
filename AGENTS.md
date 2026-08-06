@@ -285,6 +285,7 @@ No renombrar archivos Rust/Java sin actualizar la entrada JNI (§4.3).**Post-pro
 - **Pantalla de voz (popup):** `AppTheme.VoicePanel` translúcido — NO pantalla completa — para que la app que invocó la voz conserve su UI detrás.
 - **Estado interno del engine (`"Loading"`, `"Initializing"`, `"Waiting"`) NO se muestra al usuario:** la UI mapea siempre a `Tap to Record`, `Listening...`, `Processing...`, etc. (ver `updateUiState` en `RustInputMethodService`).
 - **Pantallas han de re-pintar en cambios de tema** (ej. IME reconstruye su `inputView` si `ThemePrefs.isNight` cambia desde `onStartInputView`).
+- **Botón Cancelar del IME (`ime_cancel`):** visible durante la grabación (descarta la captura antes de transcribir/postprocesar, evitando consumo de API) y durante toda la ventana `resultPending` (desde que se suelta el micrófono hasta el commit/cancel). `resultPending` en `RustInputMethodService` es la **única fuente de verdad** en `updateRecordButtonUI(false)`; **no reintroducir** checks de `lastStatus` (Transcribing/Processing) en esa rama — un `"Processing..."` stale re-mostraría el botón tras el commit (parpadeo). Toda ruta de stop (mic, auto-stop, switch de teclado) activa `resultPending` de forma síncrona; la limpian commit, cancel, texto vacío, `stop_on_hide`, error terminal y el receiver `CANCEL_PP`; una grabación nueva la resetea.
 
 ### 4.10 i18n
 

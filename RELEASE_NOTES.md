@@ -1,3 +1,7 @@
+# Unreleased
+
+- **IME cancel-during-recording:** the Cancel action is now available from the moment a voice recording starts, so a dictation can be discarded before it is transcribed and before any post-processing request is sent. Previously it only appeared after the recording finished (while transcribing/refining), which meant an LLM call had already been made — and billed — for text the user then cancelled. The button also stays visible without flickering from mic release through transcription and refinement, until the text is committed or cancelled.
+
 # v0.1.28 — security and robustness hardening (2026-08-06)
 
 `versionCode 30` — hardens release signing, backup privacy and memory bounds; fixes a subtitle teardown crash; makes the Ollama local preset work again; and trims hot-path allocations.

@@ -4,6 +4,29 @@ Full change history of **android_transcribe_app** (fork of [notune/android_trans
 
 ---
 
+# v0.1.29
+
+Cancel-anytime keyboard dictation and resultPending window improvement:
+
+- The IME Cancel button appears as soon as recording starts, allowing instant cancellation before ASR/LLM post-processing.
+- Mid-capture cancellation discards the native audio buffer and cancels in-flight LLM calls.
+- Stays continuously visible through mic release, transcription, and refinement without UI flickering.
+
+---
+
+# v0.1.28
+
+Security and robustness hardening:
+
+- Hardened release signing: local release builds fail fast if signing env vars are missing.
+- Backup privacy: excluded app data from Android Auto Backup (`allowBackup=false`).
+- Memory bounds: capped voice recording at 5 minutes and file transcription at 30 minutes.
+- Local LLM preset: restored cleartext support for Ollama localhost on Android 9+.
+- Subtitle crash fix: safe teardown when `AudioRecord` fails to initialize.
+- File transcription privacy: removed auto-copying to system clipboard.
+
+---
+
 # v0.1.27
 
 Live-subtitle translation and caption-context improvements:

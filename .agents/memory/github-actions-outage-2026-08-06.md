@@ -79,3 +79,12 @@ All 21 steps green, including every hard gate:
 - Feature `9c65f61` fully CI-validated (all gates green), APK sent to Telegram.
 - History clean: `main` = `9c65f61` → `679b73b`; empty retry commit gone.
 - This doc + INDEX.md/progress.md updates are uncommitted (docs only, no code).
+
+## Addendum — v0.1.29 tag pushed during the same outage (21:26 UTC)
+
+Release **v0.1.29** (`e150c98`, versionCode 31) was pushed to `main` and tagged
+`v0.1.29` while Actions was still `major_outage`. As of 21:37 UTC no run had
+been created for `e150c98` — push/tag events are queued and should be processed
+when Actions recovers (the release workflow triggers on `push: tags v*` and
+fails fast if `KEYSTORE_BASE64` is missing; secrets were verified present).
+Resume steps live in `progress.md` (section "🟡 Pending — v0.1.29 release CI").

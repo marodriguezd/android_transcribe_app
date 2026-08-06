@@ -1,6 +1,6 @@
 # Progress — current AI-assisted work state
 
-**Last update:** 2026-08-06 (IME cancel-button feature CI-validated; GitHub Actions outage incident documented)
+**Last update:** 2026-08-06 (v0.1.29 prepared & tagged; release CI pending on GitHub Actions outage)
 
 ## ⚠️ Working mode (2026-08-06, fire rule)
 
@@ -38,6 +38,32 @@ to `main`)**: every gate passed — `cargo fmt --check`, translations,
 - **Housekeeping:** version bump to 0.1.28 (`versionCode 30`), `RELEASE_NOTES.md`
   block, AGENTS.md rules (incl. §3 "Regla de validación por entorno"),
   7-locale strings.
+
+## 🟡 Pending — v0.1.29 release CI (blocked by GitHub Actions outage, 2026-08-06 ~21:37 UTC)
+
+Release **v0.1.29** is **prepared and pushed, but the CI has not started yet** —
+GitHub Actions is in a `major_outage` (Partial System Outage) and push/tag
+events are being queued, not processed. Resume when Actions recovers:
+
+- **Prepared (commits on `main`):** `1bc4106` (docs: outage incident) +
+  `e150c98` (chore: prepare v0.1.29 release — versionCode `31` / versionName
+  `0.1.29` in `app/build.gradle.kts`, `RELEASE_NOTES.md` v0.1.29 block, store
+  changelog `fastlane/metadata/android/en-US/changelogs/31.txt`).
+- **Pushed:** `main` = `e150c98`, tag **`v0.1.29`** = `e150c98` (the tag triggers
+  the `Build Android App` release workflow). All 4 release secrets verified
+  present (`KEYSTORE_BASE64`, `KEY_ALIAS`, `KEY_PASS`, `STORE_PASS`).
+- **Resume steps:** `gh run list --workflow=debug_telegram.yml` for the debug
+  run of `e150c98` and `gh api repos/marodriguezd/android_transcribe_app/actions/runs?head_sha=e150c98…`
+  for the release run; if a run was **cancelled by the outage**, rerun it
+  (`gh run rerun <id>` — it queues and starts when Actions drains, per
+  [`memory/github-actions-outage-2026-08-06.md`](./memory/github-actions-outage-2026-08-06.md)).
+  The release workflow must pass every gate (fmt, translations, tests,
+  `assembleRelease`, `checkModels`, **zipalign + apksigner verification**) and
+  create the GitHub Release `Release v0.1.29` with asset
+  `android_transcribe_app_v0.1.29.apk` (body from `RELEASE_NOTES.md`).
+- **Feature shipped by v0.1.29:** IME Cancel button visible during recording +
+  no-flicker `resultPending` window (validated green on `9c65f61` in run
+  `31127092655`).
 
 ## 🟢 Completed — 2026-08-06 IME cancel button during recording — CI green (despite outage)
 

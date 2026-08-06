@@ -12,12 +12,13 @@
 - Local is allowed on the maintainer's physical machine (laptop/desktop).
 - Canonical rule: root `AGENTS.md` §3 "Regla de validación por entorno".
 
-## 🟡 In progress — 2026-08-06 audit fix round (V1–V10, R1–R5, O1–O9)
+## 🟢 Completed — 2026-08-06 audit fix round (V1–V10, R1–R5, O1–O9) — CI green
 
-Full-codebase security/optimization audit done (2026-08-06, no files changed in
-the audit itself); all fixes implemented but **not yet CI-validated** — the run
-was interrupted by local build attempts crashing this host (see working mode
-above). Implemented so far:
+Full-codebase security/optimization audit done (2026-08-06). All fixes
+implemented and **CI-validated in run `31095555098` (commit `92e9da2`, push
+to `main`)**: every gate passed — `cargo fmt --check`, translations,
+`testDebugUnitTest`, `assembleDebug` (compiles the Rust via cargo-ndk),
+`lintDebug`, `checkModels` — and the debug APK was sent to Telegram.
 
 - **Security:** release signing fail-fast when env vars missing (V1);
   `allowBackup=false` (V2); audio-buffer session cap in `voice_session.rs`
@@ -35,10 +36,14 @@ above). Implemented so far:
   debug-gated periodic audioLoop log (O5); settings migration off UI thread
   (O6); 10 Hz rms throttle (O9).
 - **Housekeeping:** version bump to 0.1.28 (`versionCode 30`), `RELEASE_NOTES.md`
-  block, AGENTS.md rules, 7-locale strings.
+  block, AGENTS.md rules (incl. §3 "Regla de validación por entorno"),
+  7-locale strings.
 
-**Next step:** commit + push to `main`, then read the debug workflow result with
-`gh` and fix whatever the CI flags.
+**Remaining for release:** the v0.1.28 signed release build is not yet run — it
+needs a `v0.1.28` tag (or manual dispatch), which also requires the
+`KEYSTORE_BASE64`/`KEY_ALIAS`/`KEY_PASS`/`STORE_PASS` secrets in the repo.
+
+## 🟢 Recently completed
 
 ## 🟢 Recently completed
 

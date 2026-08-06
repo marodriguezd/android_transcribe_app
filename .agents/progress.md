@@ -57,9 +57,23 @@ that the user chose to fix now:
 Pushed as `d8078b9`; CI run `31097691815` — **all gates green** (fmt, translations, JVM
 tests, `assembleDebug` incl. Rust, `lintDebug`, `checkModels`), APK to Telegram.
 
-**Still open from the review (not yet fixed):** V1 signing fail-fast does not cover
-`./gradlew assemble`/`build`; file cap is 60 min ≈ 230 MB (may OOM before cap);
-`App.java` async-migration race. Candidates for the v0.1.28 release push.
+## 🟢 Completed — 2026-08-06 review follow-up (MEDIUM fixes) — CI green
+
+Closed the two MEDIUM findings from the code review of `92e9da2` (commit `9a53841`,
+CI run `31098576970` — all gates green):
+- **Signing fail-fast now covers aggregate tasks:** `taskTargetsRelease` matches
+  `assemble`/`build` (with or without `:project:` prefix) plus any task containing
+  `Release`/`bundle`, so `./gradlew assemble` or `build` with `release.keystore`
+  present but env vars missing fails fast instead of signing with default
+  credentials. `assembleDebug` stays exempt (never touches the release signing
+  config).
+- **File-transcription cap lowered to 30 min** (`MAX_DECODE_SAMPLES` = 28.8 M
+  samples ≈ 115 MB float[]) so the cap fires before OOM on ~192–256 MB default
+  heaps; `file_error_too_long` string updated to 30 minutes in all 7 locales
+  (translations PASS) + RELEASE_NOTES updated.
+
+**Still open from the review (only MEDIUM/LOW left):** `App.java` async-migration
+race (tiny window, upgrade-only). Candidates for the v0.1.28 release push.
 
 ## 🟢 Recently completed
 

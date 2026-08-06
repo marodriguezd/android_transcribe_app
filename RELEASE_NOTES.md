@@ -1,6 +1,9 @@
-# Unreleased
+# v0.1.29 — cancel-anytime keyboard dictation (2026-08-06)
 
-- **IME cancel-during-recording:** the Cancel action is now available from the moment a voice recording starts, so a dictation can be discarded before it is transcribed and before any post-processing request is sent. Previously it only appeared after the recording finished (while transcribing/refining), which meant an LLM call had already been made — and billed — for text the user then cancelled. The button also stays visible without flickering from mic release through transcription and refinement, until the text is committed or cancelled.
+`versionCode 31` — the IME Cancel action is now available from the very start of a voice dictation, so a capture can be discarded before it is transcribed and before any post-processing request is sent.
+
+- **Cancel during recording:** the Cancel button appears as soon as recording starts, not only after it finishes. Cancelling mid-capture discards the audio buffer natively and cancels any in-flight post-processing call, so no transcription is produced and **no LLM request is ever made (or billed)** for text you cancel.
+- **No flicker:** the button stays continuously visible from mic release through transcription and refinement, until the text is committed or cancelled — the previous stop→transcribe→refine transitions no longer make it blink in and out.
 
 # v0.1.28 — security and robustness hardening (2026-08-06)
 

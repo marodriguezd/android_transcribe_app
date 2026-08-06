@@ -39,9 +39,18 @@ to `main`)**: every gate passed — `cargo fmt --check`, translations,
   block, AGENTS.md rules (incl. §3 "Regla de validación por entorno"),
   7-locale strings.
 
-**Remaining for release:** the v0.1.28 signed release build is not yet run — it
-needs a `v0.1.28` tag (or manual dispatch), which also requires the
-`KEYSTORE_BASE64`/`KEY_ALIAS`/`KEY_PASS`/`STORE_PASS` secrets in the repo.
+## 🟢 Completed — 2026-08-06 v0.1.28 release published — CI green
+
+Release **v0.1.28** (`versionCode 30`) published: tag `v0.1.28` pushed; the
+`Build Android App` release workflow (run `31103249074`) passed **every gate**
+— fmt check, translations, JVM tests, `assembleRelease` (Rust via cargo-ndk +
+bundled GGUF download with SHA-256), `checkModels`, **`zipalign` +
+`apksigner` signature verification** — and created the GitHub Release
+`Release v0.1.28` (not draft/prerelease) with asset
+`android_transcribe_app_v0.1.28.apk`. Body from `RELEASE_NOTES.md`
+(§ v0.1.28). Store changelog `fastlane/.../changelogs/30.txt` added (3 bullets,
+commit `dd1f5cc`). Secrets (`KEYSTORE_BASE64`, `KEY_ALIAS`, `KEY_PASS`,
+`STORE_PASS`) were present in the repo.
 
 ## 🟢 Completed — 2026-08-06 review follow-up (LOW fixes) — CI green
 

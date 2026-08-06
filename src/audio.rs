@@ -11,9 +11,15 @@ pub fn find_quietest_split(samples: &[f32], from: usize, to: usize) -> usize {
     // from scratch (O(n·WIN)), subtract the samples leaving the window and
     // add the ones entering (O(n)). Steps of WIN/2 keep exactly the same
     // candidate positions the old scan produced, so results are unchanged.
-    let mut energy: f32 = samples[from..from + WIN].iter().map(|&x| x * x).sum();
+    // The accumulator is f64: repeated subtract/add of f32 squares would
+    // otherwise accumulate rounding drift (catastrophic cancellation on
+    // long, quiet recordings can even push the energy slightly negative).
+    let mut energy: f64 = samples[from..from + WIN]
+        .iter()
+        .map(|&x| (x as f64) * (x as f64))
+        .sum();
     let mut best_pos = to;
-    let mut best_energy = f32::MAX;
+    let mut best_energy = f64::MAX;
     let mut i = from;
     while i + WIN <= to {
         if energy < best_energy {
@@ -25,10 +31,10 @@ pub fn find_quietest_split(samples: &[f32], from: usize, to: usize) -> usize {
             break;
         }
         for &x in &samples[i..i + step] {
-            energy -= x * x;
+            energy -= (x as f64) * (x as f64);
         }
         for &x in &samples[i + WIN..i + WIN + step] {
-            energy += x * x;
+            energy += (x as f64) * (x as f64);
         }
         i += step;
     }

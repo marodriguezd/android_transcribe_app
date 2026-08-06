@@ -325,7 +325,11 @@ pub fn start_recording(
                         // Claim the session so a simultaneous manual stop and
                         // this monitor can't both fire.
                         if session_active_monitor.swap(false, Ordering::SeqCst) {
-                            if let Ok(mut env) = jvm.attach_current_thread() {
+                            // Permanently attach the monitor thread (lives for
+                            // the whole recording) instead of attach/detach
+                            // churn every 100 ms, consistent with O1 on the
+                            // audio callback thread.
+                            if let Ok(mut env) = jvm.attach_current_thread_permanently() {
                                 crate::jni_util::notify_auto_stop_with_session(
                                     &mut env,
                                     target_ref.as_obj(),

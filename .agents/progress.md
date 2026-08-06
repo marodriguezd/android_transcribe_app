@@ -1,6 +1,6 @@
 # Progress — current AI-assisted work state
 
-**Last update:** 2026-08-06 (full audit fixes implemented, awaiting CI validation via push)
+**Last update:** 2026-08-06 (IME cancel-button feature CI-validated; GitHub Actions outage incident documented)
 
 ## ⚠️ Working mode (2026-08-06, fire rule)
 
@@ -38,6 +38,21 @@ to `main`)**: every gate passed — `cargo fmt --check`, translations,
 - **Housekeeping:** version bump to 0.1.28 (`versionCode 30`), `RELEASE_NOTES.md`
   block, AGENTS.md rules (incl. §3 "Regla de validación por entorno"),
   7-locale strings.
+
+## 🟢 Completed — 2026-08-06 IME cancel button during recording — CI green (despite outage)
+
+Feature `9c65f61` ("feat: keep IME cancel button visible while recording and
+pending"): the IME Cancel button (`ime_cancel`) is now visible **during
+recording** (discard the capture before ASR/post-processing fires → zero wasted
+LLM API/tokens) and through the whole **`resultPending`** window (mic release →
+commit/cancel) via a single-source-of-truth flag that eliminated the
+GONE→VISIBLE flicker across stop→transcribe→refine. Also: `RELEASE_NOTES.md`
+Unreleased entry + `AGENTS.md` §4.9 convention documented.
+
+CI validation happened through a GitHub Actions **major outage** (run cancelled,
+queued `gh run rerun`, completed success — 21 steps green, run `31127092655`, APK
+to Telegram) and required a history cleanup of the empty retry commit `e1243c0`.
+Full timeline + lessons: [`memory/github-actions-outage-2026-08-06.md`](./memory/github-actions-outage-2026-08-06.md).
 
 ## 🟢 Completed — 2026-08-06 v0.1.28 release published — CI green
 
@@ -158,6 +173,7 @@ Implemented 2026-08-03, gated by JVM; `assembleDebug`, `lintDebug` and `checkMod
 
 ## Canonical links
 
+- GitHub Actions outage incident: [`memory/github-actions-outage-2026-08-06.md`](./memory/github-actions-outage-2026-08-06.md)
 - Live-subtitle translation: [`memory/live-subtitle-translation-2026-08-04.md`](./memory/live-subtitle-translation-2026-08-04.md)
 - v0.1.24 prep: [`memory/release-0.1.24-prep-2026-08-04.md`](./memory/release-0.1.24-prep-2026-08-04.md)
 - P1.4/P1.5 feasibility: [`memory/p14-p15-feasibility-2026-08-04.md`](./memory/p14-p15-feasibility-2026-08-04.md)

@@ -46,6 +46,11 @@ Se rellena conforme se acumulen sesiones de trabajo. Listado en orden cronológi
 > written in English (maintainer decision). Historical Spanish documents stay
 > as the recorded history; do not silently translate them.
 
+- [`memory/github-actions-outage-2026-08-06.md`](./memory/github-actions-outage-2026-08-06.md) —
+  GitHub Actions major-outage incident: run cancelled (not a code failure),
+  queued `gh run rerun`, full gate validation green (21 steps, run
+  `31127092655`) for the IME cancel-button feature, and history cleanup of
+  the empty retry commit; lessons for future CI debugging.
 - [`memory/live-subtitle-translation-2026-08-04.md`](./memory/live-subtitle-translation-2026-08-04.md) —
   live-subtitle on-device translation (cascade ASR → ML Kit; `Auto` =
   original language; 71 JVM tests; gates green locally, CI/device pending).

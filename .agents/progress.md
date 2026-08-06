@@ -91,6 +91,17 @@ CI run `31100166641` — all gates green, APK to Telegram):
 **Review of commit `92e9da2` is now fully closed** (LOW + MEDIUM + migration
 race). Remaining for release: v0.1.28 tag + secrets.
 
+## 🟢 Completed — 2026-08-06 review round 2 polish (LOWs) — CI green
+
+Second review round approved the whole fix series (`92e9da2`→`6e12d1d`, no
+regressions). Applied the two optional LOW polish items it flagged (commit
+`73341c3`, CI run `31100924682` — all gates green):
+- `PP_MIGRATION_WAIT_MS` 3000 → **1000 ms** (shorter worst-case UI-thread block
+  on the settings screen; typical migration is <10 ms).
+- Migration thread now catches `Exception` instead of `Throwable`, so fatal
+  `Error`s (OOM, ThreadDeath) still surface to the system while unexpected
+  RuntimeExceptions never kill the process.
+
 ## 🟢 Recently completed
 
 - **2026-08-04 — Live-subtitle on-device translation (feature):** optional translation for live subtitles with `Auto = original language` (user decision) and explicit targets EN/ES/FR/DE/IT/PT/RU. Research proved the bundled Nemotron 3.5 ASR cannot translate (`supports_translate = false`; Whisper-family only translates to English), so the design is a **cascade**: existing chunked ASR → Google ML Kit text translation (`com.google.mlkit:translate:17.0.2`). New `SubtitleTranslationTargets`, `SourceLanguageResolver`, `SubtitleTranslator` + `OnDeviceSubtitleTranslator`; ordered segment pipeline + FIFO queue + session generation in `LiveSubtitleService`; `subtitle_translation_target` marker; Rust `transcribe_subtitle` forces `Task::Transcribe` so `model_translate` never leaks into subtitles; the target selector lives on the `LiveSubtitleActivity` start screen (MainActivity untouched) + 7-locale strings; JVM tests (71 total, 0 failures), translations PASS, `cargo fmt` clean, `lintDebug` BUILD SUCCESSFUL. Details: [`memory/live-subtitle-translation-2026-08-04.md`](./memory/live-subtitle-translation-2026-08-04.md).

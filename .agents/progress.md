@@ -72,8 +72,24 @@ CI run `31098576970` — all gates green):
   heaps; `file_error_too_long` string updated to 30 minutes in all 7 locales
   (translations PASS) + RELEASE_NOTES updated.
 
-**Still open from the review (only MEDIUM/LOW left):** `App.java` async-migration
-race (tiny window, upgrade-only). Candidates for the v0.1.28 release push.
+## 🟢 Completed — 2026-08-06 review follow-up (migration race) — CI green
+
+Closed the last finding from the code review of `92e9da2` (commit `e06a7a3`,
+CI run `31100166641` — all gates green, APK to Telegram):
+- `App.java`: the background legacy→marker migration now runs under a `try/catch
+  (Throwable)` + `finally` that releases a static `CountDownLatch`, so an
+  unexpected RuntimeException can never crash the process and surfaces can wait
+  for completion.
+- New `App.awaitPostProcessMigration()`: bounded (3 s) latch wait, no-op after
+  first launch.
+- `PostProcessSettingsActivity.onCreate` awaits the migration before reading AND
+  writing settings, so the migration can never overwrite fresh user changes with
+  stale legacy values right after an upgrade. Read-only surfaces (IME, popup,
+  SpeechRecognizer, file) read lazily long after the <10 ms migration, so no
+  other waits were needed.
+
+**Review of commit `92e9da2` is now fully closed** (LOW + MEDIUM + migration
+race). Remaining for release: v0.1.28 tag + secrets.
 
 ## 🟢 Recently completed
 

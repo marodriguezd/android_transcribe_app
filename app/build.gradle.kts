@@ -26,6 +26,16 @@ android {
     }
 
     signingConfigs {
+        getByName("debug") {
+            val debugKsFile = rootProject.file("keystore/debug.keystore")
+            if (debugKsFile.exists()) {
+                storeFile = debugKsFile
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+
         create("release") {
             val ksFile = rootProject.file("release.keystore")
             if (ksFile.exists()) {

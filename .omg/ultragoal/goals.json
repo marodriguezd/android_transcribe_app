@@ -19,8 +19,8 @@
   },
   {
     "id": "G4",
-    "description": "Verify translation parity and JVM unit tests",
+    "description": "Fix hover state state-capture timing on ACTION_UP release so drop on X destroys the bubble",
     "status": "completed",
-    "verification": "check_translations.py PASS and testDebugUnitTest BUILD SUCCESSFUL"
+    "verification": "mIsHoveringDismiss captured before hideDismissTarget() in ACTION_UP (commit 09e3abb)"
   }
 ]

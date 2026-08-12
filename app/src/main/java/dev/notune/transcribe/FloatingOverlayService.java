@@ -364,8 +364,9 @@ public class FloatingOverlayService extends Service {
                         updateDismissTargetHover(event.getRawX(), event.getRawY());
                         return true;
                     case MotionEvent.ACTION_UP:
+                        boolean dismissRequested = mIsHoveringDismiss;
                         hideDismissTarget();
-                        if (mIsHoveringDismiss) {
+                        if (dismissRequested) {
                             fadeOutAndStop();
                         } else if (isClick) {
                             togglePanel();
@@ -487,7 +488,7 @@ public class FloatingOverlayService extends Service {
         double bubbleDist = Math.hypot(bubbleCenterX - targetCenterX, bubbleCenterY - targetCenterY);
         double touchDist = Math.hypot(rawX - targetCenterX, rawY - targetCenterY);
 
-        float threshold = 85 * density;
+        float threshold = 100 * density;
         boolean hovering = bubbleDist < threshold || touchDist < threshold;
 
         if (hovering != mIsHoveringDismiss) {

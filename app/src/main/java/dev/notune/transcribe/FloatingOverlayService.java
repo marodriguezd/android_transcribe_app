@@ -11,6 +11,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.PixelFormat;
+import android.graphics.Point;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
@@ -437,10 +438,29 @@ public class FloatingOverlayService extends Service {
                 int margin = (int) (16 * density);
                 int resId = getResources().getIdentifier("status_bar_height", "dimen", "android");
                 int statusBar = resId > 0 ? getResources().getDimensionPixelSize(resId) : 0;
+                int navResId = getResources().getIdentifier("navigation_bar_height", "dimen", "android");
+                int navBar = navResId > 0 ? getResources().getDimensionPixelSize(navResId) : 0;
+
+                int panelWidth = screenWidth - margin * 2;
+                int panelHeight = measurePanelHeight(panelWidth);
+
+                // Open the panel as close as possible to where the bubble is
+                // instead of always pinning it under the status bar: the panel's
+                // vertical center lines up with the bubble's center. The result
+                // is clamped so the whole panel stays on screen.
+                int screenHeight = getRealScreenHeight();
+                int bubbleHeight = mBubbleRoot != null && mBubbleRoot.getHeight() > 0
+                        ? mBubbleRoot.getHeight() : (int) (64 * density);
+                int bubbleCenterY = mBubbleY + bubbleHeight / 2;
+                int minTop = statusBar + margin;
+                int maxTop = screenHeight - navBar - panelHeight - margin;
+                int desiredTop = bubbleCenterY - panelHeight / 2;
+                int top = Math.max(minTop, Math.min(desiredTop, Math.max(minTop, maxTop)));
+
                 mParams.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
-                mParams.width = screenWidth - margin * 2;
+                mParams.width = panelWidth;
                 mParams.x = 0;
-                mParams.y = statusBar + (int) (12 * density);
+                mParams.y = top;
             } else {
                 mParams.gravity = Gravity.TOP | Gravity.START;
                 mParams.width = WindowManager.LayoutParams.WRAP_CONTENT;
@@ -452,6 +472,39 @@ public class FloatingOverlayService extends Service {
             // Never crash on a cosmetic resize failure; the panel still shows
             // with its previous size.
             Log.w(TAG, "resizeWindow failed", t);
+        }
+    }
+
+    /**
+     * Full-screen height in overlay coordinates. The overlay window uses
+     * FLAG_LAYOUT_IN_SCREEN, so this includes status bar and nav bar areas.
+     */
+    private int getRealScreenHeight() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                return mWindowManager.getCurrentWindowMetrics().getBounds().height();
+            }
+            Point size = new Point();
+            mWindowManager.getDefaultDisplay().getRealSize(size);
+            return size.y;
+        } catch (Throwable t) {
+            return getResources().getDisplayMetrics().heightPixels;
+        }
+    }
+
+    /**
+     * Measures the expanded panel at the target width so its height is known
+     * before clamping the panel position on screen. Falls back to a safe
+     * estimate if the view cannot be measured.
+     */
+    private int measurePanelHeight(int panelWidth) {
+        try {
+            int widthSpec = View.MeasureSpec.makeMeasureSpec(panelWidth, View.MeasureSpec.EXACTLY);
+            int heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
+            mPanelRoot.measure(widthSpec, heightSpec);
+            return mPanelRoot.getMeasuredHeight();
+        } catch (Throwable t) {
+            return (int) (280 * getResources().getDisplayMetrics().density);
         }
     }
 

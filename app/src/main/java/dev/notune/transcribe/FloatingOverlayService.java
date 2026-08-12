@@ -19,6 +19,7 @@ import android.os.Looper;
 import android.provider.Settings;
 import android.util.Log;
 import android.view.Gravity;
+import android.view.HapticFeedbackConstants;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
@@ -106,9 +107,14 @@ public class FloatingOverlayService extends Service {
     // bubble returns exactly where the user left it after collapsing.
     private int mBubbleX = 20;
     private int mBubbleY = 200;
-    // Set when a long-press fired so the following ACTION_UP tap does not also
-    // toggle the panel while the service is stopping.
-    private boolean mLongPressConsumed = false;
+
+    // Drag-to-dismiss target view overlay at bottom center of screen
+    private View mDismissTargetView;
+    private View mDismissCircle;
+    private WindowManager.LayoutParams mDismissParams;
+    private boolean mIsDismissTargetAttached = false;
+    private boolean mIsHoveringDismiss = false;
+
     // Safety net that stops the service if the fade animation gets cancelled.
     private final Runnable mFadeStopFallback = this::stopSelf;
 
@@ -307,20 +313,14 @@ public class FloatingOverlayService extends Service {
     }
 
     private void setupGestureAndListeners() {
-        // Drag bubble vs tap to toggle panel
-        // Long-press on the bubble stops the whole overlay without entering
-        // the app (equivalent to the notification's Stop action). This must be
-        // implemented inside the touch listener: an OnTouchListener returning
-        // true consumes the event, so the view's own onTouchEvent (which posts
-        // CheckForLongPress) never runs and setOnLongClickListener would be dead.
+        // Drag bubble vs tap to toggle panel.
+        // Dragging displays a dismiss target ("X") at the bottom of the screen.
+        // Releasing the bubble over the "X" target closes the overlay entirely.
+        // Holding/long-pressing allows moving the bubble around without closing.
         mBubbleRoot.setOnTouchListener(new View.OnTouchListener() {
             private int initialX, initialY;
             private float initialTouchX, initialTouchY;
             private boolean isClick = false;
-            private final Runnable longPressStop = () -> {
-                mLongPressConsumed = true;
-                fadeOutAndStop();
-            };
 
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -339,16 +339,13 @@ public class FloatingOverlayService extends Service {
                         initialTouchX = event.getRawX();
                         initialTouchY = event.getRawY();
                         isClick = true;
-                        mLongPressConsumed = false;
-                        v.removeCallbacks(longPressStop);
-                        v.postDelayed(longPressStop, ViewConfiguration.getLongPressTimeout());
+                        showDismissTarget();
                         return true;
                     case MotionEvent.ACTION_MOVE:
                         int dx = (int) (event.getRawX() - initialTouchX);
                         int dy = (int) (event.getRawY() - initialTouchY);
                         if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
                             isClick = false;
-                            v.removeCallbacks(longPressStop);
                         }
                         mParams.x = initialX + dx;
                         mParams.y = initialY + dy;
@@ -364,17 +361,20 @@ public class FloatingOverlayService extends Service {
                                 Log.w(TAG, "updateViewLayout failed during drag", t);
                             }
                         }
+                        updateDismissTargetHover(event.getRawX(), event.getRawY());
                         return true;
                     case MotionEvent.ACTION_UP:
-                        v.removeCallbacks(longPressStop);
-                        if (isClick && !mLongPressConsumed) {
+                        hideDismissTarget();
+                        if (mIsHoveringDismiss) {
+                            fadeOutAndStop();
+                        } else if (isClick) {
                             togglePanel();
-                        } else if (!isClick) {
+                        } else {
                             snapToNearestEdge(null);
                         }
                         return true;
                     case MotionEvent.ACTION_CANCEL:
-                        v.removeCallbacks(longPressStop);
+                        hideDismissTarget();
                         snapToNearestEdge(null);
                         return true;
                 }
@@ -418,6 +418,121 @@ public class FloatingOverlayService extends Service {
                 collapsePanel();
             }
         });
+    }
+
+    private void setupDismissTargetView() {
+        Context night = ThemePrefs.wrapForNight(this, ThemePrefs.getMode(this));
+        Context themed = new android.view.ContextThemeWrapper(night, R.style.AppTheme);
+        mDismissTargetView = LayoutInflater.from(themed).inflate(R.layout.overlay_dismiss_target, null);
+        mDismissCircle = mDismissTargetView.findViewById(R.id.dismiss_target_circle);
+
+        float density = getResources().getDisplayMetrics().density;
+        int layoutFlag = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
+                ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                : WindowManager.LayoutParams.TYPE_PHONE;
+
+        mDismissParams = new WindowManager.LayoutParams(
+                (int) (72 * density),
+                (int) (72 * density),
+                layoutFlag,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+                        | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                        | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT
+        );
+        mDismissParams.gravity = Gravity.BOTTOM | Gravity.CENTER_HORIZONTAL;
+        int navResId = getResources().getIdentifier("navigation_bar_height", "dimen", "android");
+        int navBar = navResId > 0 ? getResources().getDimensionPixelSize(navResId) : 0;
+        mDismissParams.y = navBar + (int) (36 * density);
+    }
+
+    private void showDismissTarget() {
+        if (mWindowManager == null || mIsDestroyed) return;
+        if (mDismissTargetView == null) {
+            setupDismissTargetView();
+        }
+        if (mDismissTargetView != null && !mIsDismissTargetAttached) {
+            try {
+                mDismissTargetView.setAlpha(0f);
+                mDismissTargetView.setScaleX(0.6f);
+                mDismissTargetView.setScaleY(0.6f);
+                mWindowManager.addView(mDismissTargetView, mDismissParams);
+                mIsDismissTargetAttached = true;
+                mDismissTargetView.animate()
+                        .alpha(1f)
+                        .scaleX(1f)
+                        .scaleY(1f)
+                        .setDuration(180)
+                        .start();
+            } catch (Throwable t) {
+                Log.w(TAG, "Failed to show dismiss target overlay", t);
+            }
+        }
+        setDismissHoverState(false);
+    }
+
+    private void updateDismissTargetHover(float rawX, float rawY) {
+        if (!mIsDismissTargetAttached || mDismissTargetView == null || mDismissParams == null) return;
+        float density = getResources().getDisplayMetrics().density;
+
+        int screenWidth = getRealScreenWidth();
+        int screenHeight = getRealScreenHeight();
+
+        float targetCenterX = screenWidth / 2f;
+        float targetCenterY = screenHeight - mDismissParams.y - (36 * density);
+
+        float bubbleCenterX = mParams.x + (32 * density);
+        float bubbleCenterY = mParams.y + (32 * density);
+
+        double bubbleDist = Math.hypot(bubbleCenterX - targetCenterX, bubbleCenterY - targetCenterY);
+        double touchDist = Math.hypot(rawX - targetCenterX, rawY - targetCenterY);
+
+        float threshold = 85 * density;
+        boolean hovering = bubbleDist < threshold || touchDist < threshold;
+
+        if (hovering != mIsHoveringDismiss) {
+            setDismissHoverState(hovering);
+            if (hovering && mBubbleRoot != null) {
+                try {
+                    mBubbleRoot.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS);
+                } catch (Throwable ignored) {}
+            }
+        }
+    }
+
+    private void setDismissHoverState(boolean hovering) {
+        mIsHoveringDismiss = hovering;
+        if (mDismissCircle != null) {
+            if (hovering) {
+                mDismissCircle.setBackgroundResource(R.drawable.bg_dismiss_circle_hover);
+                mDismissCircle.animate().scaleX(1.25f).scaleY(1.25f).setDuration(120).start();
+            } else {
+                mDismissCircle.setBackgroundResource(R.drawable.bg_dismiss_circle);
+                mDismissCircle.animate().scaleX(1.0f).scaleY(1.0f).setDuration(120).start();
+            }
+        }
+    }
+
+    private void hideDismissTarget() {
+        if (mWindowManager != null && mDismissTargetView != null && mIsDismissTargetAttached) {
+            mDismissTargetView.animate()
+                    .alpha(0f)
+                    .scaleX(0.6f)
+                    .scaleY(0.6f)
+                    .setDuration(150)
+                    .withEndAction(() -> {
+                        if (mIsDismissTargetAttached && mWindowManager != null && mDismissTargetView != null) {
+                            try {
+                                mWindowManager.removeView(mDismissTargetView);
+                            } catch (Throwable t) {
+                                Log.w(TAG, "Failed to remove dismiss target view", t);
+                            }
+                            mIsDismissTargetAttached = false;
+                        }
+                    })
+                    .start();
+        }
+        mIsHoveringDismiss = false;
     }
 
     private void togglePanel() {
@@ -856,6 +971,16 @@ public class FloatingOverlayService extends Service {
         try { cancelRecording(); } catch (Throwable ignored) { }
         try { cleanupNative(); } catch (Throwable ignored) { }
         PostProcessor.cancelAllFor(this);
+        if (mIsDismissTargetAttached && mWindowManager != null && mDismissTargetView != null) {
+            try {
+                if (mDismissTargetView.isAttachedToWindow()) {
+                    mWindowManager.removeView(mDismissTargetView);
+                }
+            } catch (Throwable t) {
+                Log.w(TAG, "Failed to remove dismiss target view on destroy", t);
+            }
+            mIsDismissTargetAttached = false;
+        }
         if (mOverlayView != null && mWindowManager != null) {
             try {
                 // removeView() on a detached view throws IllegalArgumentException

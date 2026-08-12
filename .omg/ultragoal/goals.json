@@ -1,14 +1,26 @@
 [
   {
     "id": "G1",
-    "description": "Relocate AI Fix toggle in ime_layout.xml to top status row centered between status text and cancel button",
+    "description": "Initialize Ultragoal plan and goals for floating bubble drag-to-dismiss feature",
     "status": "completed",
-    "verification": "ime_pp_toggle placed in top status row in ime_layout.xml, removed from mic record container"
+    "verification": "Session brief and goals created in .omg/ultragoal/"
   },
   {
     "id": "G2",
-    "description": "Add Floating Dictation & Accessibility settings card in activity_main.xml & MainActivity.java",
+    "description": "Remove automatic long-press dismissal in FloatingOverlayService so holding the bubble moves it without stopping",
     "status": "completed",
-    "verification": "Floating mode card with toggle switch and overlay/accessibility permission buttons working in MainActivity"
+    "verification": "longPressStop removed from gesture listener, long-press moves bubble freely without stopping service"
+  },
+  {
+    "id": "G3",
+    "description": "Implement drag-to-dismiss 'X' target overlay at bottom center of screen with hover feedback and release dismissal",
+    "status": "completed",
+    "verification": "Dismiss target overlay appears during drag, highlights on hover over 'X', and closes bubble when dropped inside"
+  },
+  {
+    "id": "G4",
+    "description": "Verify translation parity and JVM unit tests",
+    "status": "completed",
+    "verification": "check_translations.py PASS and testDebugUnitTest BUILD SUCCESSFUL"
   }
 ]

@@ -85,6 +85,12 @@ public class FloatingOverlayService extends Service {
     private View mRecordContainer;
     private MicLevelView mMicLevelView;
     private Button mInsertButton;
+    private TextView mHintText;
+
+    // Bubble position (window offset) kept while the panel is expanded, so the
+    // bubble returns exactly where the user left it after collapsing.
+    private int mBubbleX = 20;
+    private int mBubbleY = 200;
 
     private Handler mMainHandler;
     private boolean mIsRecording = false;
@@ -235,6 +241,7 @@ public class FloatingOverlayService extends Service {
         mRecordContainer = mOverlayView.findViewById(R.id.floating_record_container);
         mMicLevelView = mOverlayView.findViewById(R.id.floating_mic_level);
         mInsertButton = mOverlayView.findViewById(R.id.floating_insert_button);
+        mHintText = mOverlayView.findViewById(R.id.floating_hint);
 
         int layoutFlag = Build.VERSION.SDK_INT >= Build.VERSION_CODES.O
                 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -285,6 +292,10 @@ public class FloatingOverlayService extends Service {
                         }
                         mParams.x = initialX + dx;
                         mParams.y = initialY + dy;
+                        // Keep the bubble position in sync for the panel expand/collapse
+                        // window resize (dragging only happens on the bubble itself).
+                        mBubbleX = mParams.x;
+                        mBubbleY = mParams.y;
                         if (mWindowManager != null && mOverlayView != null) {
                             try {
                                 mWindowManager.updateViewLayout(mOverlayView, mParams);
@@ -356,11 +367,50 @@ public class FloatingOverlayService extends Service {
         if (mPpToggle != null) {
             mPpToggle.setChecked(SettingsManager.isPostProcessEnabled(this));
         }
+        // Full-width panel, IME style: stretch the window to near-screen width
+        // and anchor it below the status bar, centered horizontally.
+        resizeWindow(true);
     }
 
     private void collapsePanel() {
         mPanelRoot.setVisibility(View.GONE);
         mBubbleRoot.setVisibility(View.VISIBLE);
+        // Back to the small draggable bubble at the saved position.
+        resizeWindow(false);
+    }
+
+    /**
+     * Switches the overlay window between the small bubble (wrap content at the
+     * dragged position) and the full-width dictation panel (near-screen width,
+     * top-anchored). Only the width/gravity/offset change; height stays wrap.
+     */
+    private void resizeWindow(boolean expanded) {
+        if (mWindowManager == null || mOverlayView == null || mParams == null) {
+            return;
+        }
+        try {
+            if (expanded) {
+                float density = getResources().getDisplayMetrics().density;
+                int screenWidth = getResources().getDisplayMetrics().widthPixels;
+                int margin = (int) (16 * density);
+                int resId = getResources().getIdentifier("status_bar_height", "dimen", "android");
+                int statusBar = resId > 0 ? getResources().getDimensionPixelSize(resId) : 0;
+                mParams.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+                mParams.width = screenWidth - margin * 2;
+                mParams.x = 0;
+                mParams.y = statusBar + (int) (12 * density);
+            } else {
+                mParams.gravity = Gravity.TOP | Gravity.START;
+                mParams.width = WindowManager.LayoutParams.WRAP_CONTENT;
+                mParams.x = mBubbleX;
+                mParams.y = mBubbleY;
+            }
+            mWindowManager.updateViewLayout(mOverlayView, mParams);
+        } catch (Throwable t) {
+            // Never crash on a cosmetic resize failure; the panel still shows
+            // with its previous size.
+            Log.w(TAG, "resizeWindow failed", t);
+        }
     }
 
     private void startRecordingSession() {
@@ -369,6 +419,8 @@ public class FloatingOverlayService extends Service {
         mLastRawTranscript = null;
         mTranscribedResult = null;
         mInsertButton.setVisibility(View.GONE);
+        if (mProgress != null) mProgress.setVisibility(View.GONE);
+        if (mHintText != null) mHintText.setText(R.string.ime_tap_to_stop);
         mStatusText.setText(getString(R.string.floating_status_listening));
         mCancelButton.setVisibility(View.VISIBLE);
         startRecording(new File(getFilesDir(), "auto_stop").exists(), ++mCurrentSessionId);
@@ -378,6 +430,8 @@ public class FloatingOverlayService extends Service {
         mIsRecording = false;
         mResultPending = true;
         mStatusText.setText(getString(R.string.floating_status_transcribing));
+        if (mProgress != null) mProgress.setVisibility(View.VISIBLE);
+        if (mHintText != null) mHintText.setText(R.string.ime_tap_to_record);
         stopRecording();
     }
 
@@ -389,6 +443,8 @@ public class FloatingOverlayService extends Service {
         mTranscribedResult = null;
         try { cancelRecording(); } catch (Throwable ignored) { }
         PostProcessor.cancelAllFor(this);
+        if (mProgress != null) mProgress.setVisibility(View.GONE);
+        if (mHintText != null) mHintText.setText(R.string.ime_tap_to_record);
         mStatusText.setText(getString(R.string.floating_status_ready));
         mCancelButton.setVisibility(View.GONE);
         mInsertButton.setVisibility(View.GONE);
@@ -404,6 +460,8 @@ public class FloatingOverlayService extends Service {
         mResultPending = false;
         mLastRawTranscript = null;
         mTranscribedResult = text;
+        if (mProgress != null) mProgress.setVisibility(View.GONE);
+        if (mHintText != null) mHintText.setText(R.string.ime_tap_to_record);
         mStatusText.setText(getString(R.string.floating_status_ready));
         mCancelButton.setVisibility(View.GONE);
         clearPartialText();
@@ -482,6 +540,8 @@ public class FloatingOverlayService extends Service {
             mLastStatus = status != null ? status : "";
             if (mLastStatus.startsWith("Error")) {
                 mResultPending = false;
+                if (mProgress != null) mProgress.setVisibility(View.GONE);
+                if (mHintText != null) mHintText.setText(R.string.ime_tap_to_record);
                 if (mStatusText != null) mStatusText.setText(mLastStatus);
             }
         });
@@ -524,6 +584,7 @@ public class FloatingOverlayService extends Service {
             if (settings.isPostProcessEnabled()) {
                 mLastStatus = "Processing...";
                 if (mStatusText != null) mStatusText.setText(getString(R.string.ime_refining));
+                if (mProgress != null) mProgress.setVisibility(View.VISIBLE);
                 if (mCancelButton != null) mCancelButton.setVisibility(View.VISIBLE);
 
                 final int processingSessionId = sessionId;

@@ -4,13 +4,16 @@
     android:layout_width="wrap_content"
     android:layout_height="wrap_content">
 
-    <!-- Collapsed Floating Bubble View -->
+    <!-- Collapsed Floating Bubble View: fixed 64dp bubble, contents perfectly
+         centered, consistent padding around every element. The window stays
+         wrap_content while collapsed. -->
     <FrameLayout
         android:id="@+id/floating_bubble_root"
         android:layout_width="64dp"
         android:layout_height="64dp"
         android:clickable="true"
         android:focusable="true"
+        android:foreground="?attr/selectableItemBackgroundBorderless"
         android:visibility="visible">
 
         <dev.notune.transcribe.MicLevelView
@@ -21,25 +24,27 @@
 
         <View
             android:id="@+id/floating_bubble_circle"
-            android:layout_width="48dp"
-            android:layout_height="48dp"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
             android:layout_gravity="center"
             android:background="@drawable/bg_record_circle" />
 
         <ImageView
             android:id="@+id/floating_bubble_icon"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
+            android:layout_width="26dp"
+            android:layout_height="26dp"
             android:layout_gravity="center"
             android:contentDescription="@string/floating_bubble_description"
             android:src="@drawable/ic_mic"
             app:tint="?attr/colorOnPrimary" />
     </FrameLayout>
 
-    <!-- Expanded Dictation Panel View -->
+    <!-- Expanded Dictation Panel View: full-width card (the service resizes the
+         overlay window to near-screen width while expanded, IME style). Header
+         row integrates status / AI Fix / cancel / close like the voice keyboard. -->
     <LinearLayout
         android:id="@+id/floating_panel_root"
-        android:layout_width="320dp"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:background="@drawable/bg_voice_panel"
         android:elevation="8dp"
@@ -47,7 +52,7 @@
         android:padding="12dp"
         android:visibility="gone">
 
-        <!-- Header status & actions -->
+        <!-- Header: status & progress, AI Fix toggle, cancel, close -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -64,7 +69,7 @@
                 android:singleLine="true"
                 android:text="@string/floating_status_idle"
                 android:textAppearance="?attr/textAppearanceBodyMedium"
-                android:textColor="?attr/colorOnSurface" />
+                android:textColor="?attr/colorOnSurfaceVariant" />
 
             <ProgressBar
                 android:id="@+id/floating_progress"
@@ -80,7 +85,8 @@
                 android:layout_height="wrap_content"
                 android:layout_marginEnd="6dp"
                 android:text="@string/floating_ai_fix_toggle"
-                android:textAppearance="?attr/textAppearanceLabelSmall" />
+                android:textAppearance="?attr/textAppearanceLabelMedium"
+                android:textColor="?attr/colorOnSurfaceVariant" />
 
             <Button
                 android:id="@+id/floating_cancel_button"
@@ -106,13 +112,14 @@
                 app:tint="?attr/colorOnSurfaceVariant" />
         </LinearLayout>
 
-        <!-- Live partial hypothesis text -->
+        <!-- Live partial hypothesis text: appears while recording, card-backed
+             so the transcription window reads as a proper text pad -->
         <ScrollView
             android:id="@+id/floating_partial_scroll"
             android:layout_width="match_parent"
-            android:layout_height="52dp"
+            android:layout_height="64dp"
             android:layout_marginTop="8dp"
-            android:layout_marginBottom="8dp"
+            android:background="@drawable/bg_result"
             android:overScrollMode="never"
             android:scrollbars="none"
             android:visibility="gone">
@@ -122,64 +129,64 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:minLines="2"
-                android:paddingStart="4dp"
-                android:paddingEnd="4dp"
-                android:textAppearance="?attr/textAppearanceBodyMedium"
+                android:padding="8dp"
+                android:textAppearance="?attr/textAppearanceBodyLarge"
                 android:textColor="?attr/colorOnSurface" />
         </ScrollView>
 
-        <!-- Record & Insert buttons -->
-        <LinearLayout
+        <!-- Record area: pulsing mic glow behind a circular record button,
+             with a tap hint like the IME voice panel -->
+        <FrameLayout
+            android:id="@+id/floating_record_container"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:paddingTop="8dp">
+            android:layout_height="150dp"
+            android:layout_marginTop="8dp"
+            android:clickable="true"
+            android:focusable="true">
 
-            <FrameLayout
-                android:id="@+id/floating_record_container"
-                android:layout_width="56dp"
-                android:layout_height="56dp"
-                android:clickable="true"
-                android:focusable="true">
-
-                <dev.notune.transcribe.MicLevelView
-                    android:id="@+id/floating_mic_level"
-                    android:layout_width="56dp"
-                    android:layout_height="56dp"
-                    android:layout_gravity="center" />
-
-                <View
-                    android:id="@+id/floating_record_circle"
-                    android:layout_width="44dp"
-                    android:layout_height="44dp"
-                    android:layout_gravity="center"
-                    android:background="@drawable/bg_record_circle" />
-
-                <ImageView
-                    android:id="@+id/floating_mic_icon"
-                    android:layout_width="24dp"
-                    android:layout_height="24dp"
-                    android:layout_gravity="center"
-                    android:contentDescription="@string/section_ime"
-                    android:src="@drawable/ic_mic"
-                    app:tint="?attr/colorOnPrimary" />
-            </FrameLayout>
+            <dev.notune.transcribe.MicLevelView
+                android:id="@+id/floating_mic_level"
+                android:layout_width="120dp"
+                android:layout_height="120dp"
+                android:layout_gravity="center" />
 
             <View
-                android:layout_width="0dp"
-                android:layout_height="1dp"
-                android:layout_weight="1" />
+                android:id="@+id/floating_record_circle"
+                android:layout_width="76dp"
+                android:layout_height="76dp"
+                android:layout_gravity="center"
+                android:background="@drawable/bg_record_circle" />
 
-            <Button
-                android:id="@+id/floating_insert_button"
-                style="@style/Widget.Material3.Button"
+            <ImageView
+                android:id="@+id/floating_mic_icon"
+                android:layout_width="34dp"
+                android:layout_height="34dp"
+                android:layout_gravity="center"
+                android:contentDescription="@string/section_ime"
+                android:src="@drawable/ic_mic"
+                app:tint="?attr/colorOnPrimary" />
+
+            <TextView
+                android:id="@+id/floating_hint"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="@string/floating_action_insert"
-                android:visibility="gone" />
-        </LinearLayout>
+                android:layout_gravity="center_horizontal|bottom"
+                android:layout_marginBottom="8dp"
+                android:text="@string/ime_tap_to_record"
+                android:textAppearance="?attr/textAppearanceBodySmall"
+                android:textColor="?attr/colorOnSurfaceVariant" />
+        </FrameLayout>
 
+        <!-- Insert result button: full-width action when the transcript is ready
+             and accessibility auto-paste is unavailable -->
+        <Button
+            android:id="@+id/floating_insert_button"
+            style="@style/Widget.Material3.Button"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="@string/floating_action_insert"
+            android:visibility="gone" />
     </LinearLayout>
 
 </FrameLayout>

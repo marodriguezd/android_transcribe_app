@@ -207,6 +207,11 @@ public class MainActivity extends AppCompatActivity {
             }
             if (newMode != ThemePrefs.getMode(this)) {
                 ThemePrefs.setMode(this, newMode);
+                if (isServiceRunning(FloatingOverlayService.class)) {
+                    try {
+                        startService(new Intent(this, FloatingOverlayService.class));
+                    } catch (Throwable ignored) {}
+                }
             }
         });
 

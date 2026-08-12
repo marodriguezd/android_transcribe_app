@@ -1,9 +1,9 @@
-# v0.1.30 — integrated AI Fix toggle in IME keyboard (2026-08-12)
+# v0.1.31 — Whisperflow floating bubble dictation & Accessibility auto-paste (2026-08-12)
 
-`versionCode 32` — integrated AI post-processing toggle in the voice keyboard (IME) and status header refinement.
+`versionCode 33` — introduces floating bubble dictation overlay and Android Accessibility Service auto-paste integration.
 
-- **AI Fix Toggle in IME:** A dedicated toggle switch ("AI Fix") is now integrated directly into the central voice keyboard container. Enable or disable LLM post-processing on the fly at any point before, during, or after speech recognition.
-- **On-the-Fly Post-Processing Decisions:** If the toggle is OFF when dictation completes, the raw transcription is inserted immediately. If toggled OFF while LLM post-processing is in-flight ("Refining..."), the HTTP request is cancelled instantly and the raw transcript is delivered without delay.
-- **Header Status Layout:** Top-left clearly displays status ("Escuchando..." / "Listening...") with the Cancel button anchored on the top-right.
+- **Floating Bubble Dictation (Whisperflow style):** Draggable floating bubble icon (`WindowManager` `TYPE_APPLICATION_OVERLAY`) that expands into a dictation control box. Displays real-time streaming hypotheses, status, Cancel button, AI Fix toggle, and Insert action.
+- **Accessibility Auto-Paste:** `FloatingDictationAccessibilityService` tracks active input field focus across apps and performs direct text insertion (`ACTION_PASTE` / `ACTION_SET_TEXT`) with clipboard fallback.
+- **Native JNI Floating Bridge:** Direct native audio capture and Rust engine callbacks connected to the floating overlay service.
 
 The complete version history remains in [`CHANGELOG.md`](CHANGELOG.md).

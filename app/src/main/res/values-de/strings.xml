@@ -241,4 +241,8 @@
     <string name="accessibility_service_name">Sprach-Automatischer Einfügedienst</string>
     <string name="accessibility_service_description">Fügt transkribierten Text automatisch in fokussierte Eingabefelder ein.</string>
     <string name="accessibility_paste_failed">Einfügen fehlgeschlagen</string>
+    <string name="floating_card_title">Schwebendes Diktat &amp; Barrierefreiheit</string>
+    <string name="floating_card_subtitle">Schwebende Blase im Whisperflow-Stil mit automatischer Einfügung.</string>
+    <string name="btn_overlay_permission">Überlagerungsberechtigung</string>
+    <string name="btn_accessibility_permission">Barrierefreiheit-Berechtigung</string>
 </resources>

@@ -1,0 +1,14 @@
+[
+  {
+    "id": "G1",
+    "description": "Relocate AI Fix toggle in ime_layout.xml to top status row centered between status text and cancel button",
+    "status": "completed",
+    "verification": "ime_pp_toggle placed in top status row in ime_layout.xml, removed from mic record container"
+  },
+  {
+    "id": "G2",
+    "description": "Add Floating Dictation & Accessibility settings card in activity_main.xml & MainActivity.java",
+    "status": "completed",
+    "verification": "Floating mode card with toggle switch and overlay/accessibility permission buttons working in MainActivity"
+  }
+]

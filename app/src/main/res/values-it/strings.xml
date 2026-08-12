@@ -239,6 +239,10 @@
     <string name="floating_service_name">Sovrapposizione di dettatura mobile</string>
     <string name="floating_service_description">Bolla mobile per la dettatura vocale rapida e pannello sovrapposto.</string>
     <string name="accessibility_service_name">Servizio di incolla automatico vocale</string>
-    <string name="accessibility_service_description">Incolla automaticamente il testo trascritto nei campi di testo selezionati.</string>
+    <string name="accessibility_service_description">Incolla automaticamente il testo trascritto nei campi di testo attivi.</string>
     <string name="accessibility_paste_failed">Impossibile incollare il testo</string>
+    <string name="floating_card_title">Dettatura Fluttuante e Accessibilità</string>
+    <string name="floating_card_subtitle">Bolla fluttuante stile Whisperflow con incolla automatico via Accessibilità.</string>
+    <string name="btn_overlay_permission">Autorizzazione Sovrapposizione</string>
+    <string name="btn_accessibility_permission">Autorizzazione Accessibilità</string>
 </resources>

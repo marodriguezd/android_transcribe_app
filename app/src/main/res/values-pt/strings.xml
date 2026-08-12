@@ -239,6 +239,10 @@
     <string name="floating_service_name">Sobreposição de ditado flutuante</string>
     <string name="floating_service_description">Bolha flutuante para ditado de voz rápido e painel sobreposto.</string>
     <string name="accessibility_service_name">Serviço de colagem automática por voz</string>
-    <string name="accessibility_service_description">Cola automaticamente o texto transcrito nos campos de texto em foco.</string>
+    <string name="accessibility_service_description">Cola automaticamente o texto transcrito em campos de texto focados.</string>
     <string name="accessibility_paste_failed">Falha ao colar texto</string>
+    <string name="floating_card_title">Ditado Flutuante e Acessibilidade</string>
+    <string name="floating_card_subtitle">Bolha flutuante estilo Whisperflow com colagem automática por Acessibilidade.</string>
+    <string name="btn_overlay_permission">Permissão Sobreposição</string>
+    <string name="btn_accessibility_permission">Permissão Acessibilidade</string>
 </resources>

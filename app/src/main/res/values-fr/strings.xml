@@ -241,4 +241,8 @@
     <string name="accessibility_service_name">Service de collage automatique vocal</string>
     <string name="accessibility_service_description">Colle automatiquement le texte transcrit dans les champs de saisie actifs.</string>
     <string name="accessibility_paste_failed">Échec du collage du texte</string>
+    <string name="floating_card_title">Dictée Flottante et Accessibilité</string>
+    <string name="floating_card_subtitle">Bulle flottante style Whisperflow avec collage automatique par Accessibilité.</string>
+    <string name="btn_overlay_permission">Permission Superposition</string>
+    <string name="btn_accessibility_permission">Permission Accessibilité</string>
 </resources>

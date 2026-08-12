@@ -241,4 +241,8 @@
     <string name="accessibility_service_name">Servicio de pegado automático por voz</string>
     <string name="accessibility_service_description">Pega automáticamente el texto transcrito en campos de texto enfocados.</string>
     <string name="accessibility_paste_failed">Error al pegar texto</string>
+    <string name="floating_card_title">Dictado Flotante y Accesibilidad</string>
+    <string name="floating_card_subtitle">Burbuja flotante tipo Whisperflow con pegado automático por Accesibilidad.</string>
+    <string name="btn_overlay_permission">Permiso Superposición</string>
+    <string name="btn_accessibility_permission">Permiso Accesibilidad</string>
 </resources>

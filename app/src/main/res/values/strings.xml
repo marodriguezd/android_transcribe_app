@@ -262,4 +262,8 @@
     <string name="accessibility_service_name">Voice Auto-Paste Service</string>
     <string name="accessibility_service_description">Auto-pastes transcribed text into focused input fields.</string>
     <string name="accessibility_paste_failed">Failed to paste text</string>
+    <string name="floating_card_title">Floating Dictation &amp; Accessibility</string>
+    <string name="floating_card_subtitle">Whisperflow-style floating bubble with direct Accessibility auto-paste.</string>
+    <string name="btn_overlay_permission">Overlay Permission</string>
+    <string name="btn_accessibility_permission">Accessibility Permission</string>
 </resources>

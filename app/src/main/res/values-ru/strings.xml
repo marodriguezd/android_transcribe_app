@@ -238,7 +238,11 @@
     <string name="floating_toast_copied">Текст скопирован в буфер обмена</string>
     <string name="floating_service_name">Плавающий оверлей диктовки</string>
     <string name="floating_service_description">Плавающий пузырек для быстрого голосового ввода и панель управления.</string>
-    <string name="accessibility_service_name">Служба автовставки голоса</string>
-    <string name="accessibility_service_description">Автоматически вставляет распознанный текст в активные текстовые поля.</string>
+    <string name="accessibility_service_name">Служба авто-вставки голоса</string>
+    <string name="accessibility_service_description">Автоматически вставляет распознанный текст в активные поля ввода.</string>
     <string name="accessibility_paste_failed">Не удалось вставить текст</string>
+    <string name="floating_card_title">Плавающий ввод и Специальные возможности</string>
+    <string name="floating_card_subtitle">Плавающий пузырь в стиле Whisperflow с автовставкой через Специальные возможности.</string>
+    <string name="btn_overlay_permission">Наложение поверх</string>
+    <string name="btn_accessibility_permission">Спец. возможности</string>
 </resources>

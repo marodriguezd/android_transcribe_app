@@ -1,5 +1,6 @@
 package dev.notune.transcribe;
 
+import android.app.ActivityManager;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -9,6 +10,7 @@ import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.content.res.ColorStateList;
+import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
@@ -21,6 +23,7 @@ import android.widget.CompoundButton;
 import android.widget.ImageView;
 import android.widget.RadioGroup;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
@@ -28,6 +31,7 @@ import androidx.core.content.ContextCompat;
 import androidx.core.widget.ImageViewCompat;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import com.google.android.material.materialswitch.MaterialSwitch;
 import com.google.android.material.snackbar.Snackbar;
 
 import java.io.BufferedReader;
@@ -206,6 +210,7 @@ public class MainActivity extends AppCompatActivity {
 
         // Initial check
         updateVoiceInputStatus();
+        setupFloatingModeControls();
 
         // Debug builds ship without the bundled model to keep the APK small;
         // download it from Hugging Face on first run. This is also called from
@@ -238,11 +243,82 @@ public class MainActivity extends AppCompatActivity {
         sActiveInstance = this;
         // Re-check on return from the keyboard chooser, settings, or a test run.
         updateVoiceInputStatus();
+        setupFloatingModeControls();
         // Re-check the debug model state after a configuration change or when
         // returning from another screen.
         maybeDownloadDebugModel();
         // Sync Android system user dictionary words (FUTO Keyboard style)
         UserDictionaryHelper.syncSystemUserDictionaryAsync(this);
+    }
+
+    private void setupFloatingModeControls() {
+        MaterialSwitch switchFloating = findViewById(R.id.switch_floating_mode);
+        Button btnOverlayPerm = findViewById(R.id.btn_floating_overlay_permission);
+        Button btnAccessibilityPerm = findViewById(R.id.btn_floating_accessibility_permission);
+
+        if (switchFloating == null) return;
+
+        if (btnOverlayPerm != null) {
+            btnOverlayPerm.setOnClickListener(v -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    try {
+                        Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:" + getPackageName()));
+                        startActivity(intent);
+                    } catch (Throwable t) {
+                        Log.e(TAG, "Error opening overlay permission settings", t);
+                    }
+                }
+            });
+        }
+
+        if (btnAccessibilityPerm != null) {
+            btnAccessibilityPerm.setOnClickListener(v -> {
+                try {
+                    Intent intent = new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS);
+                    startActivity(intent);
+                } catch (Throwable t) {
+                    Log.e(TAG, "Error opening accessibility settings", t);
+                }
+            });
+        }
+
+        switchFloating.setOnCheckedChangeListener(null);
+        boolean canOverlay = Build.VERSION.SDK_INT < Build.VERSION_CODES.M || Settings.canDrawOverlays(this);
+        boolean isFloatingEnabled = canOverlay && isServiceRunning(FloatingOverlayService.class);
+        switchFloating.setChecked(isFloatingEnabled);
+
+        switchFloating.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (isChecked) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.canDrawOverlays(this)) {
+                    Toast.makeText(this, R.string.floating_overlay_permission_msg, Toast.LENGTH_LONG).show();
+                    try {
+                        Intent intent = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                                Uri.parse("package:" + getPackageName()));
+                        startActivity(intent);
+                    } catch (Throwable ignored) { }
+                    switchFloating.setChecked(false);
+                    return;
+                }
+                Intent serviceIntent = new Intent(this, FloatingOverlayService.class);
+                ContextCompat.startForegroundService(this, serviceIntent);
+            } else {
+                Intent serviceIntent = new Intent(this, FloatingOverlayService.class);
+                stopService(serviceIntent);
+            }
+        });
+    }
+
+    private boolean isServiceRunning(Class<?> serviceClass) {
+        ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        if (manager != null) {
+            for (ActivityManager.RunningServiceInfo service : manager.getRunningServices(Integer.MAX_VALUE)) {
+                if (serviceClass.getName().equals(service.service.getClassName())) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     @Override

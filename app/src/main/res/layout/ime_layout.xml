@@ -32,7 +32,17 @@
             style="?android:attr/progressBarStyleSmall"
             android:layout_width="24dp"
             android:layout_height="24dp"
+            android:layout_marginEnd="6dp"
             android:visibility="gone"/>
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/ime_pp_toggle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:text="@string/ime_ai_fix_toggle"
+            android:textAppearance="?attr/textAppearanceLabelMedium"
+            android:textColor="?attr/colorOnSurfaceVariant" />
 
         <Button
             android:id="@+id/ime_cancel"
@@ -80,16 +90,6 @@
         android:layout_height="200dp"
         android:clickable="true"
         android:focusable="true">
-
-        <com.google.android.material.materialswitch.MaterialSwitch
-            android:id="@+id/ime_pp_toggle"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="top|center_horizontal"
-            android:layout_marginTop="4dp"
-            android:text="@string/ime_ai_fix_toggle"
-            android:textAppearance="?attr/textAppearanceLabelMedium"
-            android:textColor="?attr/colorOnSurfaceVariant" />
 
         <dev.notune.transcribe.MicLevelView
             android:id="@+id/ime_mic_level"

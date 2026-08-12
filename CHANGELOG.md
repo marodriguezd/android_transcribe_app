@@ -7,9 +7,13 @@ Full change history of **android_transcribe_app** (fork of [notune/android_trans
 Whisperflow floating bubble dictation & Accessibility auto-paste:
 
 - Added `FloatingOverlayService` with draggable floating bubble overlay (`SYSTEM_ALERT_WINDOW`) and expanded dictation control panel.
-- Added `FloatingDictationAccessibilityService` (`BIND_ACCESSIBILITY_SERVICE`) to track focused input fields across applications and insert transcribed text via `ACTION_PASTE`/`ACTION_SET_TEXT`.
+- Added `FloatingDictationAccessibilityService` (`BIND_ACCESSIBILITY_SERVICE`) to track focused input fields across applications and insert transcribed text via `ACTION_PASTE`/`ACTION_SET_TEXT`, with clipboard fallback so no transcript is ever lost.
 - Linked native Rust audio capture JNI bridge (`src/floating.rs`) to floating overlay callbacks.
 - Integrated AI Fix toggle, streaming hypothesis window, and Insert action button into floating overlay panel.
+- Full-width IME-style panel: expands to near-screen width below the status bar and returns to the exact bubble position on collapse.
+- Crash-proof stack: permission-gated startup (mic + overlay) with graceful stopSelf instead of restart crash-loops; exception-safe accessibility event handling; poison-tolerant native session locks.
+- Stop without opening the app: notification Stop action and long-press on the bubble (with fade-out + toast feedback on Android < 12).
+- Listening pulse animation on the mic circles while recording.
 
 ---
 

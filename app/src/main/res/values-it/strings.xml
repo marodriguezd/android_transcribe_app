@@ -238,7 +238,7 @@
     <string name="floating_toast_copied">Testo copiato negli appunti</string>
     <string name="floating_service_name">Sovrapposizione di dettatura mobile</string>
     <string name="floating_service_description">Bolla mobile per la dettatura vocale rapida e pannello sovrapposto.</string>
-    <string name="floating_need_mic_body">Concedi l'autorizzazione al microfono per usare la bolla di dettatura fluttuante.</string>
+    <string name="floating_need_mic_body">Concedi l\'autorizzazione al microfono per usare la bolla di dettatura fluttuante.</string>
     <string name="floating_start_failed_body">Impossibile avviare la bolla fluttuante. Controlla le autorizzazioni di sovrapposizione e microfono.</string>
     <string name="accessibility_service_name">Servizio di incolla automatico vocale</string>
     <string name="accessibility_service_description">Incolla automaticamente il testo trascritto nei campi di testo attivi.</string>

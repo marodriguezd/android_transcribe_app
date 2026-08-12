@@ -1,3 +1,13 @@
+# v0.1.32 — Floating bubble remembers its spot & panel follows the bubble (2026-08-12)
+
+`versionCode 34` — the floating bubble keeps its position across restarts, and the dictation panel now opens right where the bubble is.
+
+- **Bubble position memory:** drag the bubble anywhere — its position is saved to a marker file and restored exactly there the next time the overlay starts (clamped to the current screen so a position saved in another orientation can never leave it off-screen).
+- **Panel follows the bubble:** the expanded dictation panel no longer pins under the status bar — it opens vertically centered on the bubble instead, clamped so it always fits on screen (status-bar and nav-bar aware, using the panel's measured height).
+- **Robust persistence:** the position is also saved when a drag is interrupted (touch stolen mid-drag) and on every stop path, so the bubble reliably returns to where you left it.
+
+The complete version history remains in [`CHANGELOG.md`](CHANGELOG.md).
+
 # v0.1.31 — Whisperflow floating bubble dictation & Accessibility auto-paste (2026-08-12)
 
 `versionCode 33` — floating bubble dictation overlay, Android Accessibility auto-paste, and a fully crash-proofed floating + accessibility stack.

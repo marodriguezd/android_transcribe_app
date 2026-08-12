@@ -2,6 +2,16 @@
 
 Full change history of **android_transcribe_app** (fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app)).
 
+# v0.1.32
+
+Floating bubble position memory & panel placement:
+
+- Bubble position persisted in a marker file (`floating_bubble_pos`) and restored on service start, clamped to the current screen so rotation/screen-size changes can never push it off-screen.
+- Expanded dictation panel opens vertically centered on the bubble instead of always under the status bar; clamped between status bar and nav bar using the panel's measured height.
+- Position also saved when a drag is interrupted (touch cancel) and on every overlay stop path, so the bubble reliably returns to its spot.
+
+---
+
 # v0.1.31
 
 Whisperflow floating bubble dictation & Accessibility auto-paste:

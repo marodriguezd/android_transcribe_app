@@ -239,6 +239,7 @@
     <string name="floating_service_name">Superposición de dictado flotante</string>
     <string name="floating_service_description">Burbuja flotante para dictado de voz rápido y panel superpuesto.</string>
     <string name="floating_notification_stop">Detener</string>
+    <string name="floating_stopped">Dictado flotante detenido</string>
     <string name="floating_need_mic_body">Concede permiso de micrófono para usar la burbuja flotante de dictado.</string>
     <string name="floating_start_failed_body">No se pudo iniciar la burbuja flotante. Comprueba los permisos de superposición y micrófono.</string>
     <string name="accessibility_service_name">Servicio de pegado automático por voz</string>

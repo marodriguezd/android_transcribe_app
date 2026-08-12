@@ -28,6 +28,7 @@ import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
 import android.widget.TextView;
+import android.widget.Toast;
 import com.google.android.material.materialswitch.MaterialSwitch;
 
 import androidx.core.app.NotificationCompat;
@@ -102,6 +103,8 @@ public class FloatingOverlayService extends Service {
     // Set when a long-press fired so the following ACTION_UP tap does not also
     // toggle the panel while the service is stopping.
     private boolean mLongPressConsumed = false;
+    // Safety net that stops the service if the fade animation gets cancelled.
+    private final Runnable mFadeStopFallback = this::stopSelf;
 
     private Handler mMainHandler;
     private boolean mIsRecording = false;
@@ -299,7 +302,7 @@ public class FloatingOverlayService extends Service {
             private boolean isClick = false;
             private final Runnable longPressStop = () -> {
                 mLongPressConsumed = true;
-                stopSelf();
+                fadeOutAndStop();
             };
 
             @Override
@@ -533,6 +536,36 @@ public class FloatingOverlayService extends Service {
         }
     }
 
+    /**
+     * Feedback when the user long-presses the bubble to stop it: fade the
+     * overlay out before stopping so the dismissal feels deliberate (the app
+     * is usually in the background here, where a toast may be suppressed on
+     * Android 12+, so the animation is the reliable cue). A best-effort toast
+     * is attempted too — it shows on older devices or when the app happens to
+     * be in the foreground.
+     */
+    private void fadeOutAndStop() {
+        // On Android 12+ a background app's toast is reduced to a bare app icon
+        // (no text), which looks like a glitch — the fade animation is the real
+        // cue there, so only attempt the toast on older versions.
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
+            try {
+                Toast.makeText(this, R.string.floating_stopped, Toast.LENGTH_SHORT).show();
+            } catch (Throwable ignored) {
+            }
+        }
+        if (mOverlayView != null && !mIsDestroyed) {
+            mOverlayView.animate().alpha(0f).setDuration(220)
+                    .withEndAction(this::stopSelf)
+                    .start();
+            // Safety net: if the animation is cancelled (e.g. view detached
+            // first), still stop shortly after. stopSelf is idempotent.
+            mMainHandler.postDelayed(mFadeStopFallback, 500);
+        } else {
+            stopSelf();
+        }
+    }
+
     private void clearPartialText() {
         if (mPartialText != null) mPartialText.setText("");
         if (mPartialScroll != null) mPartialScroll.setVisibility(View.GONE);
@@ -573,6 +606,7 @@ public class FloatingOverlayService extends Service {
         mIsDestroyed = true;
         mCurrentSessionId++;
         stopPulseAnimation();
+        mMainHandler.removeCallbacks(mFadeStopFallback);
         if (mBubbleRoot != null) {
             mBubbleRoot.removeCallbacks(null);
         }

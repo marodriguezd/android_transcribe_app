@@ -239,6 +239,7 @@
     <string name="floating_service_name">Плавающий оверлей диктовки</string>
     <string name="floating_service_description">Плавающий пузырек для быстрого голосового ввода и панель управления.</string>
     <string name="floating_notification_stop">Остановить</string>
+    <string name="floating_stopped">Плавающая диктовка остановлена</string>
     <string name="floating_need_mic_body">Предоставьте доступ к микрофону, чтобы использовать плавающий пузырь диктовки.</string>
     <string name="floating_start_failed_body">Не удалось запустить плавающий пузырь. Проверьте разрешения на отображение поверх других приложений и микрофон.</string>
     <string name="accessibility_service_name">Служба авто-вставки голоса</string>

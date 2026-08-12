@@ -239,6 +239,7 @@
     <string name="floating_service_name">Sobreposição de ditado flutuante</string>
     <string name="floating_service_description">Bolha flutuante para ditado de voz rápido e painel sobreposto.</string>
     <string name="floating_notification_stop">Parar</string>
+    <string name="floating_stopped">Ditado flutuante parado</string>
     <string name="floating_need_mic_body">Conceda a permissão do microfone para usar a bolha flutuante de ditado.</string>
     <string name="floating_start_failed_body">Não foi possível iniciar a bolha flutuante. Verifique as permissões de sobreposição e microfone.</string>
     <string name="accessibility_service_name">Serviço de colagem automática por voz</string>

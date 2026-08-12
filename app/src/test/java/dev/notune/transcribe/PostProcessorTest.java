@@ -319,7 +319,7 @@ public class PostProcessorTest {
             assertTrue("expected an error, got " + outcome.get(),
                     outcome.get().startsWith("err:"));
             assertTrue("expected socket timeout message, got " + outcome.get(),
-                    outcome.get().contains("timeout"));
+                    outcome.get().toLowerCase().contains("timed out") || outcome.get().toLowerCase().contains("timeout"));
         } finally {
             PostProcessor.resetSharedClientForTests();
         }

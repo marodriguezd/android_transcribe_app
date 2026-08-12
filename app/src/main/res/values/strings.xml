@@ -236,4 +236,30 @@
     <string name="debug_model_unknown_reason">unknown</string>
     <string name="bench_no_data_chunk">no data chunk in %1$s</string>
     <string name="file_error_too_long">The audio file is longer than 30 minutes. Please transcribe a shorter file.</string>
+
+    <!-- Floating overlay & accessibility auto-paste (feature/floating-bubble-dictation) -->
+    <string name="floating_bubble_description">Floating voice dictation bubble</string>
+    <string name="floating_status_idle">Tap bubble to speak</string>
+    <string name="floating_status_listening">Listening...</string>
+    <string name="floating_status_transcribing">Transcribing...</string>
+    <string name="floating_status_ready">Ready</string>
+    <string name="floating_status_error">Dictation error</string>
+    <string name="floating_action_cancel">Cancel</string>
+    <string name="floating_action_insert">Insert</string>
+    <string name="floating_action_paste">Insert</string>
+    <string name="floating_ai_fix_toggle">AI Fix</string>
+    <string name="floating_toggle_ai_fix">AI Fix</string>
+    <string name="floating_ai_fix_on">AI Fix: ON</string>
+    <string name="floating_ai_fix_off">AI Fix: OFF</string>
+    <string name="floating_overlay_permission_title">Overlay Permission Required</string>
+    <string name="floating_overlay_permission_msg">Please grant Display Over Other Apps permission to use the floating dictation bubble.</string>
+    <string name="floating_accessibility_service_name">Floating Dictation Auto-Paste</string>
+    <string name="floating_accessibility_service_desc">Automatically inserts transcribed text into focused text fields.</string>
+    <string name="floating_toast_pasted">Text inserted into active field</string>
+    <string name="floating_toast_copied">Text copied to clipboard</string>
+    <string name="floating_service_name">Floating Dictation Overlay</string>
+    <string name="floating_service_description">Floating bubble for quick voice dictation and overlay panel.</string>
+    <string name="accessibility_service_name">Voice Auto-Paste Service</string>
+    <string name="accessibility_service_description">Auto-pastes transcribed text into focused input fields.</string>
+    <string name="accessibility_paste_failed">Failed to paste text</string>
 </resources>

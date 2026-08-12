@@ -2,6 +2,7 @@ pub mod assets;
 pub mod audio;
 pub mod corrector;
 pub mod engine;
+pub mod floating;
 pub mod ime;
 pub mod jni_util;
 pub mod main_activity;

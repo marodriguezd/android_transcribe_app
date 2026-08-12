@@ -215,4 +215,30 @@
     <string name="debug_model_unknown_reason">неизвестно</string>
     <string name="bench_no_data_chunk">нет блока данных в %1$s</string>
     <string name="file_error_too_long">Аудиофайл длится более 30 минут. Транскрибируйте более короткий файл.</string>
+
+    <!-- Floating dictation overlay & Accessibility auto-paste -->
+    <string name="floating_bubble_description">Плавающий пузырь голосового диктовщика</string>
+    <string name="floating_status_idle">Нажмите на пузырь, чтобы говорить</string>
+    <string name="floating_status_listening">Прослушивание...</string>
+    <string name="floating_status_transcribing">Транскрибирование...</string>
+    <string name="floating_status_ready">Готово</string>
+    <string name="floating_status_error">Ошибка диктовки</string>
+    <string name="floating_action_cancel">Отмена</string>
+    <string name="floating_action_insert">Вставить</string>
+    <string name="floating_action_paste">Вставить</string>
+    <string name="floating_ai_fix_toggle">ИИ-исправление</string>
+    <string name="floating_toggle_ai_fix">ИИ-исправление</string>
+    <string name="floating_ai_fix_on">ИИ-исправление: ВКЛ</string>
+    <string name="floating_ai_fix_off">ИИ-исправление: ВЫКЛ</string>
+    <string name="floating_overlay_permission_title">Требуется разрешение на наложение</string>
+    <string name="floating_overlay_permission_msg">Предоставьте разрешение на отображение поверх других приложений для использования плавающего пузыря диктовки.</string>
+    <string name="floating_accessibility_service_name">Автоматическая вставка плавающего диктовщика</string>
+    <string name="floating_accessibility_service_desc">Автоматически вставляет распознанный текст в активные текстовые поля.</string>
+    <string name="floating_toast_pasted">Текст вставлен в активное поле</string>
+    <string name="floating_toast_copied">Текст скопирован в буфер обмена</string>
+    <string name="floating_service_name">Плавающий оверлей диктовки</string>
+    <string name="floating_service_description">Плавающий пузырек для быстрого голосового ввода и панель управления.</string>
+    <string name="accessibility_service_name">Служба автовставки голоса</string>
+    <string name="accessibility_service_description">Автоматически вставляет распознанный текст в активные текстовые поля.</string>
+    <string name="accessibility_paste_failed">Не удалось вставить текст</string>
 </resources>

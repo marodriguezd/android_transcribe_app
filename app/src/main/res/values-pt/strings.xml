@@ -215,4 +215,30 @@
     <string name="debug_model_unknown_reason">desconhecido</string>
     <string name="bench_no_data_chunk">sem bloco de dados em %1$s</string>
     <string name="file_error_too_long">O arquivo de áudio tem mais de 30 minutos. Transcreva um arquivo mais curto.</string>
+
+    <!-- Floating dictation overlay & Accessibility auto-paste -->
+    <string name="floating_bubble_description">Bolha flutuante de ditado por voz</string>
+    <string name="floating_status_idle">Toque na bolha para falar</string>
+    <string name="floating_status_listening">Ouvindo...</string>
+    <string name="floating_status_transcribing">Transcrevendo...</string>
+    <string name="floating_status_ready">Pronto</string>
+    <string name="floating_status_error">Erro de ditado</string>
+    <string name="floating_action_cancel">Cancelar</string>
+    <string name="floating_action_insert">Inserir</string>
+    <string name="floating_action_paste">Inserir</string>
+    <string name="floating_ai_fix_toggle">Correção IA</string>
+    <string name="floating_toggle_ai_fix">Correção IA</string>
+    <string name="floating_ai_fix_on">Correção IA: LIGADA</string>
+    <string name="floating_ai_fix_off">Correção IA: DESLIGADA</string>
+    <string name="floating_overlay_permission_title">Permissão de sobreposição necessária</string>
+    <string name="floating_overlay_permission_msg">Conceda a permissão Sobrepor a outros aplicativos para usar a bolha flutuante de ditado.</string>
+    <string name="floating_accessibility_service_name">Colagem automática de ditado flutuante</string>
+    <string name="floating_accessibility_service_desc">Insere automaticamente o texto transcrito nos campos de texto focados.</string>
+    <string name="floating_toast_pasted">Texto inserido no campo ativo</string>
+    <string name="floating_toast_copied">Texto copiado para a área de transferência</string>
+    <string name="floating_service_name">Sobreposição de ditado flutuante</string>
+    <string name="floating_service_description">Bolha flutuante para ditado de voz rápido e painel sobreposto.</string>
+    <string name="accessibility_service_name">Serviço de colagem automática por voz</string>
+    <string name="accessibility_service_description">Cola automaticamente o texto transcrito nos campos de texto em foco.</string>
+    <string name="accessibility_paste_failed">Falha ao colar texto</string>
 </resources>

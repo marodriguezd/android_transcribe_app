@@ -215,4 +215,30 @@
     <string name="debug_model_unknown_reason">desconocido</string>
     <string name="bench_no_data_chunk">no hay bloque de datos en %1$s</string>
     <string name="file_error_too_long">El archivo de audio dura más de 30 minutos. Transcribe un archivo más corto.</string>
+
+    <!-- Floating dictation overlay & Accessibility auto-paste -->
+    <string name="floating_bubble_description">Burbuja flotante de dictado por voz</string>
+    <string name="floating_status_idle">Toca la burbuja para hablar</string>
+    <string name="floating_status_listening">Escuchando...</string>
+    <string name="floating_status_transcribing">Transcribiendo...</string>
+    <string name="floating_status_ready">Listo</string>
+    <string name="floating_status_error">Error de dictado</string>
+    <string name="floating_action_cancel">Cancelar</string>
+    <string name="floating_action_insert">Insertar</string>
+    <string name="floating_action_paste">Insertar</string>
+    <string name="floating_ai_fix_toggle">Corrección IA</string>
+    <string name="floating_toggle_ai_fix">Corrección IA</string>
+    <string name="floating_ai_fix_on">Corrección IA: ACTIVADA</string>
+    <string name="floating_ai_fix_off">Corrección IA: DESACTIVADA</string>
+    <string name="floating_overlay_permission_title">Permiso de superposición requerido</string>
+    <string name="floating_overlay_permission_msg">Concede el permiso de Mostrar sobre otras aplicaciones para usar la burbuja flotante de dictado.</string>
+    <string name="floating_accessibility_service_name">Pegado automático de dictado flotante</string>
+    <string name="floating_accessibility_service_desc">Inserta automáticamente el texto transcrito en los campos de texto enfocados.</string>
+    <string name="floating_toast_pasted">Texto insertado en el campo activo</string>
+    <string name="floating_toast_copied">Texto copiado al portapapeles</string>
+    <string name="floating_service_name">Superposición de dictado flotante</string>
+    <string name="floating_service_description">Burbuja flotante para dictado de voz rápido y panel superpuesto.</string>
+    <string name="accessibility_service_name">Servicio de pegado automático por voz</string>
+    <string name="accessibility_service_description">Pega automáticamente el texto transcrito en campos de texto enfocados.</string>
+    <string name="accessibility_paste_failed">Error al pegar texto</string>
 </resources>

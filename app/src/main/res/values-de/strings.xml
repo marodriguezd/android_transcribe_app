@@ -215,4 +215,30 @@
     <string name="debug_model_unknown_reason">unbekannt</string>
     <string name="bench_no_data_chunk">kein Datenblock in %1$s</string>
     <string name="file_error_too_long">Die Audiodatei ist länger als 30 Minuten. Bitte transkribiere eine kürzere Datei.</string>
+
+    <!-- Floating dictation overlay & Accessibility auto-paste -->
+    <string name="floating_bubble_description">Schwebende Sprachdiktat-Blase</string>
+    <string name="floating_status_idle">Tippen Sie auf die Blase, um zu sprechen</string>
+    <string name="floating_status_listening">Zuhören...</string>
+    <string name="floating_status_transcribing">Transkribieren...</string>
+    <string name="floating_status_ready">Bereit</string>
+    <string name="floating_status_error">Diktierfehler</string>
+    <string name="floating_action_cancel">Abbrechen</string>
+    <string name="floating_action_insert">Einfügen</string>
+    <string name="floating_action_paste">Einfügen</string>
+    <string name="floating_ai_fix_toggle">KI-Korrektur</string>
+    <string name="floating_toggle_ai_fix">KI-Korrektur</string>
+    <string name="floating_ai_fix_on">KI-Korrektur: AN</string>
+    <string name="floating_ai_fix_off">KI-Korrektur: AUS</string>
+    <string name="floating_overlay_permission_title">Überlagerungsberechtigung erforderlich</string>
+    <string name="floating_overlay_permission_msg">Bitte erteilen Sie die Berechtigung Über anderen Apps anzeigen, um die schwebende Diktierblase zu verwenden.</string>
+    <string name="floating_accessibility_service_name">Schwebendes Diktat Automatisch Einfügen</string>
+    <string name="floating_accessibility_service_desc">Fügt transkribierten Text automatisch in fokussierte Textfelder ein.</string>
+    <string name="floating_toast_pasted">Text in aktives Feld eingefügt</string>
+    <string name="floating_toast_copied">Text in die Zwischenablage kopiert</string>
+    <string name="floating_service_name">Schwebendes Diktat-Overlay</string>
+    <string name="floating_service_description">Schwebende Blase für schnelle Spracheingabe und Overlay-Bedienfeld.</string>
+    <string name="accessibility_service_name">Sprach-Automatischer Einfügedienst</string>
+    <string name="accessibility_service_description">Fügt transkribierten Text automatisch in fokussierte Eingabefelder ein.</string>
+    <string name="accessibility_paste_failed">Einfügen fehlgeschlagen</string>
 </resources>

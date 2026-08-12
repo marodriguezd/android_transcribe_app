@@ -215,4 +215,30 @@
     <string name="debug_model_unknown_reason">sconosciuto</string>
     <string name="bench_no_data_chunk">nessun blocco dati in %1$s</string>
     <string name="file_error_too_long">Il file audio dura più di 30 minuti. Trascrivi un file più corto.</string>
+
+    <!-- Floating dictation overlay & Accessibility auto-paste -->
+    <string name="floating_bubble_description">Bolla fluttuante per dettatura vocale</string>
+    <string name="floating_status_idle">Tocca la bolla per parlare</string>
+    <string name="floating_status_listening">Ascolto in corso...</string>
+    <string name="floating_status_transcribing">Trascrizione in corso...</string>
+    <string name="floating_status_ready">Pronto</string>
+    <string name="floating_status_error">Errore di dettatura</string>
+    <string name="floating_action_cancel">Annulla</string>
+    <string name="floating_action_insert">Inserisci</string>
+    <string name="floating_action_paste">Inserisci</string>
+    <string name="floating_ai_fix_toggle">Correzione IA</string>
+    <string name="floating_toggle_ai_fix">Correzione IA</string>
+    <string name="floating_ai_fix_on">Correzione IA: ATTIVATA</string>
+    <string name="floating_ai_fix_off">Correzione IA: DISATTIVATA</string>
+    <string name="floating_overlay_permission_title">Autorizzazione sovrapposizione richiesta</string>
+    <string name="floating_overlay_permission_msg">Concedi l\'autorizzazione per la visualizzazione sopra altre app per usare la bolla fluttuante di dettatura.</string>
+    <string name="floating_accessibility_service_name">Incolla automatico dettatura fluttuante</string>
+    <string name="floating_accessibility_service_desc">Inserisce automaticamente il testo trascritto nei campi di testo focalizzati.</string>
+    <string name="floating_toast_pasted">Testo inserito nel campo attivo</string>
+    <string name="floating_toast_copied">Testo copiato negli appunti</string>
+    <string name="floating_service_name">Sovrapposizione di dettatura mobile</string>
+    <string name="floating_service_description">Bolla mobile per la dettatura vocale rapida e pannello sovrapposto.</string>
+    <string name="accessibility_service_name">Servizio di incolla automatico vocale</string>
+    <string name="accessibility_service_description">Incolla automaticamente il testo trascritto nei campi di testo selezionati.</string>
+    <string name="accessibility_paste_failed">Impossibile incollare il testo</string>
 </resources>

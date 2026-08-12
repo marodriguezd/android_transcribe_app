@@ -215,4 +215,30 @@
     <string name="debug_model_unknown_reason">inconnu</string>
     <string name="bench_no_data_chunk">aucun bloc de données dans %1$s</string>
     <string name="file_error_too_long">Le fichier audio dure plus de 30 minutes. Veuillez transcrire un fichier plus court.</string>
+
+    <!-- Floating dictation overlay & Accessibility auto-paste -->
+    <string name="floating_bubble_description">Bulle flottante de dictée vocale</string>
+    <string name="floating_status_idle">Touchez la bulle pour parler</string>
+    <string name="floating_status_listening">Écoute en cours...</string>
+    <string name="floating_status_transcribing">Transcription en cours...</string>
+    <string name="floating_status_ready">Prêt</string>
+    <string name="floating_status_error">Erreur de dictée</string>
+    <string name="floating_action_cancel">Annuler</string>
+    <string name="floating_action_insert">Insérer</string>
+    <string name="floating_action_paste">Insérer</string>
+    <string name="floating_ai_fix_toggle">Correction IA</string>
+    <string name="floating_toggle_ai_fix">Correction IA</string>
+    <string name="floating_ai_fix_on">Correction IA : ACTIVÉE</string>
+    <string name="floating_ai_fix_off">Correction IA : DÉSACTIVÉE</string>
+    <string name="floating_overlay_permission_title">Autorisation de superposition requise</string>
+    <string name="floating_overlay_permission_msg">Veuillez accorder l\'autorisation Afficher par-dessus d\'autres applications pour utiliser la bulle flottante de dictée.</string>
+    <string name="floating_accessibility_service_name">Collage automatique de dictée flottante</string>
+    <string name="floating_accessibility_service_desc">Insère automatiquement le texte transcrit dans les champs de texte ciblés.</string>
+    <string name="floating_toast_pasted">Texte inséré dans le champ actif</string>
+    <string name="floating_toast_copied">Texte copié dans le presse-papiers</string>
+    <string name="floating_service_name">Superposition de dictée flottante</string>
+    <string name="floating_service_description">Bulle flottante pour la dictée vocale rapide et panneau de superposition.</string>
+    <string name="accessibility_service_name">Service de collage automatique vocal</string>
+    <string name="accessibility_service_description">Colle automatiquement le texte transcrit dans les champs de saisie actifs.</string>
+    <string name="accessibility_paste_failed">Échec du collage du texte</string>
 </resources>

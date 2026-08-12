@@ -205,7 +205,7 @@ public class FloatingOverlayService extends Service {
         if (mPpToggle != null) {
             mPpToggle.setChecked(SettingsManager.isPostProcessEnabled(this));
             mPpToggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
-                SettingsManager.setPostProcessEnabled(FloatingOverlayService.this, isChecked);
+                new SettingsManager(FloatingOverlayService.this).setPostProcessEnabled(isChecked);
                 if (!isChecked) {
                     if (!mIsRecording && mStatusText != null
                             && getString(R.string.ime_refining).equals(mStatusText.getText().toString())) {

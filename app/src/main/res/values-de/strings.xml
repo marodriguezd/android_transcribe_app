@@ -238,6 +238,8 @@
     <string name="floating_toast_copied">Text in die Zwischenablage kopiert</string>
     <string name="floating_service_name">Schwebendes Diktat-Overlay</string>
     <string name="floating_service_description">Schwebende Blase für schnelle Spracheingabe und Overlay-Bedienfeld.</string>
+    <string name="floating_need_mic_body">Erteile die Mikrofonberechtigung, um die schwebende Diktierblase zu verwenden.</string>
+    <string name="floating_start_failed_body">Die schwebende Blase konnte nicht gestartet werden. Prüfe die Überlagerungs- und Mikrofonberechtigungen.</string>
     <string name="accessibility_service_name">Sprach-Automatischer Einfügedienst</string>
     <string name="accessibility_service_description">Fügt transkribierten Text automatisch in fokussierte Eingabefelder ein.</string>
     <string name="accessibility_paste_failed">Einfügen fehlgeschlagen</string>

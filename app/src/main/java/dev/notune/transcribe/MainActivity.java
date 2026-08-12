@@ -54,6 +54,11 @@ public class MainActivity extends AppCompatActivity {
     private static final int PERM_REQ_CODE = 101;
     private static final int REQ_VOICE_TEST = 202;
     private static final int REQ_DOWNLOAD_NOTIFICATIONS = 303;
+    // Floating bubble needs RECORD_AUDIO too (the FGS type is "microphone", so
+    // startForeground() throws without it). Request it before starting the
+    // service and resume the start once granted.
+    private static final int REQ_FLOATING_MIC = 505;
+    private boolean pendingFloatingStart = false;
     private static final String ACTION_CANCEL_DEBUG_DOWNLOAD =
             "dev.notune.transcribe.CANCEL_DEBUG_DOWNLOAD";
     private static final String DEBUG_DOWNLOAD_CHANNEL_ID = "DebugModelDownload";
@@ -300,13 +305,31 @@ public class MainActivity extends AppCompatActivity {
                     switchFloating.setChecked(false);
                     return;
                 }
-                Intent serviceIntent = new Intent(this, FloatingOverlayService.class);
-                ContextCompat.startForegroundService(this, serviceIntent);
+                if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
+                        != PackageManager.PERMISSION_GRANTED) {
+                    // Ask for the mic first: the floating service declares the
+                    // "microphone" foreground-service type, so starting it
+                    // without RECORD_AUDIO would crash it (and with START_STICKY
+                    // it would crash-loop). Revert the switch and resume once
+                    // the permission is granted.
+                    pendingFloatingStart = true;
+                    switchFloating.setChecked(false);
+                    requestPermissions(
+                            new String[]{android.Manifest.permission.RECORD_AUDIO},
+                            REQ_FLOATING_MIC);
+                    return;
+                }
+                startFloatingService();
             } else {
                 Intent serviceIntent = new Intent(this, FloatingOverlayService.class);
                 stopService(serviceIntent);
             }
         });
+    }
+
+    private void startFloatingService() {
+        Intent serviceIntent = new Intent(this, FloatingOverlayService.class);
+        ContextCompat.startForegroundService(this, serviceIntent);
     }
 
     private boolean isServiceRunning(Class<?> serviceClass) {
@@ -484,6 +507,24 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == PERM_REQ_CODE) {
             updateVoiceInputStatus();
+        } else if (requestCode == REQ_FLOATING_MIC) {
+            if (pendingFloatingStart) {
+                pendingFloatingStart = false;
+                if (grantResults.length > 0
+                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                    // Flip the switch back on; its listener performs the
+                    // permission checks again and starts the service.
+                    MaterialSwitch switchFloating = findViewById(R.id.switch_floating_mode);
+                    if (switchFloating != null) {
+                        switchFloating.setChecked(true);
+                    } else {
+                        // Activity was recreated while the dialog was up.
+                        startFloatingService();
+                    }
+                } else {
+                    snackbar(getString(R.string.floating_need_mic_body));
+                }
+            }
         } else if (requestCode == REQ_DOWNLOAD_NOTIFICATIONS) {
             if (pendingDebugModelDownload) {
                 pendingDebugModelDownload = false;

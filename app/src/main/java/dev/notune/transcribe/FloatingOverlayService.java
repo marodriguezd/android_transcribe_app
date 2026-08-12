@@ -1,16 +1,20 @@
 package dev.notune.transcribe;
 
+import android.Manifest;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.PixelFormat;
 import android.os.Build;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.Looper;
+import android.provider.Settings;
 import android.util.Log;
 import android.view.Gravity;
 import android.view.LayoutInflater;
@@ -33,12 +37,22 @@ import java.io.File;
  * Displays a draggable floating bubble icon on screen, which expands into a dictation control
  * panel for speech recognition, AI Fix post-processing toggle, real-time partial hypothesis display,
  * and direct insertion into active text fields via Accessibility.
+ *
+ * Crash-hardening (2026-08-12): the service must NEVER crash on startup. A crash here used to
+ * produce a restart loop ("crash constantes"): with START_STICKY the system restarts a service
+ * that crashed in onCreate, which crashed again. The two classic startup failures are
+ * (a) startForeground() with the manifest's "microphone" FGS type while RECORD_AUDIO is not
+ * granted (SecurityException), and (b) WindowManager.addView() while the overlay permission is
+ * missing/revoked (BadTokenException/SecurityException). Both are now checked up-front and every
+ * fallible setup step is wrapped, degrading to a graceful stopSelf() + guidance notification
+ * instead of an uncaught exception.
  */
 public class FloatingOverlayService extends Service {
 
     private static final String TAG = "FloatingOverlayService";
     private static final String CHANNEL_ID = "floating_dictation_channel";
     private static final int NOTIFICATION_ID = 404;
+    private static final int SETUP_ERROR_NOTIFICATION_ID = 405;
 
     public static final String ACTION_START = "dev.notune.transcribe.action.START_FLOATING";
     public static final String ACTION_STOP = "dev.notune.transcribe.action.STOP_FLOATING";
@@ -86,14 +100,62 @@ public class FloatingOverlayService extends Service {
         super.onCreate();
         mMainHandler = new Handler(Looper.getMainLooper());
         mWindowManager = (WindowManager) getSystemService(WINDOW_SERVICE);
+
+        // The manifest declares foregroundServiceType="microphone", so
+        // startForeground() REQUIRES RECORD_AUDIO on API 31+. Without the
+        // check below, startForeground() throws SecurityException, onCreate
+        // crashes, and START_STICKY restarts the service into a crash loop.
+        if (checkSelfPermission(Manifest.permission.RECORD_AUDIO)
+                != PackageManager.PERMISSION_GRANTED) {
+            Log.w(TAG, "RECORD_AUDIO not granted; refusing to start floating service");
+            notifySetupError(getString(R.string.floating_need_mic_body));
+            stopSelf();
+            return;
+        }
+
+        // addView() on a TYPE_APPLICATION_OVERLAY window throws
+        // BadTokenException/SecurityException without the overlay permission.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M
+                && !Settings.canDrawOverlays(this)) {
+            Log.w(TAG, "Overlay permission missing; refusing to start floating service");
+            notifySetupError(getString(R.string.floating_overlay_permission_msg));
+            stopSelf();
+            return;
+        }
+
         try {
             initNative(this);
         } catch (Throwable t) {
+            // A dead native bridge means every later recording call would throw
+            // UnsatisfiedLinkError mid-use. Fail fast and gracefully instead of
+            // running a service that can only crash later.
             Log.e(TAG, "Error in initNative", t);
+            notifySetupError(getString(R.string.floating_start_failed_body));
+            stopSelf();
+            return;
         }
-        createNotificationChannel();
-        startForeground(NOTIFICATION_ID, buildNotification());
-        setupOverlayView();
+
+        try {
+            createNotificationChannel();
+            startForeground(NOTIFICATION_ID, buildNotification());
+        } catch (Throwable t) {
+            // SecurityException (FGS type enforcement), MissingForegroundServiceTypeException,
+            // or any other unexpected failure must never crash the process into a restart loop.
+            Log.e(TAG, "Failed to start foreground service", t);
+            notifySetupError(getString(R.string.floating_start_failed_body));
+            stopSelf();
+            return;
+        }
+
+        try {
+            setupOverlayView();
+        } catch (Throwable t) {
+            // WindowManager.addView() failing (e.g. permission revoked between the check and
+            // the add) is a setup failure, not a crash.
+            Log.e(TAG, "Failed to attach overlay view", t);
+            notifySetupError(getString(R.string.floating_start_failed_body));
+            stopSelf();
+        }
     }
 
     private void createNotificationChannel() {
@@ -119,6 +181,38 @@ public class FloatingOverlayService extends Service {
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setOngoing(true)
                 .build();
+    }
+
+    /**
+     * Shows a non-foreground guidance notification when the service cannot start
+     * (missing permission, overlay attach failure). Tapping it reopens the main
+     * activity so the user can grant what is missing. Never throws.
+     */
+    private void notifySetupError(String body) {
+        try {
+            createNotificationChannel();
+            Intent contentIntent = new Intent(this, MainActivity.class);
+            PendingIntent pi = PendingIntent.getActivity(
+                    this,
+                    0,
+                    contentIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            Notification n = new NotificationCompat.Builder(this, CHANNEL_ID)
+                    .setContentTitle(getString(R.string.floating_service_name))
+                    .setContentText(body)
+                    .setStyle(new NotificationCompat.BigTextStyle().bigText(body))
+                    .setSmallIcon(R.drawable.ic_mic)
+                    .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+                    .setContentIntent(pi)
+                    .setAutoCancel(true)
+                    .build();
+            NotificationManager nm = getSystemService(NotificationManager.class);
+            if (nm != null) {
+                nm.notify(SETUP_ERROR_NOTIFICATION_ID, n);
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "Failed to show setup error notification", t);
+        }
     }
 
     private void setupOverlayView() {
@@ -170,6 +264,11 @@ public class FloatingOverlayService extends Service {
 
             @Override
             public boolean onTouch(View v, MotionEvent event) {
+                // The service may be torn down while a drag gesture is in flight;
+                // never touch the window manager after destruction.
+                if (mIsDestroyed) {
+                    return true;
+                }
                 switch (event.getAction()) {
                     case MotionEvent.ACTION_DOWN:
                         initialX = mParams.x;
@@ -187,7 +286,12 @@ public class FloatingOverlayService extends Service {
                         mParams.x = initialX + dx;
                         mParams.y = initialY + dy;
                         if (mWindowManager != null && mOverlayView != null) {
-                            mWindowManager.updateViewLayout(mOverlayView, mParams);
+                            try {
+                                mWindowManager.updateViewLayout(mOverlayView, mParams);
+                            } catch (Throwable t) {
+                                // View may already be detached (service stopping); ignore.
+                                Log.w(TAG, "updateViewLayout failed during drag", t);
+                            }
                         }
                         return true;
                     case MotionEvent.ACTION_UP:
@@ -332,7 +436,16 @@ public class FloatingOverlayService extends Service {
         try { cleanupNative(); } catch (Throwable ignored) { }
         PostProcessor.cancelAllFor(this);
         if (mOverlayView != null && mWindowManager != null) {
-            mWindowManager.removeView(mOverlayView);
+            try {
+                // removeView() on a detached view throws IllegalArgumentException
+                // (e.g. addView() never succeeded in a failed setup); the
+                // isAttachedToWindow() check + try/catch keeps teardown crash-free.
+                if (mOverlayView.isAttachedToWindow()) {
+                    mWindowManager.removeView(mOverlayView);
+                }
+            } catch (Throwable t) {
+                Log.w(TAG, "Failed to remove overlay view on destroy", t);
+            }
         }
         super.onDestroy();
     }

@@ -62,22 +62,41 @@ public class FloatingDictationAccessibilityService extends AccessibilityService 
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        if (event == null) {
-            return;
-        }
-        int eventType = event.getEventType();
-        if (eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED
-                || eventType == AccessibilityEvent.TYPE_VIEW_CLICKED
-                || eventType == AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED) {
-            AccessibilityNodeInfo source = event.getSource();
-            if (source != null) {
-                if (source.isEditable() && source.isEnabled()) {
-                    clearLastFocusedNode();
-                    mLastFocusedNode = source;
-                } else {
-                    source.recycle();
+        // The event stream comes from every window on screen and can race with
+        // windows closing. A single uncaught exception here crashes the whole
+        // accessibility service, which the system then shows as "keeps stopping"
+        // and repeatedly restarts — perceived as constant app crashes. Never let
+        // an event take the service down.
+        try {
+            if (event == null) {
+                return;
+            }
+            int eventType = event.getEventType();
+
+            // The focused window changed: the previously remembered node belongs
+            // to a window that may already be gone. Recycle it so a later
+            // performInsert() cannot target a stale/destroyed node.
+            if (eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                clearLastFocusedNode();
+                return;
+            }
+
+            if (eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED
+                    || eventType == AccessibilityEvent.TYPE_VIEW_CLICKED
+                    || eventType == AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED) {
+                AccessibilityNodeInfo source = event.getSource();
+                if (source != null) {
+                    if (source.isEditable() && source.isEnabled()) {
+                        clearLastFocusedNode();
+                        mLastFocusedNode = source;
+                    } else {
+                        source.recycle();
+                    }
                 }
             }
+        } catch (Throwable t) {
+            // Never crash the accessibility service from a single bad event.
+            Log.w(TAG, "Error handling accessibility event", t);
         }
     }
 

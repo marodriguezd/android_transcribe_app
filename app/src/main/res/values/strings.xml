@@ -259,6 +259,8 @@
     <string name="floating_toast_copied">Text copied to clipboard</string>
     <string name="floating_service_name">Floating Dictation Overlay</string>
     <string name="floating_service_description">Floating bubble for quick voice dictation and overlay panel.</string>
+    <string name="floating_need_mic_body">Grant microphone permission to use the floating dictation bubble.</string>
+    <string name="floating_start_failed_body">The floating bubble could not start. Check overlay and microphone permissions.</string>
     <string name="accessibility_service_name">Voice Auto-Paste Service</string>
     <string name="accessibility_service_description">Auto-pastes transcribed text into focused input fields.</string>
     <string name="accessibility_paste_failed">Failed to paste text</string>

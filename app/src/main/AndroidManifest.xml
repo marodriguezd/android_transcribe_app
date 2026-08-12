@@ -174,10 +174,13 @@
                 android:resource="@xml/accessibility_service_config" />
         </service>
 
-        <!-- Floating Overlay Service -->
+        <!-- Floating Overlay Service. stopWithTask=false so the bubble survives
+             swiping the app out of recents (a floating dictation bubble is meant
+             to keep working while you use other apps). -->
         <service
             android:name=".FloatingOverlayService"
             android:exported="false"
+            android:stopWithTask="false"
             android:foregroundServiceType="microphone" />
 
     </application>

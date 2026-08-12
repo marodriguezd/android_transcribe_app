@@ -238,6 +238,8 @@
     <string name="floating_toast_copied">Texte copié dans le presse-papiers</string>
     <string name="floating_service_name">Superposition de dictée flottante</string>
     <string name="floating_service_description">Bulle flottante pour la dictée vocale rapide et panneau de superposition.</string>
+    <string name="floating_need_mic_body">Autorisez le microphone pour utiliser la bulle de dictée flottante.</string>
+    <string name="floating_start_failed_body">Impossible de démarrer la bulle flottante. Vérifiez les autorisations de superposition et de microphone.</string>
     <string name="accessibility_service_name">Service de collage automatique vocal</string>
     <string name="accessibility_service_description">Colle automatiquement le texte transcrit dans les champs de saisie actifs.</string>
     <string name="accessibility_paste_failed">Échec du collage du texte</string>

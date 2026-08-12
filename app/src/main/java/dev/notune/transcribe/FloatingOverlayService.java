@@ -1,6 +1,7 @@
 package dev.notune.transcribe;
 
 import android.Manifest;
+import android.animation.ValueAnimator;
 import android.app.Notification;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -20,6 +21,7 @@ import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewConfiguration;
 import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.ImageView;
@@ -71,8 +73,14 @@ public class FloatingOverlayService extends Service {
     private WindowManager.LayoutParams mParams;
 
     private View mBubbleRoot;
+    private View mBubbleCircle;
     private MicLevelView mBubbleMicLevel;
     private View mPanelRoot;
+    private View mRecordCircle;
+
+    // Subtle "listening" pulse on the record circles while a session is
+    // active (same feel as the IME's pulsing mic glow). One reused animator.
+    private ValueAnimator mPulseAnimator;
 
     private TextView mStatusText;
     private ProgressBar mProgress;
@@ -91,6 +99,9 @@ public class FloatingOverlayService extends Service {
     // bubble returns exactly where the user left it after collapsing.
     private int mBubbleX = 20;
     private int mBubbleY = 200;
+    // Set when a long-press fired so the following ACTION_UP tap does not also
+    // toggle the panel while the service is stopping.
+    private boolean mLongPressConsumed = false;
 
     private Handler mMainHandler;
     private boolean mIsRecording = false;
@@ -180,12 +191,23 @@ public class FloatingOverlayService extends Service {
     }
 
     private Notification buildNotification() {
+        // "Stop" action lets the user dismiss the floating bubble from the
+        // notification shade without opening the app.
+        Intent stopIntent = new Intent(this, FloatingOverlayService.class);
+        stopIntent.setAction(ACTION_STOP);
+        PendingIntent stopPi = PendingIntent.getService(
+                this,
+                2,
+                stopIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
         return new NotificationCompat.Builder(this, CHANNEL_ID)
                 .setContentTitle(getString(R.string.floating_service_name))
                 .setContentText(getString(R.string.floating_service_description))
                 .setSmallIcon(R.drawable.ic_mic)
                 .setPriority(NotificationCompat.PRIORITY_LOW)
                 .setOngoing(true)
+                .addAction(android.R.drawable.ic_menu_close_clear_cancel,
+                        getString(R.string.floating_notification_stop), stopPi)
                 .build();
     }
 
@@ -227,6 +249,7 @@ public class FloatingOverlayService extends Service {
         mOverlayView = LayoutInflater.from(themed).inflate(R.layout.overlay_floating_dictation, null);
 
         mBubbleRoot = mOverlayView.findViewById(R.id.floating_bubble_root);
+        mBubbleCircle = mOverlayView.findViewById(R.id.floating_bubble_circle);
         mBubbleMicLevel = mOverlayView.findViewById(R.id.floating_bubble_mic_level);
         mPanelRoot = mOverlayView.findViewById(R.id.floating_panel_root);
 
@@ -240,6 +263,7 @@ public class FloatingOverlayService extends Service {
 
         mRecordContainer = mOverlayView.findViewById(R.id.floating_record_container);
         mMicLevelView = mOverlayView.findViewById(R.id.floating_mic_level);
+        mRecordCircle = mOverlayView.findViewById(R.id.floating_record_circle);
         mInsertButton = mOverlayView.findViewById(R.id.floating_insert_button);
         mHintText = mOverlayView.findViewById(R.id.floating_hint);
 
@@ -264,10 +288,19 @@ public class FloatingOverlayService extends Service {
 
     private void setupGestureAndListeners() {
         // Drag bubble vs tap to toggle panel
+        // Long-press on the bubble stops the whole overlay without entering
+        // the app (equivalent to the notification's Stop action). This must be
+        // implemented inside the touch listener: an OnTouchListener returning
+        // true consumes the event, so the view's own onTouchEvent (which posts
+        // CheckForLongPress) never runs and setOnLongClickListener would be dead.
         mBubbleRoot.setOnTouchListener(new View.OnTouchListener() {
             private int initialX, initialY;
             private float initialTouchX, initialTouchY;
             private boolean isClick = false;
+            private final Runnable longPressStop = () -> {
+                mLongPressConsumed = true;
+                stopSelf();
+            };
 
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -283,12 +316,16 @@ public class FloatingOverlayService extends Service {
                         initialTouchX = event.getRawX();
                         initialTouchY = event.getRawY();
                         isClick = true;
+                        mLongPressConsumed = false;
+                        v.removeCallbacks(longPressStop);
+                        v.postDelayed(longPressStop, ViewConfiguration.getLongPressTimeout());
                         return true;
                     case MotionEvent.ACTION_MOVE:
                         int dx = (int) (event.getRawX() - initialTouchX);
                         int dy = (int) (event.getRawY() - initialTouchY);
                         if (Math.abs(dx) > 10 || Math.abs(dy) > 10) {
                             isClick = false;
+                            v.removeCallbacks(longPressStop);
                         }
                         mParams.x = initialX + dx;
                         mParams.y = initialY + dy;
@@ -306,7 +343,9 @@ public class FloatingOverlayService extends Service {
                         }
                         return true;
                     case MotionEvent.ACTION_UP:
-                        if (isClick) {
+                    case MotionEvent.ACTION_CANCEL:
+                        v.removeCallbacks(longPressStop);
+                        if (isClick && !mLongPressConsumed) {
                             togglePanel();
                         }
                         return true;
@@ -423,6 +462,7 @@ public class FloatingOverlayService extends Service {
         if (mHintText != null) mHintText.setText(R.string.ime_tap_to_stop);
         mStatusText.setText(getString(R.string.floating_status_listening));
         mCancelButton.setVisibility(View.VISIBLE);
+        startPulseAnimation();
         startRecording(new File(getFilesDir(), "auto_stop").exists(), ++mCurrentSessionId);
     }
 
@@ -432,6 +472,7 @@ public class FloatingOverlayService extends Service {
         mStatusText.setText(getString(R.string.floating_status_transcribing));
         if (mProgress != null) mProgress.setVisibility(View.VISIBLE);
         if (mHintText != null) mHintText.setText(R.string.ime_tap_to_record);
+        stopPulseAnimation();
         stopRecording();
     }
 
@@ -443,12 +484,53 @@ public class FloatingOverlayService extends Service {
         mTranscribedResult = null;
         try { cancelRecording(); } catch (Throwable ignored) { }
         PostProcessor.cancelAllFor(this);
+        stopPulseAnimation();
         if (mProgress != null) mProgress.setVisibility(View.GONE);
         if (mHintText != null) mHintText.setText(R.string.ime_tap_to_record);
         mStatusText.setText(getString(R.string.floating_status_ready));
         mCancelButton.setVisibility(View.GONE);
         mInsertButton.setVisibility(View.GONE);
         clearPartialText();
+    }
+
+    /**
+     * Breathing scale pulse on the mic circles while listening, matching the
+     * IME's live feel. Stopped on stop/cancel/error/destroy; always resets the
+     * scale so a later session restarts from a clean state.
+     */
+    private void startPulseAnimation() {
+        stopPulseAnimation();
+        mPulseAnimator = ValueAnimator.ofFloat(1f, 1.08f);
+        mPulseAnimator.setDuration(600);
+        mPulseAnimator.setRepeatCount(ValueAnimator.INFINITE);
+        mPulseAnimator.setRepeatMode(ValueAnimator.REVERSE);
+        mPulseAnimator.addUpdateListener(a -> {
+            float s = (float) a.getAnimatedValue();
+            if (mRecordCircle != null) {
+                mRecordCircle.setScaleX(s);
+                mRecordCircle.setScaleY(s);
+            }
+            if (mBubbleCircle != null) {
+                mBubbleCircle.setScaleX(s);
+                mBubbleCircle.setScaleY(s);
+            }
+        });
+        mPulseAnimator.start();
+    }
+
+    private void stopPulseAnimation() {
+        if (mPulseAnimator != null) {
+            mPulseAnimator.cancel();
+            mPulseAnimator = null;
+        }
+        if (mRecordCircle != null) {
+            mRecordCircle.setScaleX(1f);
+            mRecordCircle.setScaleY(1f);
+        }
+        if (mBubbleCircle != null) {
+            mBubbleCircle.setScaleX(1f);
+            mBubbleCircle.setScaleY(1f);
+        }
     }
 
     private void clearPartialText() {
@@ -490,6 +572,10 @@ public class FloatingOverlayService extends Service {
     public void onDestroy() {
         mIsDestroyed = true;
         mCurrentSessionId++;
+        stopPulseAnimation();
+        if (mBubbleRoot != null) {
+            mBubbleRoot.removeCallbacks(null);
+        }
         try { cancelRecording(); } catch (Throwable ignored) { }
         try { cleanupNative(); } catch (Throwable ignored) { }
         PostProcessor.cancelAllFor(this);
@@ -540,6 +626,7 @@ public class FloatingOverlayService extends Service {
             mLastStatus = status != null ? status : "";
             if (mLastStatus.startsWith("Error")) {
                 mResultPending = false;
+                stopPulseAnimation();
                 if (mProgress != null) mProgress.setVisibility(View.GONE);
                 if (mHintText != null) mHintText.setText(R.string.ime_tap_to_record);
                 if (mStatusText != null) mStatusText.setText(mLastStatus);

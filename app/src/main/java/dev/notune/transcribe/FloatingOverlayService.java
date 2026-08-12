@@ -61,6 +61,10 @@ public class FloatingOverlayService extends Service {
     public static final String ACTION_START = "dev.notune.transcribe.action.START_FLOATING";
     public static final String ACTION_STOP = "dev.notune.transcribe.action.STOP_FLOATING";
 
+    // Marker file in filesDir() holding the bubble position as "x,y", so the
+    // bubble comes back where the user left it across service restarts.
+    private static final String BUBBLE_POS_MARKER = "floating_bubble_pos";
+
     static {
         try {
             System.loadLibrary("c++_shared");
@@ -283,8 +287,9 @@ public class FloatingOverlayService extends Service {
                 PixelFormat.TRANSLUCENT
         );
         mParams.gravity = Gravity.TOP | Gravity.START;
-        mParams.x = 20;
-        mParams.y = 200;
+        loadBubblePosition();
+        mParams.x = mBubbleX;
+        mParams.y = mBubbleY;
 
         setupGestureAndListeners();
         mWindowManager.addView(mOverlayView, mParams);
@@ -347,10 +352,20 @@ public class FloatingOverlayService extends Service {
                         }
                         return true;
                     case MotionEvent.ACTION_UP:
-                    case MotionEvent.ACTION_CANCEL:
                         v.removeCallbacks(longPressStop);
                         if (isClick && !mLongPressConsumed) {
                             togglePanel();
+                        } else if (!isClick) {
+                            // Drag finished: remember where the user left the bubble.
+                            saveBubblePosition();
+                        }
+                        return true;
+                    case MotionEvent.ACTION_CANCEL:
+                        v.removeCallbacks(longPressStop);
+                        if (!isClick) {
+                            // Touch was stolen mid-drag: still remember the
+                            // last position instead of losing it.
+                            saveBubblePosition();
                         }
                         return true;
                 }
@@ -508,6 +523,51 @@ public class FloatingOverlayService extends Service {
         }
     }
 
+    /**
+     * Restores the bubble position saved in the marker file, clamped to the
+     * current screen so a position saved on a different screen size (e.g.
+     * after rotation) can never leave the bubble off-screen.
+     */
+    private void loadBubblePosition() {
+        String saved = MarkerFileHelper.readString(this, BUBBLE_POS_MARKER, null);
+        if (saved == null || saved.isEmpty()) return;
+        int comma = saved.indexOf(',');
+        if (comma <= 0) return;
+        try {
+            int x = Integer.parseInt(saved.substring(0, comma).trim());
+            int y = Integer.parseInt(saved.substring(comma + 1).trim());
+            float density = getResources().getDisplayMetrics().density;
+            int bubbleSize = (int) (64 * density);
+            int maxX = Math.max(0, getRealScreenWidth() - bubbleSize);
+            int maxY = Math.max(0, getRealScreenHeight() - bubbleSize);
+            mBubbleX = Math.max(0, Math.min(x, maxX));
+            mBubbleY = Math.max(0, Math.min(y, maxY));
+        } catch (NumberFormatException e) {
+            Log.w(TAG, "Invalid saved bubble position", e);
+        }
+    }
+
+    private void saveBubblePosition() {
+        MarkerFileHelper.writeString(this, BUBBLE_POS_MARKER, mBubbleX + "," + mBubbleY);
+    }
+
+    /**
+     * Full-screen width in overlay coordinates (mirror of
+     * {@link #getRealScreenHeight()}).
+     */
+    private int getRealScreenWidth() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                return mWindowManager.getCurrentWindowMetrics().getBounds().width();
+            }
+            Point size = new Point();
+            mWindowManager.getDefaultDisplay().getRealSize(size);
+            return size.x;
+        } catch (Throwable t) {
+            return getResources().getDisplayMetrics().widthPixels;
+        }
+    }
+
     private void startRecordingSession() {
         mIsRecording = true;
         mResultPending = false;
@@ -660,6 +720,13 @@ public class FloatingOverlayService extends Service {
         mCurrentSessionId++;
         stopPulseAnimation();
         mMainHandler.removeCallbacks(mFadeStopFallback);
+        // Best-effort: persist the last position even if the service dies
+        // mid-gesture (covers the long-press stop path too). Only when the
+        // overlay was actually set up: a failed startup (permission missing)
+        // must never clobber a saved position with the defaults.
+        if (mOverlayView != null) {
+            saveBubblePosition();
+        }
         if (mBubbleRoot != null) {
             mBubbleRoot.removeCallbacks(null);
         }

@@ -1,8 +1,9 @@
-# v0.1.29 — cancel-anytime keyboard dictation (2026-08-06)
+# v0.1.30 — integrated AI Fix toggle in IME keyboard (2026-08-12)
 
-`versionCode 31` — the IME Cancel action is now available from the very start of a voice dictation, so a capture can be discarded before it is transcribed and before any post-processing request is sent.
+`versionCode 32` — integrated AI post-processing toggle in the voice keyboard (IME) and status header refinement.
 
-- **Cancel during recording:** the Cancel button appears as soon as recording starts, not only after it finishes. Cancelling mid-capture discards the audio buffer natively and cancels any in-flight post-processing call, so no transcription is produced and **no LLM request is ever made (or billed)** for text you cancel.
-- **No flicker:** the button stays continuously visible from mic release through transcription and refinement, until the text is committed or cancelled — the previous stop→transcribe→refine transitions no longer make it blink in and out.
+- **AI Fix Toggle in IME:** A dedicated toggle switch ("AI Fix") is now integrated directly into the central voice keyboard container. Enable or disable LLM post-processing on the fly at any point before, during, or after speech recognition.
+- **On-the-Fly Post-Processing Decisions:** If the toggle is OFF when dictation completes, the raw transcription is inserted immediately. If toggled OFF while LLM post-processing is in-flight ("Refining..."), the HTTP request is cancelled instantly and the raw transcript is delivered without delay.
+- **Header Status Layout:** Top-left clearly displays status ("Escuchando..." / "Listening...") with the Cancel button anchored on the top-right.
 
 The complete version history remains in [`CHANGELOG.md`](CHANGELOG.md).

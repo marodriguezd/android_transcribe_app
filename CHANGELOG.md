@@ -2,6 +2,15 @@
 
 Full change history of **android_transcribe_app** (fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app)).
 
+# v0.1.30
+
+Integrated AI Fix toggle in IME keyboard:
+
+- Integrated AI post-processing toggle switch directly in the central voice keyboard container (`ime_pp_toggle`).
+- Supports enabling/disabling post-processing on the fly at any point before, during, or after speech recognition.
+- Immediate raw text delivery if toggled OFF at end of transcription or mid-refinement.
+- Clean header layout with status on top-left ("Escuchando...") and Cancel button on top-right.
+
 ---
 
 # v0.1.29

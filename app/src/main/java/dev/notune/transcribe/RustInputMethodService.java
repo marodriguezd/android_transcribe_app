@@ -55,6 +55,8 @@ public class RustInputMethodService extends InputMethodService {
     private android.widget.ImageView micIcon;
     private ProgressBar progressBar;
     private Button cancelButton;
+    private com.google.android.material.materialswitch.MaterialSwitch ppToggle;
+    private String lastRawTranscript = null;
     private View backspaceButton;
     private View spaceButton;
     private View enterButton;
@@ -203,6 +205,24 @@ public class RustInputMethodService extends InputMethodService {
             spaceButton = view.findViewById(R.id.ime_space);
             enterButton = view.findViewById(R.id.ime_enter);
             switchKeyboardButton = view.findViewById(R.id.ime_switch_keyboard);
+            ppToggle = view.findViewById(R.id.ime_pp_toggle);
+
+            if (ppToggle != null) {
+                ppToggle.setChecked(SettingsManager.isPostProcessEnabled(this));
+                ppToggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
+                    SettingsManager settingsManager = new SettingsManager(RustInputMethodService.this);
+                    settingsManager.setPostProcessEnabled(isChecked);
+                    if (!isChecked) {
+                        if (!isRecording && statusView != null
+                                && getString(R.string.ime_refining).equals(statusView.getText().toString())) {
+                            PostProcessor.cancelAllFor(RustInputMethodService.this);
+                            if (lastRawTranscript != null && !lastRawTranscript.trim().isEmpty()) {
+                                commitFinalText(lastRawTranscript);
+                            }
+                        }
+                    }
+                });
+            }
 
             switchKeyboardButton.setOnClickListener(v -> {
                 if (isRecording) {
@@ -419,6 +439,9 @@ public class RustInputMethodService extends InputMethodService {
     public void onStartInputView(EditorInfo info, boolean restarting) {
         super.onStartInputView(info, restarting);
         inputActive = true;
+        if (ppToggle != null) {
+            ppToggle.setChecked(SettingsManager.isPostProcessEnabled(this));
+        }
         // Rebuild the keyboard if the theme preference changed while this
         // (long-lived) IME process stayed alive, so it matches the app setting.
         if (inputView != null
@@ -448,6 +471,7 @@ public class RustInputMethodService extends InputMethodService {
             // A fresh capture starts a new pending cycle (a new recording can
             // begin while an earlier result is still finishing).
             resultPending = false;
+            lastRawTranscript = null;
             statusView.setText(getString(R.string.ime_listening));
             hintView.setText(getString(R.string.ime_tap_to_stop));
             // Keep the cancel action available while capturing: it discards the
@@ -658,6 +682,7 @@ public class RustInputMethodService extends InputMethodService {
         currentSessionId++;
         lastStatus = "Canceled";
         resultPending = false;
+        lastRawTranscript = null;
         try { cancelRecording(); } catch (Throwable ignored) { }
         PostProcessor.cancelAllFor(this);
         if (pauseAudioActive) {
@@ -681,6 +706,7 @@ public class RustInputMethodService extends InputMethodService {
             if (text == null || text.trim().isEmpty()) {
                 // Nothing recognized — don't insert a stray space.
                 resultPending = false;
+                lastRawTranscript = null;
                 updateRecordButtonUI(false);
                 if (statusView != null) statusView.setText(getString(R.string.ime_tap_to_record));
                 if (pauseAudioActive) {
@@ -694,6 +720,7 @@ public class RustInputMethodService extends InputMethodService {
                 return;
             }
 
+            lastRawTranscript = text;
             SettingsManager settings = new SettingsManager(this);
             if (settings.isPostProcessEnabled()) {
                 lastStatus = "Processing...";
@@ -742,6 +769,7 @@ public class RustInputMethodService extends InputMethodService {
     // Commits (or defers) the final transcribed/refined text and resets UI.
     private void commitFinalText(String text) {
         resultPending = false;
+        lastRawTranscript = null;
         String committed = text + " ";
         InputConnection ic = getCurrentInputConnection();
         if (inputActive && ic != null) {

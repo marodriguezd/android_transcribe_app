@@ -36,6 +36,7 @@
 
         <Button
             android:id="@+id/ime_cancel"
+            style="?attr/borderlessButtonStyle"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:minHeight="0dp"
@@ -43,6 +44,7 @@
             android:paddingStart="12dp"
             android:paddingEnd="12dp"
             android:text="@string/action_cancel"
+            android:textColor="?attr/colorError"
             android:visibility="gone" />
     </LinearLayout>
 
@@ -78,6 +80,16 @@
         android:layout_height="200dp"
         android:clickable="true"
         android:focusable="true">
+
+        <com.google.android.material.materialswitch.MaterialSwitch
+            android:id="@+id/ime_pp_toggle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="top|center_horizontal"
+            android:layout_marginTop="4dp"
+            android:text="@string/ime_ai_fix_toggle"
+            android:textAppearance="?attr/textAppearanceLabelMedium"
+            android:textColor="?attr/colorOnSurfaceVariant" />
 
         <dev.notune.transcribe.MicLevelView
             android:id="@+id/ime_mic_level"

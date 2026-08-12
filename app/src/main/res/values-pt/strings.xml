@@ -170,6 +170,7 @@
     <string name="ime_listening">A ouvir...</string>
     <string name="ime_processing">A processar...</string>
     <string name="ime_refining">A refinar...</string>
+    <string name="ime_ai_fix_toggle">AI Fix</string>
     <string name="ime_no_mic_permission">Sem permissão do microfone – conceda-a na app</string>
     <string name="ime_open_app_for_permission">Abra a app para conceder a permissão</string>
     <string name="ime_error_loading_keyboard">Erro ao carregar o teclado: %1$s</string>

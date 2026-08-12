@@ -169,7 +169,8 @@
     <string name="ime_tap_to_stop">Tippen zum Beenden</string>
     <string name="ime_listening">Höre zu...</string>
     <string name="ime_processing">Verarbeite...</string>
-    <string name="ime_refining">Verbessere...</string>
+    <string name="ime_refining">Verfeinere...</string>
+    <string name="ime_ai_fix_toggle">AI Fix</string>
     <string name="ime_no_mic_permission">Kein Mikrofonzugriff – in der App erlauben</string>
     <string name="ime_open_app_for_permission">Öffne die App, um die Berechtigung zu erteilen</string>
     <string name="ime_error_loading_keyboard">Fehler beim Laden der Tastatur: %1$s</string>

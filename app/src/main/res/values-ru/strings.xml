@@ -170,6 +170,7 @@
     <string name="ime_listening">Слушаю...</string>
     <string name="ime_processing">Обработка...</string>
     <string name="ime_refining">Уточнение...</string>
+    <string name="ime_ai_fix_toggle">AI Fix</string>
     <string name="ime_no_mic_permission">Нет доступа к микрофону — разрешите в приложении</string>
     <string name="ime_open_app_for_permission">Откройте приложение, чтобы разрешить доступ</string>
     <string name="ime_error_loading_keyboard">Ошибка загрузки клавиатуры: %1$s</string>

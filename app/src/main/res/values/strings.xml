@@ -181,6 +181,7 @@
     <string name="ime_listening">Listening...</string>
     <string name="ime_processing">Processing...</string>
     <string name="ime_refining">Refining...</string>
+    <string name="ime_ai_fix_toggle">AI Fix</string>
     <string name="ime_no_mic_permission">No mic permission - grant in app</string>
     <string name="ime_open_app_for_permission">Open the app to grant permission</string>
     <string name="ime_error_loading_keyboard">Error loading keyboard: %1$s</string>

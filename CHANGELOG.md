@@ -2,11 +2,11 @@
 
 Change log of **android_transcribe_app** (fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app)).
 
-# v0.1.33
+# v0.1.34
 
-Floating dictation overlay enhancement: drag-to-dismiss & gesture refinements:
+Refined and enhanced default AI post-processing prompt:
 
-- **Drag-to-dismiss "X" drop target:** dragging the floating dictation bubble presents a circular "X" drop target at the bottom center of the screen with smooth scaling, red hover state, and tactile haptic feedback. Dropping the bubble on the target dismisses the overlay completely.
-- **Hold & drag without auto-close:** long-pressing the floating bubble allows moving it freely around the screen without closing automatically.
-- **Edge snapping & inactivity side-docking:** smooth spring-like snapping to screen edges and automatic semi-transparency when idle.
-- **Dynamic theme integration:** overlay panel and floating bubble adapt seamlessly to system dark/light theme changes.
+- **Enhanced Markdown Structure & Spacing:** Restructured the built-in system prompt with clear markdown headings, horizontal dividers, and clean vertical rhythm for maximum readability and LLM parsing accuracy.
+- **Structured Rule Categorization:** Reorganized editing rules (oral clutter removal, on-the-fly self-correction resolution, phonetic reconstruction, language consistency, dictation commands, and technical casing preservation) with explicit examples and formatting tags.
+- **Atomic Technical Token Handling:** Explicit guidelines for preserving `camelCase`, `PascalCase`, `snake_case`, `kebab-case`, `SCREAMING_SNAKE_CASE`, CLI flags (`--force`), URLs, and code identifiers.
+- **Strict Output Constraints:** Formatted constraints ensuring zero conversational filler, greetings, or unwanted markdown code block wrapping in model responses.

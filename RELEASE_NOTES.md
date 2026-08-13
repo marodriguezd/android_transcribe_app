@@ -1,10 +1,10 @@
-# v0.1.33 — Floating dictation overlay drag-to-dismiss & gesture refinements (2026-08-12)
+# v0.1.34 — Enhanced AI post-processing prompt & markdown structure (2026-08-14)
 
-`versionCode 35` — drag-to-dismiss drop target, hold-and-drag gesture control, and edge-snapping for the floating dictation bubble.
+`versionCode 36` — Enhanced and polished default system prompt for AI post-processing with improved markdown formatting, spacing, and structured editing guidelines.
 
-- **Drag-to-dismiss target ("X"):** dragging the floating bubble displays a floating circular "X" drop target at the bottom of the screen with hover scaling, red highlight tint, and haptic feedback. Dropping the bubble over the "X" target closes the floating overlay completely.
-- **Hold & move freely:** long-pressing the floating bubble allows moving it anywhere around the screen without closing automatically.
-- **Edge snapping & inactivity side-docking:** smooth edge snapping when released, and automatic semi-transparency when idle.
-- **Dynamic theme matching:** overlay views automatically update layout colors to match system dark/light theme shifts.
+- **Polished Markdown Prompt:** Restructured the built-in AI post-processing prompt with clear markdown hierarchy, clean section dividers, and enhanced spacing.
+- **Wispr Flow Emulation Guidelines:** Refined rules for oral clutter removal, on-the-fly speech self-correction, contextual phonetic reconstruction, and dictation command conversion.
+- **Technical Integrity & Casings:** Granular protection for code fragments, CLI flags (`--force`), URLs, and naming conventions (`camelCase`, `snake_case`, `SCREAMING_SNAKE_CASE`).
+- **Strict Clean Output:** Clear constraints preventing conversational filler or unwanted code block wrapping in final transcriptions.
 
 The current version history remains in [`CHANGELOG.md`](CHANGELOG.md).

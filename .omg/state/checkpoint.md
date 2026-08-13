@@ -1,7 +1,5 @@
-# Checkpoint: Release v0.1.34
+# Checkpoint: Purge obsolete prompt & scratch files
 
 - Version: `v0.1.34` (`versionCode 36`)
-- Tag: `v0.1.34`
-- Status: Release prepared (enhanced AI post-processing system prompt with structured markdown and spacing)
-- Scope: Formatted and enhanced system prompt in `new_prompt.txt` & `strings.xml` (`pp_default_prompt`), bumped Gradle version to 0.1.34 / 36, updated changelog and release notes.
-- Changelog: Restructured to contain strictly the latest release entry (`v0.1.34`).
+- Scope: Purged obsolete prompt files (`prompt.txt`, `new_pp_prompt.md`, `new_prompt.txt`) and scratch planning files (`PLAN.md`, `ORIGINAL_REQUEST.md`, `PROJECT.md`).
+- Status: Files removed, repository cleanly purged and aligned with latest built-in prompt in strings.xml.

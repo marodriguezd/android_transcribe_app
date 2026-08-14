@@ -91,13 +91,18 @@ pub fn fast_sum_squares(samples: &[f32]) -> f32 {
     }
 }
 
-/// Computes Root-Mean-Square (RMS) energy using vectorized SIMD sum of squares.
+/// Computes Root-Mean-Square (RMS) energy using vectorized SIMD sum of squares
+/// with NaN/Infinity sanitization and [0.0, 1.0] margin clamping.
 #[inline]
 pub fn fast_rms(samples: &[f32]) -> f32 {
     if samples.is_empty() {
         return 0.0;
     }
-    (fast_sum_squares(samples) / samples.len() as f32).sqrt()
+    let sum = fast_sum_squares(samples);
+    if sum <= 0.0 || !sum.is_finite() {
+        return 0.0;
+    }
+    (sum / samples.len() as f32).sqrt().clamp(0.0, 1.0)
 }
 
 /// Centre of the quietest 100 ms window in `samples[from..to]`; used to pick a

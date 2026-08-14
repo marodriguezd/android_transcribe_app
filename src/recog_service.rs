@@ -392,7 +392,7 @@ fn audio_callback(shared: &Arc<Endpoint>, data: &[f32]) {
         let mut current_bits = shared.noise_floor_bits.load(Ordering::Relaxed);
         loop {
             let current_val = f32::from_bits(current_bits);
-            let new_val = current_val * 0.95 + level * 0.05;
+            let new_val = (current_val * 0.95 + level * 0.05).clamp(0.0, 1.0);
             match shared.noise_floor_bits.compare_exchange_weak(
                 current_bits,
                 new_val.to_bits(),

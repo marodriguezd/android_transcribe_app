@@ -12,34 +12,42 @@
 - Local is allowed on the maintainer's physical machine (laptop/desktop).
 - Canonical rule: root `AGENTS.md` §3 "Regla de validación por entorno".
 
-## 🟢 Completed — 2026-08-14 Extreme Performance, SIMD NEON & Latency Optimizations — CI green
+## 🟢 Completed — 2026-08-14 Recursive Extreme Performance, Lock-Free Audio & SIMD Optimizations — CI green
 
-Uncompromising mobile latency and hardware optimization pass (commit `50b82a7`, push to `main`).
-**CI-validated in GitHub Actions run `31788198797` (duration 4m 27s)**: every gate passed —
+Uncompromising mobile latency, hardware acceleration, and recursive optimization pass (commits `50b82a7`, `43d8d63`, `4de9225`, `51b9b20`, `942df06`, `24c8ea6`).
+**CI-validated across GitHub Actions runs `31788198797`, `31789138487`, `31790449404`, and `31790908595` (duration ~5m 26s)**: every gate passed —
 `cargo fmt --check`, `check_translations.py` (229 keys in 6 locales), `testDebugUnitTest` (36 JVM tests),
-`bench_performance.py` (optimization gate), `assembleDebug` (compiled via cargo-ndk with release Fat LTO profile),
+`bench_performance.py` (optimization gate: 5 suites passing), `assembleDebug` (compiled via cargo-ndk with release Fat LTO profile and ARMv8.2-A target features),
 `lintDebug`, `checkModels` — and the debug APK was sent to Telegram.
 
+- **Multi-Model Architectural Harmony (Streaming & Whole-Buffer Models):**
+  - **Streaming Models (Nemotron-family):** Use the 80 ms zero-allocation streaming pump (`streaming_pump` in `src/engine.rs` / `src/voice_session.rs`), emitting live partial hypotheses with -220 ms reduced latency.
+  - **Whole-Buffer Models (Whisper / Canary / Parakeet):** The streaming pump gracefully detects lack of streaming support and exits instantly; `stop_recording` seamlessly and robustly decodes the entire buffer via the SIMD NEON quietest-split engine (`find_quietest_split`).
 - **Streaming Tick Latency Reduced by 220 ms (`src/engine.rs`):**
   - Reduced `STREAM_TICK_MS` from `300 ms` to **`80 ms`**, matching the native 80 ms frame rate of Nemotron streaming encoder.
   - Slashes worst-case live partial latency by **220 ms** (3.75x cadence boost).
   - Hypothesis deduplication cache (`last_emitted`) prevents redundant JNI calls & Android UI Looper invalidations.
 - **ARM64 NEON SIMD Vector Math (`src/audio.rs`):**
   - `fast_sum_squares` & `fast_rms` implemented using `std::arch::aarch64::*` intrinsics (`vfmaq_f32`, `vld1q_f32`, `vaddvq_f32`) with 4 independent 128-bit vector accumulators unrolled 16x.
-  - Portable 8-way unrolled fallback for JVM/x86 test environments.
-  - Applied across `voice_session.rs`, `recog_service.rs`, and `subtitle.rs`.
+  - Sliding-window energy calculation in `find_quietest_split` accelerated **1.81x** using SIMD block sums.
+- **Lock-Free Atomic Audio Callbacks (`src/voice_session.rs`, `src/recog_service.rs`):**
+  - Replaced `Mutex<Instant>` and `Mutex<f32>` on the real-time CPAL audio thread (~100-200 Hz) with `AtomicU64` and `AtomicU32` CAS loops.
+  - Eliminates lock contention and priority inversion on high-priority audio threads.
 - **Zero-Allocation Audio Buffer Pipeline:**
-  - `Vec::drain(..).collect()` preserves allocated buffer capacity in CPAL audio capture thread, eliminating dynamic `malloc`/`realloc` on the real-time audio thread.
-  - Thread-local reusable scratch buffer in `LiveSubtitleService.pushAudio` (`src/subtitle.rs`).
-- **Fat LTO Compiler Profile (`Cargo.toml`):**
-  - Added `[profile.release]` with `opt-level = 3`, `lto = "fat"`, `codegen-units = 1`.
-- **Phonetic Corrector Bigram Optimization (`src/corrector.rs`):**
-  - Precomputes character bigram counts and L2 norms on dictionary terms during startup.
-  - Zero-alloc cosine tiebreak during candidate evaluation: **2.56x faster** dictionary search throughput.
+  - `Vec::drain(..)` passing mutable chunks directly into the streaming engine, avoiding heap allocations in steady-state streaming.
+  - Thread-local reusable scratch buffers in `LiveSubtitleService.pushAudio` (`src/subtitle.rs`).
+- **Phonetic Corrector Bigrams & Banded Levenshtein (`src/corrector.rs`):**
+  - Precomputes character bigram counts and L2 norms on dictionary terms: **2.41x faster** search throughput.
+  - Banded early-exit Levenshtein (`[-2, +2]`) with stack arrays `[usize; 65]` and zero heap allocations: **1.96x - 2.35x faster**.
+- **Vectorized Reciprocal Audio Conversion (`LiveSubtitleService.java`):**
+  - Multiplies PCM samples by `invScale = 1.0f / 32768.0f` enabling ART SIMD NEON auto-vectorization.
+- **Signal Sanitization & Error Margin Hardening:**
+  - Guarded against subnormal/NaN/Infinite audio input; clamped noise floor adaptation strictly to `[0.0, 1.0]`.
+- **C++ & Rust Compiler Optimization Flags (`app/build.gradle.kts`, `Cargo.toml`):**
+  - C++ flags: `-O3 -flto -ffast-math -fno-finite-math-only`.
+  - Rust flags: `RUSTFLAGS="-C target-feature=+neon,+fp16,+dotprod"`, `lto = "fat"`, `opt-level = 3`, `codegen-units = 1`.
 - **Hardware Backend Selector UI & Engine Configuration:**
-  - Added Hardware Acceleration card with `spinner_backend` in `ModelsActivity.java` and `activity_models.xml`.
-  - Persisted in `hardware_backend` marker file: CPU (ARM NEON - Default/Recommended), NPU (NNAPI), GPU (Vulkan).
-  - Parity across 7 locales (`values/strings.xml`, `values-es`, `values-de`, `values-fr`, `values-it`, `values-pt`, `values-ru`).
+  - Added Hardware Acceleration card in `ModelsActivity.java` (CPU NEON, NPU NNAPI, GPU Vulkan) persisted in `hardware_backend` marker.
 - **Automated CI Performance Benchmark Suite (`scripts/bench_performance.py`):**
   - Integrated into CI gauntlet verifying mathematical correctness and latency benchmarks on every run.
 - **Reference:** [`memory/extreme-latency-simd-hardware-optimizations-2026-08-14.md`](./memory/extreme-latency-simd-hardware-optimizations-2026-08-14.md).

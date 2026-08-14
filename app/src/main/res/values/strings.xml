@@ -97,6 +97,11 @@
     <string name="models_stream_latency_fast">Fast (560 ms)</string>
     <string name="models_stream_latency_faster">Faster (160 ms)</string>
     <string name="models_stream_latency_lowest">Lowest (80 ms)</string>
+    <string name="models_backend_section">Hardware acceleration</string>
+    <string name="models_backend_desc">Compute engine used for inference. CPU (ARM NEON with dotprod + fp16) is default and optimized for mobile devices. NPU and GPU backends can be selected if supported by the model and device.</string>
+    <string name="models_backend_cpu">CPU (ARM NEON + dotprod + fp16 - Recommended)</string>
+    <string name="models_backend_npu">NPU (Neural Processing Unit / NNAPI)</string>
+    <string name="models_backend_gpu">GPU (Vulkan acceleration)</string>
 
     <string name="section_benchmark">Benchmark</string>
     <string name="desc_benchmark">Measures how fast the active model transcribes on this device, using a built-in English test recording (11 s).</string>

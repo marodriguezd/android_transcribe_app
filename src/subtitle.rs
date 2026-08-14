@@ -315,6 +315,12 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_cle
     *LIVE_STATE.lock().unwrap_or_else(|p| p.into_inner()) = None;
 }
 
+use std::cell::RefCell;
+
+thread_local! {
+    static PUSH_BUFFER: RefCell<Vec<f32>> = RefCell::new(Vec::with_capacity(4096));
+}
+
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_pushAudio(
     env: JNIEnv,
@@ -326,101 +332,108 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_pus
     if len == 0 {
         return;
     }
-    let mut input = vec![0.0f32; len];
-    if env.get_float_array_region(&data, 0, &mut input).is_err() {
-        return;
-    }
 
-    // The lock is held while cloning the segment for partial jobs (an
-    // allocation that can panic on OOM), so recover from poison instead of
-    // panicking the audio thread (R2).
-    let mut guard = LIVE_STATE.lock().unwrap_or_else(|p| p.into_inner());
-    let state = match guard.as_mut() {
-        Some(s) => s,
-        None => return,
-    };
-
-    let stream_pos = state.total_pushed.fetch_add(len as u64, Ordering::SeqCst) + len as u64;
-
-    let rms = (input.iter().map(|&x| x * x).sum::<f32>() / len as f32).sqrt();
-    let is_sound = rms >= SPEECH_RMS;
-
-    if !state.has_speech {
-        if is_sound {
-            // Speech begins: seed the segment with the pre-roll so the first
-            // word isn't clipped.
-            state.segment = std::mem::take(&mut state.preroll);
-            state.segment.extend_from_slice(&input);
-            state.has_speech = true;
-            state.silence_run = 0;
-            state.samples_since_tick = state.segment.len();
-        } else {
-            state.preroll.extend_from_slice(&input);
-            let excess = state.preroll.len().saturating_sub(PREROLL_SAMPLES);
-            if excess > 0 {
-                state.preroll.drain(..excess);
-            }
+    PUSH_BUFFER.with(|cell| {
+        let mut input = cell.borrow_mut();
+        if input.len() < len {
+            input.resize(len, 0.0);
+        }
+        let slice = &mut input[..len];
+        if env.get_float_array_region(&data, 0, slice).is_err() {
             return;
         }
-    } else {
-        state.segment.extend_from_slice(&input);
-        state.samples_since_tick += len;
-        if is_sound {
+
+        // The lock is held while cloning the segment for partial jobs (an
+        // allocation that can panic on OOM), so recover from poison instead of
+        // panicking the audio thread (R2).
+        let mut guard = LIVE_STATE.lock().unwrap_or_else(|p| p.into_inner());
+        let state = match guard.as_mut() {
+            Some(s) => s,
+            None => return,
+        };
+
+        let stream_pos = state.total_pushed.fetch_add(len as u64, Ordering::SeqCst) + len as u64;
+
+        let rms = crate::audio::fast_rms(slice);
+        let is_sound = rms >= SPEECH_RMS;
+
+        if !state.has_speech {
+            if is_sound {
+                // Speech begins: seed the segment with the pre-roll so the first
+                // word isn't clipped.
+                state.segment = std::mem::take(&mut state.preroll);
+                state.segment.extend_from_slice(slice);
+                state.has_speech = true;
+                state.silence_run = 0;
+                state.samples_since_tick = state.segment.len();
+            } else {
+                state.preroll.extend_from_slice(slice);
+                let excess = state.preroll.len().saturating_sub(PREROLL_SAMPLES);
+                if excess > 0 {
+                    state.preroll.drain(..excess);
+                }
+                return;
+            }
+        } else {
+            state.segment.extend_from_slice(slice);
+            state.samples_since_tick += len;
+            if is_sound {
+                state.silence_run = 0;
+            } else {
+                state.silence_run += len;
+            }
+        }
+
+        let silence_done = state.silence_run >= FINALIZE_SILENCE_SAMPLES;
+        if silence_done || state.segment.len() >= MAX_SEGMENT_SAMPLES {
+            let mut samples = std::mem::take(&mut state.segment);
+            if silence_done {
+                // Drop most of the trailing silence; keep a short tail.
+                let keep = samples.len() - state.silence_run + FINAL_TAIL_SAMPLES;
+                samples.truncate(keep.min(samples.len()));
+                state.has_speech = false;
+                state.preroll.clear();
+            } else {
+                // Forced cut mid-speech: split at the quietest point in the last
+                // few seconds and carry the remainder into the next segment so no
+                // word is chopped in half.
+                let from = samples.len().saturating_sub(3 * SAMPLE_RATE);
+                let split = crate::audio::find_quietest_split(&samples, from, samples.len());
+                state.segment = samples.split_off(split);
+            }
             state.silence_run = 0;
-        } else {
-            state.silence_run += len;
-        }
-    }
+            state.samples_since_tick = state.segment.len();
 
-    let silence_done = state.silence_run >= FINALIZE_SILENCE_SAMPLES;
-    if silence_done || state.segment.len() >= MAX_SEGMENT_SAMPLES {
-        let mut samples = std::mem::take(&mut state.segment);
-        if silence_done {
-            // Drop most of the trailing silence; keep a short tail.
-            let keep = samples.len() - state.silence_run + FINAL_TAIL_SAMPLES;
-            samples.truncate(keep.min(samples.len()));
-            state.has_speech = false;
-            state.preroll.clear();
-        } else {
-            // Forced cut mid-speech: split at the quietest point in the last
-            // few seconds and carry the remainder into the next segment so no
-            // word is chopped in half.
-            let from = samples.len().saturating_sub(3 * SAMPLE_RATE);
-            let split = crate::audio::find_quietest_split(&samples, from, samples.len());
-            state.segment = samples.split_off(split);
-        }
-        state.silence_run = 0;
-        state.samples_since_tick = state.segment.len();
-
-        if samples.len() >= MIN_SEGMENT_SAMPLES {
-            // Finals are always queued (the worker may still drop them if
-            // they go stale — see MAX_FINAL_LAG_SAMPLES).
+            if samples.len() >= MIN_SEGMENT_SAMPLES {
+                // Finals are always queued (the worker may still drop them if
+                // they go stale — see MAX_FINAL_LAG_SAMPLES).
+                state.worker_busy.store(true, Ordering::SeqCst);
+                state.pending_finals.fetch_add(1, Ordering::SeqCst);
+                let _ = state.worker_tx.send(Job {
+                    samples,
+                    is_final: true,
+                    end_sample: stream_pos,
+                    generation: state.generation,
+                });
+            }
+        } else if state.samples_since_tick >= TICK_SAMPLES
+            && !state.worker_busy.load(Ordering::SeqCst)
+            && state.pending_finals.load(Ordering::SeqCst) == 0
+            && partial_affordable(state)
+        {
+            // Partial update, only while the worker is idle, no final is waiting
+            // and the job is predicted to be cheap (latest-wins; finals first) so
+            // a slow device never queues up work and drifts behind real time.
             state.worker_busy.store(true, Ordering::SeqCst);
-            state.pending_finals.fetch_add(1, Ordering::SeqCst);
+            state.samples_since_tick = 0;
             let _ = state.worker_tx.send(Job {
-                samples,
-                is_final: true,
+                samples: state.segment.clone(),
+                is_final: false,
                 end_sample: stream_pos,
                 generation: state.generation,
             });
         }
-    } else if state.samples_since_tick >= TICK_SAMPLES
-        && !state.worker_busy.load(Ordering::SeqCst)
-        && state.pending_finals.load(Ordering::SeqCst) == 0
-        && partial_affordable(state)
-    {
-        // Partial update, only while the worker is idle, no final is waiting
-        // and the job is predicted to be cheap (latest-wins; finals first) so
-        // a slow device never queues up work and drifts behind real time.
-        state.worker_busy.store(true, Ordering::SeqCst);
-        state.samples_since_tick = 0;
-        let _ = state.worker_tx.send(Job {
-            samples: state.segment.clone(),
-            is_final: false,
-            end_sample: stream_pos,
-            generation: state.generation,
-        });
-    }
+    });
 }
 
 /// Whether a partial of the current segment is predicted to transcribe within

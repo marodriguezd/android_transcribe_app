@@ -80,4 +80,20 @@ public class MarkerFileHelperPersistenceTest {
     public void readStringMissingReturnsDefault() {
         assertEquals("fallback", MarkerFileHelper.readStringFromFile(tempDirectory, "nope.txt", "fallback"));
     }
+
+    @Test
+    public void hardwareBackendPersistenceRoundTrip() {
+        assertEquals("cpu", MarkerFileHelper.readStringFromFile(tempDirectory, "hardware_backend", "cpu"));
+        MarkerFileHelper.writeStringToFile(tempDirectory, "hardware_backend", "npu");
+        assertEquals("npu", MarkerFileHelper.readStringFromFile(tempDirectory, "hardware_backend", "cpu"));
+        MarkerFileHelper.writeStringToFile(tempDirectory, "hardware_backend", "gpu");
+        assertEquals("gpu", MarkerFileHelper.readStringFromFile(tempDirectory, "hardware_backend", "cpu"));
+    }
+
+    @Test
+    public void streamLatencyPersistenceRoundTrip() {
+        assertEquals("13", MarkerFileHelper.readStringFromFile(tempDirectory, "stream_context_right", "13"));
+        MarkerFileHelper.writeStringToFile(tempDirectory, "stream_context_right", "0");
+        assertEquals("0", MarkerFileHelper.readStringFromFile(tempDirectory, "stream_context_right", "13"));
+    }
 }

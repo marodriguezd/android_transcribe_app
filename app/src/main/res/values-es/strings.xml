@@ -92,6 +92,11 @@
     <string name="models_stream_latency_fast">Rápido (560 ms)</string>
     <string name="models_stream_latency_faster">Más rápido (160 ms)</string>
     <string name="models_stream_latency_lowest">Mínimo (80 ms)</string>
+    <string name="models_backend_section">Aceleración por hardware</string>
+    <string name="models_backend_desc">Motor de cómputo para la inferencia. CPU (ARM NEON con dotprod + fp16) es el predeterminado y el más rápido en móviles. NPU y GPU pueden seleccionarse si el modelo y el dispositivo los admiten.</string>
+    <string name="models_backend_cpu">CPU (ARM NEON + dotprod + fp16 - Recomendado)</string>
+    <string name="models_backend_npu">NPU (Unidad de procesamiento neuronal / NNAPI)</string>
+    <string name="models_backend_gpu">GPU (Aceleración Vulkan)</string>
 
     <string name="section_benchmark">Prueba de rendimiento</string>
     <string name="desc_benchmark">Mide la velocidad de transcripción del modelo activo en este dispositivo usando una grabación de prueba en inglés integrada (11 s).</string>

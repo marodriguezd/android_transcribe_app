@@ -92,6 +92,11 @@
     <string name="models_stream_latency_fast">Veloce (560 ms)</string>
     <string name="models_stream_latency_faster">Più veloce (160 ms)</string>
     <string name="models_stream_latency_lowest">Minima (80 ms)</string>
+    <string name="models_backend_section">Accelerazione hardware</string>
+    <string name="models_backend_desc">Motore di calcolo per l\'inferenza. CPU (ARM NEON con dotprod + fp16) è l\'opzione predefinita e più veloce su dispositivi mobili. NPU e GPU possono essere selezionate se supportate.</string>
+    <string name="models_backend_cpu">CPU (ARM NEON + dotprod + fp16 - Consigliato)</string>
+    <string name="models_backend_npu">NPU (Unità di elaborazione neurale / NNAPI)</string>
+    <string name="models_backend_gpu">GPU (Accelerazione Vulkan)</string>
 
     <string name="section_benchmark">Benchmark</string>
     <string name="desc_benchmark">Misura la velocità di trascrizione del modello attivo su questo dispositivo usando una registrazione di prova in inglese integrata (11 s).</string>

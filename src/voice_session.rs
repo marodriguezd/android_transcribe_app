@@ -186,12 +186,8 @@ pub fn start_recording(
                 .unwrap_or_else(|p| p.into_inner())
                 .extend_from_slice(data);
 
-            // compute RMS
-            let mut sum = 0.0f32;
-            for &x in data {
-                sum += x * x;
-            }
-            let rms = (sum / (data.len().max(1) as f32)).sqrt();
+            // Vectorized RMS via SIMD/NEON
+            let rms = crate::audio::fast_rms(data);
             let level = (rms * 6.0).clamp(0.0, 1.0);
 
             if let Some(ep) = &endpoint_cb {
@@ -410,14 +406,15 @@ fn streaming_pump(
 
     // Everything drained stays here so a failed/mid-stream fallback can
     // re-transcribe the whole recording offline (no text lost).
-    let mut local: Vec<f32> = Vec::new();
+    // Pre-allocate 30 seconds to prevent dynamic reallocation during streaming.
+    let mut local: Vec<f32> = Vec::with_capacity(30 * 16_000);
 
     let result = {
         let buffer_ref = &buffer;
         let mut drain = || {
             let chunk: Vec<f32> = {
                 let mut b = buffer_ref.lock().unwrap_or_else(|p| p.into_inner());
-                std::mem::take(&mut *b)
+                b.drain(..).collect()
             };
             local.extend_from_slice(&chunk);
             chunk

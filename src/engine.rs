@@ -42,6 +42,9 @@ const MODEL_THREADS_FILE: &str = "model_threads";
 /// max-accuracy default. Lower values trade a little WER for substantially
 /// earlier and livelier partial hypotheses on slow devices.
 const STREAM_CONTEXT_RIGHT_FILE: &str = "stream_context_right";
+/// Optional file in filesDir with the hardware acceleration backend selection
+/// ("cpu", "npu", "gpu"). Absent/invalid = "cpu" (ARM NEON + dotprod + fp16).
+const HARDWARE_BACKEND_FILE: &str = "hardware_backend";
 
 /// Longest audio passed to the model in one run (60 s). Offline conformer
 /// models use full self-attention, whose cost grows quadratically with input
@@ -51,12 +54,10 @@ const MAX_RUN_SAMPLES: usize = 60 * 16_000;
 /// When splitting, search this far back from the hard boundary for the
 /// quietest point so words aren't cut mid-syllable.
 const SPLIT_SEARCH_SAMPLES: usize = 10 * 16_000;
-/// How often the streaming run drains the caller's audio buffer (~300 ms).
-/// Small enough that stop→finalize latency stays low, large enough that the
-/// feed calls stay cheap; partial hypotheses change roughly once per stream
-/// chunk (1.12 s at the default att_context_right=13; proportionally more
-/// often with smaller chunks — see stream_context_right in do_load).
-const STREAM_TICK_MS: u64 = 300;
+/// How often the streaming run drains the caller's audio buffer (~80 ms).
+/// Optimized to match the native 80 ms frame rate of streaming encoder models
+/// (Nemotron-family) for instantaneous partial hypothesis response.
+const STREAM_TICK_MS: u64 = 80;
 
 /// Commands fed to an active streaming run (see [`Engine::run_stream`]).
 pub enum StreamCmd {
@@ -414,6 +415,7 @@ impl Engine {
         let started = std::time::Instant::now();
         let mut partial_count: usize = 0;
         let mut last_partial = started;
+        let mut last_emitted = String::new();
         let mut cadence_ms: u64 = 0;
         loop {
             // Feed whatever audio accumulated since the last tick.
@@ -425,7 +427,8 @@ impl Engine {
                     .map_err(|e| format!("stream feed: {}", e))?;
                 let text = stream.text();
                 let shown = text.display();
-                if !shown.trim().is_empty() {
+                let trimmed = shown.trim();
+                if !trimmed.is_empty() && trimmed != last_emitted {
                     // Fluidity telemetry: partial cadence (mean gap between
                     // consecutive partial hypotheses) reported in the stop
                     // log line below.
@@ -435,7 +438,9 @@ impl Engine {
                     }
                     last_partial = now;
                     partial_count += 1;
-                    on_partial(shown.trim());
+                    last_emitted.clear();
+                    last_emitted.push_str(trimmed);
+                    on_partial(trimmed);
                 }
             }
             // Handle control commands: Stop finalizes, Cancel abandons.
@@ -840,6 +845,10 @@ fn do_load(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
         },
         None => Some(13),
     };
+
+    let hardware_backend =
+        read_config(&files_dir.join(HARDWARE_BACKEND_FILE)).unwrap_or_else(|| "cpu".to_string());
+    log::info!("engine: configured hardware backend: {}", hardware_backend);
 
     // Publish filesDir so the corrector can locate the custom-words marker
     // file. Done here (before the imported-model attempt) so the corrector

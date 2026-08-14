@@ -92,6 +92,11 @@
     <string name="models_stream_latency_fast">Быстрый (560 мс)</string>
     <string name="models_stream_latency_faster">Быстрее (160 мс)</string>
     <string name="models_stream_latency_lowest">Минимальный (80 мс)</string>
+    <string name="models_backend_section">Аппаратное ускорение</string>
+    <string name="models_backend_desc">Вычислительный движок для инференса. CPU (ARM NEON с dotprod + fp16) используется по умолчанию и работает быстрее всего на смартфонах. NPU и GPU можно выбрать при наличии поддержки.</string>
+    <string name="models_backend_cpu">CPU (ARM NEON + dotprod + fp16 — Рекомендуется)</string>
+    <string name="models_backend_npu">NPU (Нейропроцессор / NNAPI)</string>
+    <string name="models_backend_gpu">GPU (Ускорение Vulkan)</string>
 
     <string name="section_benchmark">Тест скорости</string>
     <string name="desc_benchmark">Измеряет скорость распознавания активной модели на этом устройстве по встроенной тестовой записи на английском (11 с).</string>

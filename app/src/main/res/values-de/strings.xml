@@ -92,6 +92,11 @@
     <string name="models_stream_latency_fast">Schnell (560 ms)</string>
     <string name="models_stream_latency_faster">Schneller (160 ms)</string>
     <string name="models_stream_latency_lowest">Minimal (80 ms)</string>
+    <string name="models_backend_section">Hardwarebeschleunigung</string>
+    <string name="models_backend_desc">Rechen-Engine für die Inferenz. CPU (ARM NEON mit dotprod + fp16) ist standardmäßig optimiert für mobile Geräte. NPU- und GPU-Optionen können gewählt werden, falls unterstützt.</string>
+    <string name="models_backend_cpu">CPU (ARM NEON + dotprod + fp16 - Empfohlen)</string>
+    <string name="models_backend_npu">NPU (Neuronale Verarbeitungseinheit / NNAPI)</string>
+    <string name="models_backend_gpu">GPU (Vulkan-Beschleunigung)</string>
 
     <string name="section_benchmark">Benchmark</string>
     <string name="desc_benchmark">Misst, wie schnell das aktive Modell auf diesem Gerät transkribiert, anhand einer integrierten englischen Testaufnahme (11 s).</string>

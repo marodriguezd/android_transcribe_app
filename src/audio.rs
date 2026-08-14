@@ -1,5 +1,105 @@
 //! Small audio helpers shared between the engine and the subtitle pipeline.
 
+/// Fast sum of squares with ARM NEON vectorization on aarch64 and an unrolled
+/// multi-accumulator fallback on other architectures. Saturates CPU FMA pipelines.
+#[inline]
+pub fn fast_sum_squares(samples: &[f32]) -> f32 {
+    #[cfg(target_arch = "aarch64")]
+    {
+        use std::arch::aarch64::*;
+        let len = samples.len();
+        let ptr = samples.as_ptr();
+        let mut i = 0;
+
+        // Process in 16-float (64-byte) blocks across 4 independent NEON accumulators
+        let mut acc0 = unsafe { vdupq_n_f32(0.0) };
+        let mut acc1 = unsafe { vdupq_n_f32(0.0) };
+        let mut acc2 = unsafe { vdupq_n_f32(0.0) };
+        let mut acc3 = unsafe { vdupq_n_f32(0.0) };
+
+        while i + 16 <= len {
+            unsafe {
+                let v0 = vld1q_f32(ptr.add(i));
+                let v1 = vld1q_f32(ptr.add(i + 4));
+                let v2 = vld1q_f32(ptr.add(i + 8));
+                let v3 = vld1q_f32(ptr.add(i + 12));
+
+                acc0 = vfmaq_f32(acc0, v0, v0);
+                acc1 = vfmaq_f32(acc1, v1, v1);
+                acc2 = vfmaq_f32(acc2, v2, v2);
+                acc3 = vfmaq_f32(acc3, v3, v3);
+            }
+            i += 16;
+        }
+
+        let mut acc = unsafe {
+            let sum01 = vaddq_f32(acc0, acc1);
+            let sum23 = vaddq_f32(acc2, acc3);
+            vaddq_f32(sum01, sum23)
+        };
+
+        // Process remaining 4-float blocks
+        while i + 4 <= len {
+            unsafe {
+                let v = vld1q_f32(ptr.add(i));
+                acc = vfmaq_f32(acc, v, v);
+            }
+            i += 4;
+        }
+
+        let mut total = unsafe { vaddvq_f32(acc) };
+
+        // Scalar tail for last 1..3 elements
+        while i < len {
+            let x = unsafe { *ptr.add(i) };
+            total += x * x;
+            i += 1;
+        }
+
+        total
+    }
+
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        let chunks = samples.chunks_exact(8);
+        let remainder = chunks.remainder();
+        let mut sum0 = 0.0f32;
+        let mut sum1 = 0.0f32;
+        let mut sum2 = 0.0f32;
+        let mut sum3 = 0.0f32;
+        let mut sum4 = 0.0f32;
+        let mut sum5 = 0.0f32;
+        let mut sum6 = 0.0f32;
+        let mut sum7 = 0.0f32;
+
+        for chunk in chunks {
+            sum0 += chunk[0] * chunk[0];
+            sum1 += chunk[1] * chunk[1];
+            sum2 += chunk[2] * chunk[2];
+            sum3 += chunk[3] * chunk[3];
+            sum4 += chunk[4] * chunk[4];
+            sum5 += chunk[5] * chunk[5];
+            sum6 += chunk[6] * chunk[6];
+            sum7 += chunk[7] * chunk[7];
+        }
+
+        let mut total = (sum0 + sum1) + (sum2 + sum3) + (sum4 + sum5) + (sum6 + sum7);
+        for &x in remainder {
+            total += x * x;
+        }
+        total
+    }
+}
+
+/// Computes Root-Mean-Square (RMS) energy using vectorized SIMD sum of squares.
+#[inline]
+pub fn fast_rms(samples: &[f32]) -> f32 {
+    if samples.is_empty() {
+        return 0.0;
+    }
+    (fast_sum_squares(samples) / samples.len() as f32).sqrt()
+}
+
 /// Centre of the quietest 100 ms window in `samples[from..to]`; used to pick a
 /// natural split point when audio must be cut mid-speech.
 pub fn find_quietest_split(samples: &[f32], from: usize, to: usize) -> usize {
@@ -88,5 +188,37 @@ mod tests {
         // Scan the loud [0..3200] range only; the quiet tail is irrelevant, so
         // the result equals the flat-signal centre for that sub-range.
         assert_eq!(find_quietest_split(&samples, 0, 3200), 800);
+    }
+
+    #[test]
+    fn fast_sum_squares_edge_cases() {
+        assert_eq!(fast_sum_squares(&[]), 0.0);
+        assert_eq!(fast_sum_squares(&[0.0]), 0.0);
+        assert_eq!(fast_sum_squares(&[2.0]), 4.0);
+        assert_eq!(fast_sum_squares(&[1.0, 2.0, 3.0]), 14.0);
+
+        // Test unaligned sizes: 7, 15, 17, 33, 65 elements
+        for len in [7, 15, 17, 33, 65, 1024] {
+            let data: Vec<f32> = (0..len).map(|i| (i as f32) * 0.1).collect();
+            let expected: f32 = data.iter().map(|&x| x * x).sum();
+            let actual = fast_sum_squares(&data);
+            assert!(
+                (actual - expected).abs() < 1e-3,
+                "len {}: actual {} != expected {}",
+                len,
+                actual,
+                expected
+            );
+        }
+    }
+
+    #[test]
+    fn fast_rms_computes_correctly() {
+        assert_eq!(fast_rms(&[]), 0.0);
+        let samples = vec![2.0f32; 100];
+        assert!((fast_rms(&samples) - 2.0).abs() < 1e-5);
+
+        let alternating = vec![1.0f32, -1.0f32, 1.0f32, -1.0f32];
+        assert!((fast_rms(&alternating) - 1.0).abs() < 1e-5);
     }
 }

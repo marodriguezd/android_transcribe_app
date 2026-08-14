@@ -80,6 +80,9 @@ jobs:
     - name: Run unit tests (hard gate)
       run: ./gradlew testDebugUnitTest
 
+    - name: Run performance & latency benchmarks (optimization gate)
+      run: python3 scripts/bench_performance.py
+
     - name: Build Debug APK
       run: ./gradlew assembleDebug
 

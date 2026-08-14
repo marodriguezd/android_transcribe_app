@@ -127,6 +127,7 @@ public class ModelsActivity extends AppCompatActivity {
         setupLanguageSpinner();
         setupThreadsSpinner();
         setupStreamLatencySpinner();
+        setupBackendSpinner();
 
         com.google.android.material.materialswitch.MaterialSwitch translateSwitch =
                 findViewById(R.id.switch_translate);
@@ -302,6 +303,50 @@ public class ModelsActivity extends AppCompatActivity {
                 String value = values.get(position);
                 if (value.equals(readConfig("model_threads"))) return;
                 writeConfig("model_threads", value);
+                statusText.setText(getString(R.string.models_loading));
+                reloadModelNative(ModelsActivity.this);
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> parent) {
+            }
+        });
+    }
+
+    // --- Hardware acceleration backend --------------------------------------
+
+    /**
+     * Hardware acceleration backend for inference, stored in {@code hardware_backend}.
+     * Options: "cpu" (default / recommended), "npu" (NNAPI/QNN), "gpu" (Vulkan).
+     */
+    private void setupBackendSpinner() {
+        Spinner spinner = findViewById(R.id.spinner_backend);
+        String stored = readConfig("hardware_backend");
+        if (stored.isEmpty()) stored = "cpu";
+
+        List<String> values = new ArrayList<>(Arrays.asList("cpu", "npu", "gpu"));
+        int[] labelRes = {
+                R.string.models_backend_cpu,
+                R.string.models_backend_npu,
+                R.string.models_backend_gpu,
+        };
+
+        List<String> labels = new ArrayList<>(values.size());
+        for (int resId : labelRes) {
+            labels.add(getString(resId));
+        }
+
+        ArrayAdapter<String> adapter = new ArrayAdapter<>(
+                this, android.R.layout.simple_spinner_item, labels);
+        adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item);
+        spinner.setAdapter(adapter);
+        spinner.setSelection(Math.max(0, values.indexOf(stored)), false);
+        spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> parent, View view, int position, long id) {
+                String value = values.get(position);
+                if (value.equals(readConfig("hardware_backend"))) return;
+                writeConfig("hardware_backend", value);
                 statusText.setText(getString(R.string.models_loading));
                 reloadModelNative(ModelsActivity.this);
             }

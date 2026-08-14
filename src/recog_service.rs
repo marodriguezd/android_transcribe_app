@@ -348,12 +348,8 @@ fn audio_callback(shared: &Arc<Endpoint>, data: &[f32]) {
         .extend_from_slice(data);
     shared.total_pushed.fetch_add(data.len(), Ordering::SeqCst);
 
-    // RMS -> smoothed level in 0..1 (same scaling as voice_session).
-    let mut sum = 0.0f32;
-    for &x in data {
-        sum += x * x;
-    }
-    let rms = (sum / (data.len().max(1) as f32)).sqrt();
+    // Vectorized RMS via SIMD/NEON
+    let rms = crate::audio::fast_rms(data);
     let level = (rms * 6.0).clamp(0.0, 1.0);
 
     let floor = *shared.noise_floor.lock().unwrap_or_else(|p| p.into_inner());
@@ -486,7 +482,8 @@ fn streaming_pump(
 
     // Everything drained stays here so a failed/mid-stream fallback can
     // re-transcribe the whole recording offline (no text lost).
-    let mut local: Vec<f32> = Vec::new();
+    // Pre-allocate 30 seconds to prevent dynamic reallocation during streaming.
+    let mut local: Vec<f32> = Vec::with_capacity(30 * 16_000);
 
     let result = {
         let shared_ref = &shared;
@@ -496,7 +493,7 @@ fn streaming_pump(
                     .audio_buffer
                     .lock()
                     .unwrap_or_else(|p| p.into_inner());
-                std::mem::take(&mut *b)
+                b.drain(..).collect()
             };
             local.extend_from_slice(&chunk);
             chunk

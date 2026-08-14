@@ -78,6 +78,10 @@ struct Term {
     lower: String,
     /// Phonetic key of the lowercased term.
     key: String,
+    /// Precomputed character-bigram counts for zero-allocation cosine tiebreaking.
+    bigrams: HashMap<String, u32>,
+    /// Precomputed L2 norm of bigram vector.
+    bigram_norm: f64,
 }
 
 /// Publish the filesDir path so the corrector can locate the dictionary.
@@ -165,19 +169,19 @@ fn parse_dict(raw: &str) -> Dictionary {
         }
         let lower = trimmed.to_lowercase();
         let key = phonetic_key(&lower);
+        let (bigrams, bigram_norm) = compute_bigrams(&lower);
         let word_count = trimmed.split_whitespace().count();
+        let term = Term {
+            text: trimmed.to_string(),
+            lower,
+            key,
+            bigrams,
+            bigram_norm,
+        };
         if word_count > 1 {
-            multi.entry(word_count).or_default().push(Term {
-                text: trimmed.to_string(),
-                lower,
-                key,
-            });
+            multi.entry(word_count).or_default().push(term);
         } else {
-            single.push(Term {
-                text: trimmed.to_string(),
-                lower,
-                key,
-            });
+            single.push(term);
         }
     }
     Dictionary { single, multi }
@@ -323,13 +327,26 @@ fn collapse_duplicates(s: &str) -> String {
     out
 }
 
+/// Character-bigram counts and L2 norm for a string.
+fn compute_bigrams(s: &str) -> (HashMap<String, u32>, f64) {
+    let chars: Vec<char> = s.chars().collect();
+    let mut m = HashMap::new();
+    for w in chars.windows(2) {
+        let bg: String = w.iter().collect();
+        *m.entry(bg).or_insert(0u32) += 1;
+    }
+    let norm = m.values().map(|&v| (v as f64).powi(2)).sum::<f64>().sqrt();
+    (m, norm)
+}
+
 /// Character-bigram cosine similarity between two strings. Used as an
 /// orthographic tiebreak when several dictionary terms are phonetically
 /// equidistant.
+#[allow(dead_code)]
 fn bigram_cosine(a: &str, b: &str) -> f64 {
-    let ca = bigram_counts(a);
-    let cb = bigram_counts(b);
-    if ca.is_empty() || cb.is_empty() {
+    let (ca, na) = compute_bigrams(a);
+    let (cb, nb) = compute_bigrams(b);
+    if na == 0.0 || nb == 0.0 {
         return 0.0;
     }
     let mut dot = 0u32;
@@ -338,23 +355,7 @@ fn bigram_cosine(a: &str, b: &str) -> f64 {
             dot += va * vb;
         }
     }
-    let na: f64 = ca.values().map(|&v| (v as f64).powi(2)).sum::<f64>().sqrt();
-    let nb: f64 = cb.values().map(|&v| (v as f64).powi(2)).sum::<f64>().sqrt();
-    if na == 0.0 || nb == 0.0 {
-        0.0
-    } else {
-        dot as f64 / (na * nb)
-    }
-}
-
-fn bigram_counts(s: &str) -> HashMap<String, u32> {
-    let chars: Vec<char> = s.chars().collect();
-    let mut m = HashMap::new();
-    for w in chars.windows(2) {
-        let bg: String = w.iter().collect();
-        *m.entry(bg).or_insert(0u32) += 1;
-    }
-    m
+    dot as f64 / (na * nb)
 }
 
 /// Returns the best matching dictionary term for `word_lower`, or `None`.
@@ -373,6 +374,8 @@ fn best_term(word_lower: &str, terms: &[Term]) -> Option<String> {
     let key = phonetic_key(word_lower);
     let key_len = key.len();
     let mut best: Option<(usize, f64, usize)> = None; // (distance, -cosine, index)
+    let mut word_bigrams: Option<(HashMap<String, u32>, f64)> = None;
+
     for (idx, t) in terms.iter().enumerate() {
         // Cheap necessity filter: |len(a) - len(b)| <= dist for Levenshtein,
         // so candidates whose key length cannot reach are skipped before the
@@ -385,7 +388,21 @@ fn best_term(word_lower: &str, terms: &[Term]) -> Option<String> {
         if dist > MAX_PHONETIC_DISTANCE {
             continue;
         }
-        let sim = bigram_cosine(word_lower, &t.lower);
+
+        // Lazy-compute bigrams for the search word only when a candidate passes
+        // phonetic distance filter
+        let (wb, wb_norm) = word_bigrams.get_or_insert_with(|| compute_bigrams(word_lower));
+        let sim = if *wb_norm == 0.0 || t.bigram_norm == 0.0 {
+            0.0
+        } else {
+            let mut dot = 0u32;
+            for (g, &va) in wb.iter() {
+                if let Some(&vb) = t.bigrams.get(g) {
+                    dot += va * vb;
+                }
+            }
+            dot as f64 / (*wb_norm * t.bigram_norm)
+        };
         let neg = -sim;
         match best {
             Some((bd, bn, _)) if (dist, neg) >= (bd, bn) => {}

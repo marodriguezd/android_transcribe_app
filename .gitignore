@@ -46,3 +46,4 @@ app/src/main/jniLibs/
 /PLAN.md
 /prompt.txt
 /new_pp_prompt.md
+benchmark_results.json

@@ -2,6 +2,14 @@
 
 Change log of **android_transcribe_app** (fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app)).
 
+# v0.1.36
+
+Hotfix for custom dictionary phonetic matching and hallucination issue:
+
+- **Fixed Phonetic Corrector Accuracy:** Restored robust Unicode-aware `strsim` Levenshtein distance with length pre-filtering in `corrector.rs`, replacing the flawed banded algorithm that caused false positive matches on unrelated vocabulary.
+- **Eliminated Dictionary Hallucinations:** Transcripts now preserve all non-dictionary words verbatim, ensuring only valid phonetically similar misrecognitions are corrected.
+- **Added Regression Suite:** Added unit test coverage ensuring arbitrary conversational words are never replaced by custom dictionary terms.
+
 # v0.1.35
 
 Comprehensive mobile latency, SIMD NEON vector acceleration, lock-free audio pipelines, and hardware engine optimizations:

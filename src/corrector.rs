@@ -362,84 +362,6 @@ fn bigram_cosine(a: &str, b: &str) -> f64 {
 /// Tries an exact case-insensitive match first (so a transcript "madrid" is
 /// upgraded to the dictionary's "Madrid" without fuzzy matching), then a
 /// phonetic Levenshtein pass with an orthographic cosine tiebreak.
-/// Computes Levenshtein edit distance with early exit if distance exceeds
-/// `max_dist`. Uses a stack-allocated row buffer to completely avoid heap
-/// allocations and prune non-matching keys instantly.
-pub fn levenshtein_bounded(a: &str, b: &str, max_dist: usize) -> Option<usize> {
-    let (s1, s2) = (a.as_bytes(), b.as_bytes());
-    let (len1, len2) = (s1.len(), s2.len());
-
-    if len1.abs_diff(len2) > max_dist {
-        return None;
-    }
-    if len1 == 0 {
-        return if len2 <= max_dist { Some(len2) } else { None };
-    }
-    if len2 == 0 {
-        return if len1 <= max_dist { Some(len1) } else { None };
-    }
-
-    let (s1, s2, _len1, len2) = if len1 > len2 {
-        (s2, s1, len2, len1)
-    } else {
-        (s1, s2, len1, len2)
-    };
-
-    if len2 > 64 {
-        let d = strsim::levenshtein(a, b);
-        return if d <= max_dist { Some(d) } else { None };
-    }
-
-    let mut prev_row = [0usize; 65];
-    let mut curr_row = [0usize; 65];
-
-    for j in 0..=len2 {
-        prev_row[j] = j;
-    }
-
-    for (i, &c1) in s1.iter().enumerate() {
-        curr_row[0] = i + 1;
-        let mut min_val = curr_row[0];
-
-        let start_j = (i + 1).saturating_sub(max_dist).max(1);
-        let end_j = (i + 1 + max_dist).min(len2);
-
-        if start_j > 1 {
-            curr_row[start_j - 1] = usize::MAX / 2;
-        }
-
-        for j in start_j..=end_j {
-            let cost = if c1 == s2[j - 1] { 0 } else { 1 };
-            let deletion = prev_row[j] + 1;
-            let insertion = curr_row[j - 1] + 1;
-            let substitution = prev_row[j - 1] + cost;
-
-            let val = deletion.min(insertion).min(substitution);
-            curr_row[j] = val;
-            if val < min_val {
-                min_val = val;
-            }
-        }
-
-        if min_val > max_dist {
-            return None;
-        }
-
-        prev_row[..=len2].copy_from_slice(&curr_row[..=len2]);
-    }
-
-    let final_dist = prev_row[len2];
-    if final_dist <= max_dist {
-        Some(final_dist)
-    } else {
-        None
-    }
-}
-
-/// Returns the best matching dictionary term for `word_lower`, or `None`.
-/// Tries an exact case-insensitive match first (so a transcript "madrid" is
-/// upgraded to the dictionary's "Madrid" without fuzzy matching), then a
-/// phonetic Levenshtein pass with an orthographic cosine tiebreak.
 fn best_term(word_lower: &str, terms: &[Term]) -> Option<String> {
     // Exact match (precomputed lowercase, same Unicode-aware folding).
     for t in terms {
@@ -450,14 +372,22 @@ fn best_term(word_lower: &str, terms: &[Term]) -> Option<String> {
     // Phonetic match: minimize Levenshtein on phonetic keys, break ties with
     // the highest orthographic cosine (stored negated so min-selection wins).
     let key = phonetic_key(word_lower);
+    let key_len = key.len();
     let mut best: Option<(usize, f64, usize)> = None; // (distance, -cosine, index)
     let mut word_bigrams: Option<(HashMap<String, u32>, f64)> = None;
 
     for (idx, t) in terms.iter().enumerate() {
-        let dist = match levenshtein_bounded(&key, &t.key, MAX_PHONETIC_DISTANCE) {
-            Some(d) => d,
-            None => continue,
-        };
+        // Fast necessity filter: |len(a) - len(b)| <= dist for Levenshtein,
+        // so candidates whose key length cannot reach are skipped before the
+        // edit distance calculation.
+        let len_diff = key_len.abs_diff(t.key.len());
+        if len_diff > MAX_PHONETIC_DISTANCE {
+            continue;
+        }
+        let dist = strsim::levenshtein(&key, &t.key);
+        if dist > MAX_PHONETIC_DISTANCE {
+            continue;
+        }
 
         // Lazy-compute bigrams for the search word only when a candidate passes
         // phonetic distance filter
@@ -653,14 +583,12 @@ mod tests {
     }
 
     #[test]
-    fn levenshtein_bounded_exact_and_early_exit() {
-        assert_eq!(levenshtein_bounded("madrid", "madrid", 2), Some(0));
-        assert_eq!(levenshtein_bounded("madriz", "madrid", 2), Some(1));
-        assert_eq!(levenshtein_bounded("madriz", "madrid", 0), None);
-        assert_eq!(levenshtein_bounded("madrid", "barcelona", 2), None);
-        assert_eq!(levenshtein_bounded("", "", 2), Some(0));
-        assert_eq!(levenshtein_bounded("a", "", 2), Some(1));
-        assert_eq!(levenshtein_bounded("", "abc", 2), None);
+    fn unrelated_words_are_never_replaced() {
+        let d = dict_single(&["table", "Madrid", "Barcelona", "whisper", "modelo"]);
+        assert_eq!(
+            correct("I saw a house in the street and wanted to talk", &d),
+            "I saw a house in the street and wanted to talk"
+        );
     }
 
     #[test]

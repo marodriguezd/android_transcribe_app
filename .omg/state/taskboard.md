@@ -8,3 +8,5 @@
 | OPT-4 | Hardware backend selector (CPU / NPU / GPU) (`ModelsActivity.java`, layout, 7 locales, `engine.rs`) | P1 | COMPLETED | oma-executor | `check_translations.py` + UI selector |
 | OPT-5 | Phonetic corrector performance optimizations (`corrector.rs`) | P1 | COMPLETED | oma-executor | Corrector tests & zero-alloc parsing |
 | OPT-6 | Automated unit tests & GitHub Actions CI/CD Gauntlet verification | P0 | COMPLETED | oma-verifier | CI run 31788198797 green (4m27s, all gates PASS) |
+| FIX-DICT | Hotfix phonetic corrector StrSim distance & dictionary hallucination fix | P0 | COMPLETED | oma-executor | Unit tests + Levenshtein regression suite |
+

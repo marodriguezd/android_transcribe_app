@@ -4,7 +4,7 @@
 
 > **Repo:** `android_transcribe_app` (fork de `notune/android_transcribe_app`)
 > **Tipo:** App Android de transcripción de voz *offline* con opción de post-procesado con IA.
-> **Versión declarada actualmente en Gradle:** 0.1.35 (`versionCode 37`, ver `app/build.gradle.kts`). La versión realmente publicada debe comprobarse en tags/releases; no asumir que coincide con este fichero.
+> **Versión declarada actualmente en Gradle:** 0.1.36 (`versionCode 38`, ver `app/build.gradle.kts`). La versión realmente publicada debe comprobarse en tags/releases; no asumir que coincide con este fichero.
 >
 > **Idioma (decisión 2026-08-04):** los ficheros agénticos nuevos/actualizados
 > (`.agents/`, `agent_prompt.md`) se escriben en **inglés**; este `AGENTS.md`

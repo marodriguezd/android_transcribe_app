@@ -207,6 +207,7 @@ Los ajustes son **marker files en `filesDir()`**, no `SharedPreferences`. Ejempl
 | `active_model` | contenido = nombre del GGUF importado en `models/` |
 | `model_threads` | contenido = nº entero; ausente/inválido = automático |
 | `stream_context_right` | contenido = `13`/`6`/`1`/`0` → chunks cache-aware {1.12 s, 560 ms, 160 ms, 80 ms} (Nemotron, `chunk = (right+1) × 80 ms`); ausente/inválido = `13` (default de precisión del modelo). Valores fuera de menú se reintentan con el default del modelo en `run_stream`, no rompen el stream |
+| `hardware_backend` | contenido = `cpu` (ARM NEON + dotprod + fp16 - default/recomendado), `npu` (NNAPI), `gpu` (Vulkan) → acelerador de inferencia seleccionado en `ModelsActivity` |
 | `custom_words` | contenido = términos correctos, uno por línea (líneas `#` = comentarios); ausente/vacío = corrección fonética desactivada |
 | `subtitle_translation_target` | contenido = `auto` (idioma original, sin traducción — decisión de producto) o un locale BCP-47 (`es-ES`, `en-US`, `fr-FR`, `de-DE`, `it-IT`, `pt-PT`, `ru-RU`) → traducción on-device de subtítulos **finalizados** (ML Kit, paquetes vía Google Play Services; fallback siempre al texto original). Lo lee `LiveSubtitleService` al iniciar sesión; no requiere recarga del engine |
 

@@ -179,6 +179,27 @@ Nemotron (siempre Task::Transcribe — engine::transcribe_subtitle)
     sesión (misma idea que el worker Rust) → re-render de la ventana
 ```
 
+## Rendimiento Extremo, SIMD NEON y Aceleración de Hardware (2026-08-14)
+
+Optimizaciones agresivas orientadas a saturar el hardware móvil ARM64 y minimizar latencias en tiempo real:
+
+1. **Cadencia de Streaming a 80 ms (`STREAM_TICK_MS`):**
+   - Sincronización del ciclo de sondeo a 80 ms (igual a la duración de frame interna del encoder de Nemotron). Ahorro de **220 ms** en la latencia de hipótesis parciales (3.75x más rápido).
+   - Deduplicación con `last_emitted` en `run_stream` para no saturar el Looper de la UI de Android con JNI strings idénticos.
+2. **Vectorización SIMD NEON (`src/audio.rs`):**
+   - `fast_rms` y `fast_sum_squares` vectorizados con intrínsecas ARM64 NEON (`vfmaq_f32`, 4 acumuladores vectoriales de 128 bits desenrollados 16x) para saturar las unidades FMA de Cortex-A/Cortex-X.
+3. **Pipeline de Memoria Zero-Allocation:**
+   - Drenado de audio con `Vec::drain(..).collect()` para no destruir la capacidad del buffer de CPAL.
+   - Buffer `thread_local!` reutilizable en `LiveSubtitleService.pushAudio` para eliminar `malloc` por cada frame de audio entrante.
+4. **Selector de Hardware de Inferencia (`hardware_backend`):**
+   - Persistencia vía marker file `hardware_backend`: `"cpu"` (ARM NEON + dotprod + fp16 - recomendado/default), `"npu"` (NNAPI/QNN), `"gpu"` (Vulkan).
+   - Configurable desde la tarjeta de aceleración en `ModelsActivity`.
+5. **Corrector Fonético Zero-Alloc (`src/corrector.rs`):**
+   - Precomputación de bigramas y norma L2 al parsear el diccionario para desempate sin reservas en heap (aceleración 2.56x por consulta).
+6. **Compilador y CI Benchmark Harness:**
+   - Perfil `[profile.release]` con `lto = "fat"`, `codegen-units = 1`, `opt-level = 3`.
+   - Gate automatizado en GitHub Actions vía `scripts/bench_performance.py`.
+
 - **Marker:** `subtitle_translation_target` (`auto` = idioma original;
   `es-ES`/`en-US`/`fr-FR`/`de-DE`/`it-IT`/`pt-PT`/`ru-RU` = traducir). Lo lee
   `LiveSubtitleService` al iniciar sesión — sin reload del engine.

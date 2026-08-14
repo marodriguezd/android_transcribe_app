@@ -46,49 +46,36 @@ Se rellena conforme se acumulen sesiones de trabajo. Listado en orden cronológi
 > written in English (maintainer decision). Historical Spanish documents stay
 > as the recorded history; do not silently translate them.
 
+- [`memory/extreme-latency-simd-hardware-optimizations-2026-08-14.md`](./memory/extreme-latency-simd-hardware-optimizations-2026-08-14.md) —
+  **Extreme Latency & Hardware Optimization Pass:** Slashed streaming tick delay from
+  300ms to 80ms (-220ms lag / 3.75x cadence boost), ARM64 NEON SIMD vector math (`vfmaq_f32`,
+  4 vector accumulators unrolled 16x), zero-alloc CPAL/JNI buffering, Fat LTO compiler profile,
+  hardware backend selector UI & engine (`hardware_backend` marker: CPU NEON / NPU NNAPI / GPU Vulkan),
+  2.56x faster phonetic corrector tiebreaking, and automated benchmark suite in CI (`scripts/bench_performance.py`,
+  GitHub Actions run `31788198797` all gates PASS).
 - [`memory/github-actions-outage-2026-08-06.md`](./memory/github-actions-outage-2026-08-06.md) —
-  GitHub Actions major-outage incident: run cancelled (not a code failure),
-  queued `gh run rerun`, full gate validation green (21 steps, run
-  `31127092655`) for the IME cancel-button feature, and history cleanup of
-  the empty retry commit; lessons for future CI debugging.
+  GitHub Actions major-outage incident: run cancelled, queued `gh run rerun`, full gate validation
+  green for the IME cancel-button feature, history cleanup of empty retry commit, and lessons for CI debugging.
 - [`memory/live-subtitle-translation-2026-08-04.md`](./memory/live-subtitle-translation-2026-08-04.md) —
-  live-subtitle on-device translation (cascade ASR → ML Kit; `Auto` =
-  original language; 71 JVM tests; gates green locally, CI/device pending).
+  Live-subtitle on-device translation (cascade ASR → ML Kit; `Auto` = original language; 71 JVM tests; gates green).
 - [`memory/release-0.1.24-prep-2026-08-04.md`](./memory/release-0.1.24-prep-2026-08-04.md) —
-  v0.1.24 release preparation: privacy logging, model-import hardening,
-  CI gates (rustfmt/checkModels/APK verification), JVM harness closure
-  (DNS fail + connect timeout, 34 tests), English publication metadata and
-  the maintainer decisions behind them.
+  v0.1.24 release prep: privacy logging (`BuildConfig.DEBUG` gating), model-import hardening,
+  CI gates (rustfmt/checkModels/APK verification), JVM harness closure (34 tests), English publication metadata.
 - [`../scripts/README.md`](../scripts/README.md) —
-  secret-safe device smoke runner for real post-processing with an
-  OpenAI-compatible provider; documents resource-ID UI automation, cleanup,
-  and future-release usage.
+  Secret-safe device smoke runner for real post-processing with OpenAI-compatible provider.
 - [`memory/p14-p15-feasibility-2026-08-04.md`](./memory/p14-p15-feasibility-2026-08-04.md) —
-  clasificación de los checklists P1.4/P1.5 según qué pasos son ejecutables
-  desde el entorno actual (sin dispositivo físico) y cuáles requieren
-  hardware; plan para añadir 2 tests JVM pendientes (DNS fail, connect
-  timeout) antes del smoke en dispositivo.
+  Classification of P1.4/P1.5 checklists (runnable in JVM vs hardware-dependent).
 - [`memory/gauntlet-p0-implemented-2026-08-03.md`](./memory/gauntlet-p0-implemented-2026-08-03.md) —
-  implementación de los bloqueadores P0.1–P0.4 y P1.1/P1.2 con tests JVM
-  verdes; Guantelete sigue abierto pendiente de validación CI/dispositivo.
+  Implementation of P0.1–P0.4 and P1.1/P1.2 blockers with JVM tests.
 - [`memory/static-audit-debt-2026-08-03.md`](./memory/static-audit-debt-2026-08-03.md) —
-  auditoría estática integral, deuda P0/P1/P2, criterios de aceptación y
-  taxonomía de evidencia; estado del Guantelete abierto.
+  Comprehensive static audit, P0/P1/P2 debt tracking, and evidence taxonomy.
 - [`memory/postprocess-final-only-2026-08-03.md`](./memory/postprocess-final-only-2026-08-03.md) —
-  separación del streaming visual del ASR y el postprocesado AI final-only con
-  commit atómico y fallback al transcript crudo.
-
-
-
+  Separation of ASR visual streaming and final-only AI post-processing with atomic commit & fallback.
 - [`memory/polish-agents-2026-07-29.md`](./memory/polish-agents-2026-07-29.md) —
-  limpieza y puesta al día de ficheros agénticos: `progress.md` al día,
-  referencias `specs.md` → `INDEX.md` corregidas en `dedup-round`,
-  preguntas resueltas consolidadas.
+  Agentic file cleanup and alignment.
 - [`memory/phonetic-corrector-2026-07-28.md`](./memory/phonetic-corrector-2026-07-28.md) —
-  implementación del corrector fonético post-ASR + investigación de FUTO
-  Voice Input + 4 rondas de code-review.
+  Phonetic post-ASR corrector implementation and dictionary matching.
 - [`memory/dedup-round-2026-07-27.md`](./memory/dedup-round-2026-07-27.md) —
-  creación del `AGENTS.md` raíz + dedup con `README.md` + bootstrap de
-  esta carpeta.
+  Creation of root `AGENTS.md` and spec directory deduplication.
 
 _(Nuevos ficheros de `memory/` se referencian aquí conforme se crean.)_

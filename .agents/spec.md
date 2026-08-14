@@ -21,6 +21,10 @@ cualquier app del sistema. Incluye:
    que suenan como un término del diccionario. Totalmente offline,
    determinista, funciona con cualquier modelo. Opt-in por presencia del
    fichero (no requiere toggle separado).
+6. **Aceleración por Hardware y Latencia Streaming Personalizable** (2026-08-14):
+   selector de backend de cómputo (`hardware_backend`: CPU ARM NEON optimizado, NPU NNAPI,
+   GPU Vulkan) y latencia de streaming en vivo configurable (80ms a 1.12s) para
+   maximizar el rendimiento y adaptabilidad a las capacidades de cada SoC móvil.
 
 **Promesa nuclear:** la captura de audio y el ASR son **100 % on-device**.
 Si el post-procesado IA está apagado, ningún byte sale del teléfono. Si está

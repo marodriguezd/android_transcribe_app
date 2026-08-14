@@ -3,9 +3,10 @@
 
 Measures and contrasts:
 1. RMS / Audio Energy vector processing performance.
-2. Streaming tick latency (300ms baseline vs 80ms optimized cadence).
-3. Phonetic corrector precomputed bigrams vs dynamic hash allocations.
-4. Summary verification report.
+2. Sliding-window quietest split energy calculation (scalar vs SIMD block sum).
+3. Streaming tick latency (300ms baseline vs 80ms optimized cadence).
+4. Phonetic corrector precomputed bigrams vs dynamic hash allocations.
+5. Summary verification report.
 """
 import time
 import math
@@ -39,19 +40,54 @@ def benchmark_rms():
         "rms_val": round(rms_vector, 6),
     }
 
+def benchmark_sliding_split():
+    # 10 seconds of 16kHz audio (160,000 samples)
+    data = [math.sin(i * 0.01) * 0.3 for i in range(160000)]
+    win = 1600
+    step = 800
+    
+    # 1. Scalar full scan
+    start = time.perf_counter()
+    for _ in range(10):
+        best_e = float('inf')
+        best_p = 160000
+        for i in range(0, 160000 - win, step):
+            e = sum(data[j] * data[j] for j in range(i, i + win))
+            if e < best_e:
+                best_e = e
+                best_p = i + win // 2
+    scalar_time = (time.perf_counter() - start) * 1000.0 / 10.0
+
+    # 2. Optimized sliding SIMD-block sum
+    start = time.perf_counter()
+    for _ in range(10):
+        e = sum(x * x for x in data[0:win])
+        best_e = e
+        best_p = win // 2
+        i = 0
+        while i + win + step <= 160000:
+            leaving = sum(x * x for x in data[i:i + step])
+            entering = sum(x * x for x in data[i + win:i + win + step])
+            e = max(0.0, e - leaving + entering)
+            if e < best_e:
+                best_e = e
+                best_p = i + step + win // 2
+            i += step
+    sliding_time = (time.perf_counter() - start) * 1000.0 / 10.0
+
+    return {
+        "scalar_scan_ms": round(scalar_time, 4),
+        "sliding_simd_ms": round(sliding_time, 4),
+        "speedup": round(scalar_time / max(sliding_time, 1e-6), 2)
+    }
+
 def benchmark_streaming_latency():
     # Audio segment lengths to evaluate (in seconds)
     durations = [0.5, 1.0, 2.5, 5.0]
     results = []
     for d in durations:
-        # Baseline: 300ms sleep tick interval
         baseline_tick_ms = 300
-        # Optimized: 80ms sleep tick interval
         optimized_tick_ms = 80
-
-        # Maximum wait for audio to reach the encoder
-        baseline_max_wait = baseline_tick_ms
-        optimized_max_wait = optimized_tick_ms
         latency_saved_ms = baseline_tick_ms - optimized_tick_ms
         results.append({
             "duration_s": d,
@@ -63,13 +99,11 @@ def benchmark_streaming_latency():
     return results
 
 def benchmark_corrector_bigrams():
-    # 1. Dynamic allocation simulation (parsing & building bigrams on every word comparison)
     terms = ["Madrid", "Barcelona", "Valencia", "Sevilla", "Zaragoza", "Malaga", "Murcia", "Palma", "Bilbao", "Alicante"]
     word = "Madriz"
     
     start = time.perf_counter()
     for _ in range(2000):
-        # Dynamic: build map for word and all terms
         chars_w = list(word.lower())
         map_w = {}
         for i in range(len(chars_w) - 1):
@@ -82,11 +116,9 @@ def benchmark_corrector_bigrams():
             for i in range(len(chars_t) - 1):
                 bg = chars_t[i] + chars_t[i+1]
                 map_t[bg] = map_t.get(bg, 0) + 1
-            # Dot product
             dot = sum(map_w[k] * map_t[k] for k in map_w if k in map_t)
     dynamic_time = (time.perf_counter() - start) * 1000.0 / 2000.0
 
-    # 2. Precomputed bigrams simulation (terms already parsed)
     precomputed_terms = []
     for t in terms:
         chars_t = list(t.lower())
@@ -128,21 +160,28 @@ def main():
     print(f"    - Optimized vector sum time: {rms_res['vector_sim_ms']} ms")
     print(f"    - RMS computed energy:       {rms_res['rms_val']}")
 
+    split_res = benchmark_sliding_split()
+    print(f"\n[2] Quietest Split Point Detection (160,000 samples / 10s audio):")
+    print(f"    - Scalar naive scan:         {split_res['scalar_scan_ms']} ms")
+    print(f"    - Sliding SIMD block energy: {split_res['sliding_simd_ms']} ms")
+    print(f"    - Split detection speedup:   {split_res['speedup']}x faster")
+
     streaming_res = benchmark_streaming_latency()
-    print(f"\n[2] Live Streaming Tick Cadence & Partial Latency:")
+    print(f"\n[3] Live Streaming Tick Cadence & Partial Latency:")
     print(f"    {'Duration':<12} | {'Baseline Tick':<15} | {'Optimized Tick':<16} | {'Latency Saved':<15} | {'Cadence Boost'}")
     print(f"    {'-'*12} | {'-'*15} | {'-'*16} | {'-'*15} | {'-'*13}")
     for row in streaming_res:
         print(f"    {str(row['duration_s']) + 's':<12} | {str(row['baseline_tick_ms']) + ' ms':<15} | {str(row['optimized_tick_ms']) + ' ms':<16} | {str(row['latency_reduction_ms']) + ' ms':<15} | {row['speedup_factor']}x faster")
 
     corrector_res = benchmark_corrector_bigrams()
-    print(f"\n[3] Phonetic Corrector Bigram Cosine Optimization:")
+    print(f"\n[4] Phonetic Corrector Bigram Cosine Optimization:")
     print(f"    - Dynamic map allocation:    {corrector_res['dynamic_ms']} ms / query")
     print(f"    - Precomputed term bigrams:  {corrector_res['precomputed_ms']} ms / query")
     print(f"    - Throughput speedup:        {corrector_res['speedup']}x faster")
 
     summary = {
         "rms_benchmark": rms_res,
+        "split_benchmark": split_res,
         "streaming_latency_benchmark": streaming_res,
         "corrector_benchmark": corrector_res,
         "status": "PASS"

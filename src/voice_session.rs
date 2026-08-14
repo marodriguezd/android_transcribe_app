@@ -411,13 +411,10 @@ fn streaming_pump(
 
     let result = {
         let buffer_ref = &buffer;
-        let mut drain = || {
-            let chunk: Vec<f32> = {
-                let mut b = buffer_ref.lock().unwrap_or_else(|p| p.into_inner());
-                b.drain(..).collect()
-            };
-            local.extend_from_slice(&chunk);
-            chunk
+        let mut drain = |chunk: &mut Vec<f32>| {
+            let mut b = buffer_ref.lock().unwrap_or_else(|p| p.into_inner());
+            chunk.extend(b.drain(..));
+            local.extend_from_slice(chunk);
         };
         let mut partial =
             |text: &str| notify_partial_with_session(&mut env, &obj, text, session_id);

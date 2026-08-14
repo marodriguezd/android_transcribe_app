@@ -359,9 +359,9 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_pus
 
         if !state.has_speech {
             if is_sound {
-                // Speech begins: seed the segment with the pre-roll so the first
-                // word isn't clipped.
-                state.segment = std::mem::take(&mut state.preroll);
+                // Speech begins: seed the segment with the pre-roll without dropping capacity.
+                state.segment.clear();
+                state.segment.extend(state.preroll.drain(..));
                 state.segment.extend_from_slice(slice);
                 state.has_speech = true;
                 state.silence_run = 0;

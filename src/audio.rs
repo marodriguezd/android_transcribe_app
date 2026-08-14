@@ -107,17 +107,12 @@ pub fn find_quietest_split(samples: &[f32], from: usize, to: usize) -> usize {
     if from + WIN > to {
         return to;
     }
-    // Sliding-window energy (O3): instead of re-summing every 100 ms window
-    // from scratch (O(n·WIN)), subtract the samples leaving the window and
-    // add the ones entering (O(n)). Steps of WIN/2 keep exactly the same
-    // candidate positions the old scan produced, so results are unchanged.
+    // Sliding-window energy (O3 + SIMD): compute initial window energy and
+    // stepping window energies using fast_sum_squares SIMD blocks.
     // The accumulator is f64: repeated subtract/add of f32 squares would
     // otherwise accumulate rounding drift (catastrophic cancellation on
     // long, quiet recordings can even push the energy slightly negative).
-    let mut energy: f64 = samples[from..from + WIN]
-        .iter()
-        .map(|&x| (x as f64) * (x as f64))
-        .sum();
+    let mut energy: f64 = fast_sum_squares(&samples[from..from + WIN]) as f64;
     let mut best_pos = to;
     let mut best_energy = f64::MAX;
     let mut i = from;
@@ -130,11 +125,12 @@ pub fn find_quietest_split(samples: &[f32], from: usize, to: usize) -> usize {
         if i + WIN + step > to {
             break;
         }
-        for &x in &samples[i..i + step] {
-            energy -= (x as f64) * (x as f64);
-        }
-        for &x in &samples[i + WIN..i + WIN + step] {
-            energy += (x as f64) * (x as f64);
+        let leaving = fast_sum_squares(&samples[i..i + step]) as f64;
+        let entering = fast_sum_squares(&samples[i + WIN..i + WIN + step]) as f64;
+        energy -= leaving;
+        energy += entering;
+        if energy < 0.0 {
+            energy = 0.0;
         }
         i += step;
     }

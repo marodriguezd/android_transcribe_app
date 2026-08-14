@@ -487,16 +487,13 @@ fn streaming_pump(
 
     let result = {
         let shared_ref = &shared;
-        let mut drain = || {
-            let chunk: Vec<f32> = {
-                let mut b = shared_ref
-                    .audio_buffer
-                    .lock()
-                    .unwrap_or_else(|p| p.into_inner());
-                b.drain(..).collect()
-            };
-            local.extend_from_slice(&chunk);
-            chunk
+        let mut drain = |chunk: &mut Vec<f32>| {
+            let mut b = shared_ref
+                .audio_buffer
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            chunk.extend(b.drain(..));
+            local.extend_from_slice(chunk);
         };
         let mut partial = |text: &str| call_partial(&mut env, target, text, shared.session_id);
         engine::transcribe_stream_shared(&engine_arc, &rx, &mut drain, &mut partial)

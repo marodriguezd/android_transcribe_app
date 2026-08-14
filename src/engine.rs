@@ -351,7 +351,7 @@ impl Engine {
     fn run_stream(
         &mut self,
         rx: &crossbeam_channel::Receiver<StreamCmd>,
-        drain: &mut dyn FnMut() -> Vec<f32>,
+        drain: &mut dyn FnMut(&mut Vec<f32>),
         on_partial: &mut dyn FnMut(&str),
     ) -> Result<String, String> {
         if !self.supports_streaming {
@@ -417,9 +417,11 @@ impl Engine {
         let mut last_partial = started;
         let mut last_emitted = String::new();
         let mut cadence_ms: u64 = 0;
+        let mut chunk: Vec<f32> = Vec::with_capacity(4096);
         loop {
-            // Feed whatever audio accumulated since the last tick.
-            let chunk = drain();
+            // Feed whatever audio accumulated since the last tick into reusable chunk buffer.
+            chunk.clear();
+            drain(&mut chunk);
             if !chunk.is_empty() {
                 total_fed += chunk.len();
                 stream
@@ -579,7 +581,7 @@ fn transcribe_shared_with_task(
 pub fn transcribe_stream_shared(
     engine: &Arc<Mutex<Engine>>,
     rx: &crossbeam_channel::Receiver<StreamCmd>,
-    drain: &mut dyn FnMut() -> Vec<f32>,
+    drain: &mut dyn FnMut(&mut Vec<f32>),
     on_partial: &mut dyn FnMut(&str),
 ) -> Result<String, String> {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {

@@ -46,6 +46,11 @@ Se rellena conforme se acumulen sesiones de trabajo. Listado en orden cronológi
 > written in English (maintainer decision). Historical Spanish documents stay
 > as the recorded history; do not silently translate them.
 
+- [`memory/phonetic-corrector-hotfix-and-safety-2026-08-14.md`](./memory/phonetic-corrector-hotfix-and-safety-2026-08-14.md) —
+  **Phonetic Corrector Hotfix & Algorithmic Safety Guardrails (`v0.1.36`):** Fixed critical banded Levenshtein
+  DP matrix bug in `corrector.rs` that caused dictionary hallucinations / false positive word substitutions;
+  restored Unicode-aware `strsim::levenshtein` with $O(1)$ length pre-filtering, added negative regression
+  test suite, and established mandatory guardrails against unverified heuristic optimizations.
 - [`memory/extreme-latency-simd-hardware-optimizations-2026-08-14.md`](./memory/extreme-latency-simd-hardware-optimizations-2026-08-14.md) —
   **Extreme Latency & Hardware Optimization Pass:** Slashed streaming tick delay from
   300ms to 80ms (-220ms lag / 3.75x cadence boost), ARM64 NEON SIMD vector math (`vfmaq_f32`,

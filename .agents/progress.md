@@ -1,6 +1,6 @@
 # Progress — current AI-assisted work state
 
-**Last update:** 2026-08-14 11:33 UTC (Extreme latency & SIMD NEON optimizations complete; CI run `31788198797` all gates green)
+**Last update:** 2026-08-14 20:45 UTC (v0.1.36 Phonetic Corrector Accuracy Hotfix published; CI runs `31827742138` and `31827735398` all gates green)
 
 ## ⚠️ Working mode (2026-08-06, fire rule)
 
@@ -11,6 +11,21 @@
   `gh run view`; iterate fix → push → read CI.
 - Local is allowed on the maintainer's physical machine (laptop/desktop).
 - Canonical rule: root `AGENTS.md` §3 "Regla de validación por entorno".
+
+## 🟢 Completed — 2026-08-14 v0.1.36 Phonetic Corrector Hotfix & Safety Harness — Release Live
+
+Hotfix release resolving dictionary hallucination / false positive replacements (commit `700960f`, tag `v0.1.36`).
+**CI-validated across GitHub Actions runs `31827742138` (Release APK workflow, duration 6m 31s) and `31827735398` (Debug APK workflow)**: every gate passed (`cargo fmt`, `check_translations.py`, `testDebugUnitTest`, `assembleRelease`, `checkModels`, `zipalign`, `apksigner`).
+
+- **Root Cause Resolution (`src/corrector.rs`):**
+  - Eliminated flawed `levenshtein_bounded` banded DP function which caused uninitialized zero propagation in stack buffers, falsely scoring unrelated words with distance 1.
+  - Restored Unicode-aware `strsim::levenshtein` with an instantaneous $O(1)$ length pre-filter (`abs_diff > 2`), maintaining high performance without mathematical errors.
+- **Negative Test Suite & Regression Prevention:**
+  - Added regression test asserting that conversational sentences with everyday words are never replaced by custom dictionary terms.
+  - Documented algorithmic safety invariant in `.agents/memory/phonetic-corrector-hotfix-and-safety-2026-08-14.md`.
+- **Release Artifacts:**
+  - Release `v0.1.36` (versionCode 38) published on GitHub Releases with signed APK `android_transcribe_app_v0.1.36.apk`.
+  - Debug APK built and transmitted via Telegram bot.
 
 ## 🟢 Completed — 2026-08-14 Recursive Extreme Performance, Lock-Free Audio & SIMD Optimizations — CI green
 

@@ -8,7 +8,7 @@
 //! So this module adds trailing-silence endpointing on top of the same `engine` model,
 //! and finalises automatically (it also honours an explicit `stopListening`/`cancel`).
 
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 

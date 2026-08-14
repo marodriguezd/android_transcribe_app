@@ -379,7 +379,7 @@ pub fn levenshtein_bounded(a: &str, b: &str, max_dist: usize) -> Option<usize> {
         return if len1 <= max_dist { Some(len1) } else { None };
     }
 
-    let (s1, s2, len1, len2) = if len1 > len2 {
+    let (s1, s2, _len1, len2) = if len1 > len2 {
         (s2, s1, len2, len1)
     } else {
         (s1, s2, len1, len2)

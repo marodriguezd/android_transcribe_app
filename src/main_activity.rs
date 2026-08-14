@@ -48,7 +48,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_MainActivity_initNative
 /// in progress) is waited for but not counted into the measured time.
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_notune_transcribe_MainActivity_benchmarkNative(
-    mut env: JNIEnv,
+    env: JNIEnv,
     _class: JClass,
     activity: JObject,
     samples: jni::objects::JFloatArray,

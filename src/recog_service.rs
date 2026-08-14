@@ -59,9 +59,9 @@ struct Endpoint {
     /// Total samples ever pushed (monotonic, unlike the drained buffer) —
     /// used for the minimum-audio check before transcribing.
     total_pushed: AtomicUsize,
-    last_voice: Mutex<Instant>,
-    noise_floor: Mutex<f32>,
-    last_level_sent: Mutex<Instant>,
+    last_voice_ms: AtomicU64,
+    noise_floor_bits: AtomicU32,
+    last_level_sent_ms: AtomicU64,
     speech_started: AtomicBool,
     speech_run_samples: AtomicUsize,
     finalized: AtomicBool,
@@ -193,9 +193,9 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
         session_id: session_id as i32,
         audio_buffer: Mutex::new(Vec::new()),
         total_pushed: AtomicUsize::new(0),
-        last_voice: Mutex::new(now),
-        noise_floor: Mutex::new(0.0),
-        last_level_sent: Mutex::new(now),
+        last_voice_ms: AtomicU64::new(0),
+        noise_floor_bits: AtomicU32::new(0.0f32.to_bits()),
+        last_level_sent_ms: AtomicU64::new(0),
         speech_started: AtomicBool::new(false),
         speech_run_samples: AtomicUsize::new(0),
         finalized: AtomicBool::new(false),
@@ -352,14 +352,15 @@ fn audio_callback(shared: &Arc<Endpoint>, data: &[f32]) {
     let rms = crate::audio::fast_rms(data);
     let level = (rms * 6.0).clamp(0.0, 1.0);
 
-    let floor = *shared.noise_floor.lock().unwrap_or_else(|p| p.into_inner());
+    let floor = f32::from_bits(shared.noise_floor_bits.load(Ordering::Relaxed));
     let is_speech = level > MIN_SPEECH_LEVEL && level > floor + SPEECH_MARGIN;
 
     if is_speech {
+        let elapsed_ms = shared.started_at.elapsed().as_millis() as u64;
         if shared.speech_started.load(Ordering::SeqCst) {
             // Once speech has been confirmed, every speech frame refreshes the
-            // trailing-silence clock.
-            *shared.last_voice.lock().unwrap_or_else(|p| p.into_inner()) = Instant::now();
+            // trailing-silence clock (lock-free).
+            shared.last_voice_ms.store(elapsed_ms, Ordering::Relaxed);
         } else {
             // Do not arm trailing-silence endpointing for a single microphone
             // pop or initial noise spike. Require a continuous 100 ms speech
@@ -371,7 +372,7 @@ fn audio_callback(shared: &Arc<Endpoint>, data: &[f32]) {
             if run >= MIN_SPEECH_SAMPLES
                 && shared.speech_started.swap(true, Ordering::SeqCst) == false
             {
-                *shared.last_voice.lock().unwrap_or_else(|p| p.into_inner()) = Instant::now();
+                shared.last_voice_ms.store(elapsed_ms, Ordering::Relaxed);
                 if let Ok(mut env) = shared.jvm.attach_current_thread_permanently() {
                     let _ = env.call_method(
                         shared.target.as_obj(),
@@ -387,19 +388,28 @@ fn audio_callback(shared: &Arc<Endpoint>, data: &[f32]) {
             // The candidate speech run must be continuous.
             shared.speech_run_samples.store(0, Ordering::SeqCst);
         }
-        // Slowly adapt the noise floor while no speech is present.
-        let mut nf = shared.noise_floor.lock().unwrap_or_else(|p| p.into_inner());
-        *nf = *nf * 0.95 + level * 0.05;
+        // Slowly adapt the noise floor while no speech is present (lock-free CAS).
+        let mut current_bits = shared.noise_floor_bits.load(Ordering::Relaxed);
+        loop {
+            let current_val = f32::from_bits(current_bits);
+            let new_val = current_val * 0.95 + level * 0.05;
+            match shared.noise_floor_bits.compare_exchange_weak(
+                current_bits,
+                new_val.to_bits(),
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(b) => current_bits = b,
+            }
+        }
     }
 
-    // Throttled mic-level updates for the keyboard's waveform UI.
-    let mut last = shared
-        .last_level_sent
-        .lock()
-        .unwrap_or_else(|p| p.into_inner());
-    if last.elapsed() >= Duration::from_millis(LEVEL_UPDATE_MS) {
-        *last = Instant::now();
-        drop(last);
+    // Throttled mic-level updates for the keyboard's waveform UI (lock-free).
+    let now_ms = shared.started_at.elapsed().as_millis() as u64;
+    let last = shared.last_level_sent_ms.load(Ordering::Relaxed);
+    if now_ms >= last + LEVEL_UPDATE_MS {
+        shared.last_level_sent_ms.store(now_ms, Ordering::Relaxed);
         if let Ok(mut env) = shared.jvm.attach_current_thread_permanently() {
             call_rms(
                 &mut env,
@@ -420,14 +430,12 @@ fn endpoint_monitor(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>
         }
 
         let elapsed = shared.started_at.elapsed();
+        let elapsed_ms = elapsed.as_millis() as u64;
         let speech = shared.speech_started.load(Ordering::SeqCst);
-        let silence = shared
-            .last_voice
-            .lock()
-            .unwrap_or_else(|p| p.into_inner())
-            .elapsed();
+        let last_voice_ms = shared.last_voice_ms.load(Ordering::Relaxed);
+        let silence_ms = elapsed_ms.saturating_sub(last_voice_ms);
 
-        let done = (speech && silence >= Duration::from_millis(SILENCE_MS))
+        let done = (speech && silence_ms >= SILENCE_MS)
             || elapsed >= Duration::from_millis(MAX_SESSION_MS)
             || (!speech && elapsed >= Duration::from_millis(NO_SPEECH_TIMEOUT_MS));
 

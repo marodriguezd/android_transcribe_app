@@ -6,7 +6,8 @@ Measures and contrasts:
 2. Sliding-window quietest split energy calculation (scalar vs SIMD block sum).
 3. Streaming tick latency (300ms baseline vs 80ms optimized cadence).
 4. Phonetic corrector precomputed bigrams vs dynamic hash allocations.
-5. Summary verification report.
+5. Zero-allocation banded early-exit Levenshtein vs full matrix computation.
+6. Summary verification report.
 """
 import time
 import math
@@ -14,10 +15,8 @@ import json
 import sys
 
 def benchmark_rms():
-    # Simulate 16000 samples (1 second of 16kHz audio) across 1000 iterations
     data = [math.sin(i * 0.05) * 0.5 for i in range(16000)]
     
-    # 1. Scalar simulation
     start = time.perf_counter()
     for _ in range(200):
         s = 0.0
@@ -26,7 +25,6 @@ def benchmark_rms():
         rms_scalar = math.sqrt(s / len(data))
     scalar_time = (time.perf_counter() - start) * 1000.0 / 200.0
 
-    # 2. Block/Vectorized simulation (unrolled 16-way SIMD model)
     start = time.perf_counter()
     for _ in range(200):
         s = sum(x * x for x in data)
@@ -41,12 +39,10 @@ def benchmark_rms():
     }
 
 def benchmark_sliding_split():
-    # 10 seconds of 16kHz audio (160,000 samples)
     data = [math.sin(i * 0.01) * 0.3 for i in range(160000)]
     win = 1600
     step = 800
     
-    # 1. Scalar full scan
     start = time.perf_counter()
     for _ in range(10):
         best_e = float('inf')
@@ -58,7 +54,6 @@ def benchmark_sliding_split():
                 best_p = i + win // 2
     scalar_time = (time.perf_counter() - start) * 1000.0 / 10.0
 
-    # 2. Optimized sliding SIMD-block sum
     start = time.perf_counter()
     for _ in range(10):
         e = sum(x * x for x in data[0:win])
@@ -82,7 +77,6 @@ def benchmark_sliding_split():
     }
 
 def benchmark_streaming_latency():
-    # Audio segment lengths to evaluate (in seconds)
     durations = [0.5, 1.0, 2.5, 5.0]
     results = []
     for d in durations:
@@ -149,6 +143,67 @@ def benchmark_corrector_bigrams():
         "speedup": round(dynamic_time / max(precomputed_time, 1e-6), 2)
     }
 
+def benchmark_levenshtein_banded():
+    pairs = [
+        ("madriz", "madrid"),
+        ("barselona", "barcelona"),
+        ("valensia", "valencia"),
+        ("sebilla", "sevilla"),
+        ("saragosa", "zaragoza"),
+        ("incomprensible", "comprender"),
+        ("computadora", "ordenador"),
+        ("telefono", "microfono"),
+    ]
+    
+    # 1. Full quadratic simulation
+    start = time.perf_counter()
+    for _ in range(1000):
+        for s1, s2 in pairs:
+            m, n = len(s1), len(s2)
+            dp = [[0] * (n + 1) for _ in range(m + 1)]
+            for i in range(m + 1):
+                dp[i][0] = i
+            for j in range(n + 1):
+                dp[0][j] = j
+            for i in range(1, m + 1):
+                for j in range(1, n + 1):
+                    cost = 0 if s1[i-1] == s2[j-1] else 1
+                    dp[i][j] = min(dp[i-1][j] + 1, dp[i][j-1] + 1, dp[i-1][j-1] + cost)
+            res = dp[m][n]
+    full_time = (time.perf_counter() - start) * 1000.0 / 1000.0
+
+    # 2. Banded early-exit simulation
+    start = time.perf_counter()
+    for _ in range(1000):
+        for s1, s2 in pairs:
+            m, n = len(s1), len(s2)
+            if abs(m - n) > 2:
+                continue
+            prev_row = list(range(n + 1))
+            curr_row = [0] * (n + 1)
+            aborted = False
+            for i in range(1, m + 1):
+                curr_row[0] = i
+                start_j = max(1, i - 2)
+                end_j = min(n, i + 2)
+                min_v = i
+                for j in range(start_j, end_j + 1):
+                    cost = 0 if s1[i-1] == s2[j-1] else 1
+                    curr_row[j] = min(prev_row[j] + 1, curr_row[j-1] + 1, prev_row[j-1] + cost)
+                    if curr_row[j] < min_v:
+                        min_v = curr_row[j]
+                if min_v > 2:
+                    aborted = True
+                    break
+                prev_row = curr_row[:]
+    banded_time = (time.perf_counter() - start) * 1000.0 / 1000.0
+
+    return {
+        "full_matrix_ms": round(full_time, 4),
+        "banded_early_exit_ms": round(banded_time, 4),
+        "speedup": round(full_time / max(banded_time, 1e-6), 2)
+    }
+
 def main():
     print("=" * 65)
     print("  ANDROID TRANSCRIBE APP - PERFORMANCE & OPTIMIZATION BENCHMARK")
@@ -179,11 +234,18 @@ def main():
     print(f"    - Precomputed term bigrams:  {corrector_res['precomputed_ms']} ms / query")
     print(f"    - Throughput speedup:        {corrector_res['speedup']}x faster")
 
+    lev_res = benchmark_levenshtein_banded()
+    print(f"\n[5] Phonetic Bounded Levenshtein (Early-Exit Banded DP):")
+    print(f"    - Full quadratic matrix:     {lev_res['full_matrix_ms']} ms / batch")
+    print(f"    - Banded early exit:         {lev_res['banded_early_exit_ms']} ms / batch")
+    print(f"    - Edit distance speedup:     {lev_res['speedup']}x faster")
+
     summary = {
         "rms_benchmark": rms_res,
         "split_benchmark": split_res,
         "streaming_latency_benchmark": streaming_res,
         "corrector_benchmark": corrector_res,
+        "levenshtein_benchmark": lev_res,
         "status": "PASS"
     }
 

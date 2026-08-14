@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -32,10 +32,12 @@ unsafe impl Send for SendStream {}
 unsafe impl Sync for SendStream {}
 
 /// Speech/silence tracking shared between the audio callback and the
-/// auto-stop monitor thread.
+/// auto-stop monitor thread. Fully lock-free atomic structures to avoid
+/// lock contention and priority inversion on the real-time CPAL thread.
 struct Endpointing {
-    last_voice: Mutex<Instant>,
-    noise_floor: Mutex<f32>,
+    started_at: Instant,
+    last_voice_ms: AtomicU64,
+    noise_floor_bits: AtomicU32,
     speech_started: AtomicBool,
     speech_run_samples: AtomicUsize,
 }
@@ -47,7 +49,7 @@ pub struct VoiceSessionState {
     pub target_ref: GlobalRef,
     /// Generation supplied by the Java surface for the current recording.
     pub session_id: i32,
-    pub last_level_sent: Arc<Mutex<std::time::Instant>>,
+    pub last_level_sent_ms: Arc<AtomicU64>,
     /// True while the current recording runs; flipped off on stop/cancel so
     /// the auto-stop monitor (if any) exits.
     pub session_active: Arc<AtomicBool>,
@@ -85,7 +87,7 @@ pub fn init_session(env: JNIEnv, target: JObject) -> VoiceSessionState {
         jvm: vm_arc.clone(),
         target_ref: target_ref.clone(),
         session_id: 0,
-        last_level_sent: Arc::new(Mutex::new(std::time::Instant::now())),
+        last_level_sent_ms: Arc::new(AtomicU64::new(0)),
         session_active: Arc::new(AtomicBool::new(false)),
         session_cancelled: Arc::new(AtomicBool::new(true)),
         stream_cmd_tx: Mutex::new(None),
@@ -164,8 +166,9 @@ pub fn start_recording(
 
     let endpoint = if auto_stop {
         Some(Arc::new(Endpointing {
-            last_voice: Mutex::new(Instant::now()),
-            noise_floor: Mutex::new(0.0),
+            started_at: Instant::now(),
+            last_voice_ms: AtomicU64::new(0),
+            noise_floor_bits: AtomicU32::new(0.0f32.to_bits()),
             speech_started: AtomicBool::new(false),
             speech_run_samples: AtomicUsize::new(0),
         }))
@@ -175,8 +178,9 @@ pub fn start_recording(
 
     let jvm = state.jvm.clone();
     let target_ref = state.target_ref.clone();
-    let last_sent = state.last_level_sent.clone();
+    let last_sent = state.last_level_sent_ms.clone();
     let endpoint_cb = endpoint.clone();
+    let session_start = Instant::now();
 
     let stream = device.build_input_stream(
         &config,
@@ -191,13 +195,14 @@ pub fn start_recording(
             let level = (rms * 6.0).clamp(0.0, 1.0);
 
             if let Some(ep) = &endpoint_cb {
-                let floor = *ep.noise_floor.lock().unwrap_or_else(|p| p.into_inner());
+                let floor = f32::from_bits(ep.noise_floor_bits.load(Ordering::Relaxed));
                 let is_speech = level > MIN_SPEECH_LEVEL && level > floor + SPEECH_MARGIN;
                 if is_speech {
+                    let elapsed_ms = ep.started_at.elapsed().as_millis() as u64;
                     if ep.speech_started.load(Ordering::SeqCst) {
                         // Once speech has been confirmed, every speech frame
-                        // refreshes the trailing-silence clock.
-                        *ep.last_voice.lock().unwrap_or_else(|p| p.into_inner()) = Instant::now();
+                        // refreshes the trailing-silence clock (lock-free).
+                        ep.last_voice_ms.store(elapsed_ms, Ordering::Relaxed);
                     } else {
                         // Do not arm trailing-silence endpointing for a single
                         // microphone pop or an initial noise spike. Require a
@@ -209,8 +214,7 @@ pub fn start_recording(
                         if run >= MIN_SPEECH_SAMPLES
                             && ep.speech_started.swap(true, Ordering::SeqCst) == false
                         {
-                            *ep.last_voice.lock().unwrap_or_else(|p| p.into_inner()) =
-                                Instant::now();
+                            ep.last_voice_ms.store(elapsed_ms, Ordering::Relaxed);
                         }
                     }
                 } else {
@@ -218,16 +222,29 @@ pub fn start_recording(
                         // The candidate speech run must be continuous.
                         ep.speech_run_samples.store(0, Ordering::SeqCst);
                     }
-                    // Slowly adapt the noise floor while no speech is present.
-                    let mut nf = ep.noise_floor.lock().unwrap_or_else(|p| p.into_inner());
-                    *nf = *nf * 0.95 + level * 0.05;
+                    // Slowly adapt the noise floor while no speech is present (lock-free CAS).
+                    let mut current_bits = ep.noise_floor_bits.load(Ordering::Relaxed);
+                    loop {
+                        let current_val = f32::from_bits(current_bits);
+                        let new_val = current_val * 0.95 + level * 0.05;
+                        match ep.noise_floor_bits.compare_exchange_weak(
+                            current_bits,
+                            new_val.to_bits(),
+                            Ordering::Relaxed,
+                            Ordering::Relaxed,
+                        ) {
+                            Ok(_) => break,
+                            Err(b) => current_bits = b,
+                        }
+                    }
                 }
             }
 
-            // throttle updates
-            let mut last = last_sent.lock().unwrap_or_else(|p| p.into_inner());
-            if last.elapsed() >= std::time::Duration::from_millis(50) {
-                *last = std::time::Instant::now();
+            // throttle updates (lock-free)
+            let now_ms = session_start.elapsed().as_millis() as u64;
+            let last = last_sent.load(Ordering::Relaxed);
+            if now_ms >= last + 50 {
+                last_sent.store(now_ms, Ordering::Relaxed);
 
                 // Permanently attach the audio thread once instead of
                 // attach/detach churn ~20 times per second (O1). The cpal
@@ -306,16 +323,12 @@ pub fn start_recording(
                     let mut done = started_at.elapsed() >= Duration::from_millis(MAX_SESSION_MS);
                     if let Some(ep) = &ep_monitor {
                         let speech = ep.speech_started.load(Ordering::SeqCst);
-                        let silence = ep
-                            .last_voice
-                            .lock()
-                            .unwrap_or_else(|p| p.into_inner())
-                            .elapsed();
+                        let elapsed_ms = ep.started_at.elapsed().as_millis() as u64;
+                        let last_voice_ms = ep.last_voice_ms.load(Ordering::Relaxed);
+                        let silence_ms = elapsed_ms.saturating_sub(last_voice_ms);
                         done = done
-                            || (speech && silence >= Duration::from_millis(AUTO_STOP_SILENCE_MS))
-                            || (!speech
-                                && started_at.elapsed()
-                                    >= Duration::from_millis(AUTO_STOP_NO_SPEECH_MS));
+                            || (speech && silence_ms >= AUTO_STOP_SILENCE_MS)
+                            || (!speech && elapsed_ms >= AUTO_STOP_NO_SPEECH_MS);
                     }
                     if done {
                         // Claim the session so a simultaneous manual stop and

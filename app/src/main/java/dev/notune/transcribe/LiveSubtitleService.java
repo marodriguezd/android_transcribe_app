@@ -386,9 +386,10 @@ public class LiveSubtitleService extends Service {
                     Log.d(TAG, "Reading audio... Total samples: " + totalRead);
                 }
                 
-                // Convert short to float
+                // Convert short to float via fast reciprocal multiplication (auto-vectorizable in ART)
+                final float invScale = 1.0f / 32768.0f;
                 for (int i = 0; i < read; i++) {
-                    floatBuffer[i] = buffer[i] / 32768.0f;
+                    floatBuffer[i] = buffer[i] * invScale;
                 }
                 pushAudio(floatBuffer, read);
             } else {

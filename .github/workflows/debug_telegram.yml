@@ -93,7 +93,7 @@ jobs:
       run: ./gradlew assembleDebug --stacktrace --info 2>&1 | tee gradle_build.log
 
     - name: Lint (hard gate)
-      run: ./gradlew lintDebug
+      run: ./gradlew lintDebug --stacktrace --info 2>&1 | tee gradle_lint.log
 
     # Debug APKs ship without the bundled GGUF, so this gate is a safe
     # no-op here (it only verifies *present* assets); running it keeps the
@@ -138,10 +138,13 @@ jobs:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
         MSG="🚨 CI Workflow Failed on commit $(git rev-parse --short HEAD):"$'\n'
-        if [ -f gradle_build.log ]; then
+        if [ -f gradle_lint.log ] && grep -qE "(FAILURE:|ERROR:|FAILED|Exception|error:)" gradle_lint.log; then
+          ERR=$(grep -E "(FAILURE:|ERROR:|FAILED|Exception|error:)" gradle_lint.log | tail -8)
+          MSG="${MSG}"$'\n'"[LINT LOG]"$'\n'"${ERR}"
+        elif [ -f gradle_build.log ] && grep -qE "(FAILURE:|ERROR:|FAILED|Exception|error:|cannot find symbol)" gradle_build.log; then
           ERR=$(grep -E "(FAILURE:|ERROR:|FAILED|Exception|error:|cannot find symbol)" gradle_build.log | tail -8)
           MSG="${MSG}"$'\n'"[BUILD LOG]"$'\n'"${ERR}"
-        elif [ -f gradle_test.log ]; then
+        elif [ -f gradle_test.log ] && grep -qE "(FAILURE:|ERROR:|FAILED|Exception|error:)" gradle_test.log; then
           ERR=$(grep -E "(FAILURE:|ERROR:|FAILED|Exception|error:)" gradle_test.log | tail -8)
           MSG="${MSG}"$'\n'"[TEST LOG]"$'\n'"${ERR}"
         fi

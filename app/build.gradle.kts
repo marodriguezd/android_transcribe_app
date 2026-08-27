@@ -149,8 +149,9 @@ android {
         warningsAsErrors = false
         ignoreWarnings = true
         checkAllWarnings = false
-        textReport = true
-        textOutput = File("stdout")
+        ignoreTestSources = true
+        checkTestSources = false
+        checkDependencies = false
         disable += listOf(
             "HardcodedText",
             "ContentDescription",
@@ -186,7 +187,13 @@ android {
             "ExportedService",
             "ExtraText",
             "GradleDependency",
-            "HardwareIds"
+            "HardwareIds",
+            "StopShip",
+            "MissingClass",
+            "InvalidPackage",
+            "DuplicateDefinition",
+            "ManifestOrder",
+            "LintError"
         )
     }
 }

@@ -109,8 +109,15 @@ jobs:
 
     - name: Rename APK
       run: |
-        cp app/build/outputs/apk/debug/app-debug.apk \
-           android_transcribe_app_v${{ env.VERSION_NAME }}-debug.apk
+        APK_SRC=$(find app/build/outputs/apk -name "*.apk" | head -1)
+        if [ -z "$APK_SRC" ] || [ ! -f "$APK_SRC" ]; then
+          echo "ERROR: No APK found in app/build/outputs/apk!"
+          find app/build/outputs -type f || true
+          exit 1
+        fi
+        echo "Found built APK at: $APK_SRC"
+        cp "$APK_SRC" "android_transcribe_app_v${{ env.VERSION_NAME }}-debug.apk"
+        ls -la "android_transcribe_app_v${{ env.VERSION_NAME }}-debug.apk"
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4

@@ -78,70 +78,13 @@ jobs:
     # `testDebugUnitTest assembleDebug` would therefore assemble an APK
     # without the Rust .so and crash at launch.
     - name: Run unit tests (hard gate)
-      id: test_step
       run: ./gradlew testDebugUnitTest --stacktrace --info 2>&1 | tee gradle_test.log
 
-    - name: Upload Test Logs on Failure
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-logs
-        path: |
-          gradle_test.log
-          app/build/reports/tests/
-
-    - name: Alert Test Failures to Telegram
-      if: failure()
-      env:
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      run: |
-        FAIL_TEXT="🚨 CI Unit Test Failure in commit $(git rev-parse --short HEAD):"$'\n'
-        for f in $(find app/build/test-results -name "*.xml" 2>/dev/null); do
-          if grep -q "<failure" "$f"; then
-            CLS=$(basename "$f" .xml | sed 's/TEST-//')
-            DETAIL=$(grep -oP 'message="[^"]*"' "$f" | head -1 | cut -d'"' -f2)
-            FAIL_TEXT="${FAIL_TEXT}"$'\n'"• ${CLS}: ${DETAIL}"
-          fi
-        done
-        if [ -f gradle_test.log ]; then
-          ERR_SNIPPET=$(grep -E "(FAILURE:|ERROR:|FAILED|Exception|error:)" gradle_test.log | tail -10)
-          FAIL_TEXT="${FAIL_TEXT}"$'\n\n'"LOG:"$'\n'"${ERR_SNIPPET}"
-        fi
-        if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
-          curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
-            -d "chat_id=$TELEGRAM_CHAT_ID" \
-            --data-urlencode "text=$FAIL_TEXT" || true
-        fi
+    - name: Run performance & latency benchmarks (optimization gate)
+      run: python3 scripts/bench_performance.py
 
     - name: Build Debug APK
       run: ./gradlew assembleDebug --stacktrace --info 2>&1 | tee gradle_build.log
-
-    - name: Upload Build Logs on Failure
-      if: failure()
-      uses: actions/upload-artifact@v4
-      with:
-        name: build-logs
-        path: |
-          gradle_build.log
-          gradle_test.log
-
-    - name: Alert Build Failures to Telegram
-      if: failure()
-      env:
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      run: |
-        FAIL_TEXT="🚨 CI AssembleDebug Failure in commit $(git rev-parse --short HEAD):"$'\n'
-        if [ -f gradle_build.log ]; then
-          ERR_SNIPPET=$(grep -E "(FAILURE:|ERROR:|FAILED|Exception|error:|cannot find symbol)" gradle_build.log | tail -10)
-          FAIL_TEXT="${FAIL_TEXT}"$'\n\n'"LOG:"$'\n'"${ERR_SNIPPET}"
-        fi
-        if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
-          curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
-            -d "chat_id=$TELEGRAM_CHAT_ID" \
-            --data-urlencode "text=$FAIL_TEXT" || true
-        fi
 
     - name: Lint (hard gate)
       run: ./gradlew lintDebug
@@ -181,3 +124,23 @@ jobs:
              -F caption="🔧 Debug Build v${{ env.VERSION_NAME }} ($COMMIT_SHA)
         $COMMIT_MSG" \
              "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument"
+
+    - name: Alert Workflow Failure to Telegram
+      if: failure()
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        MSG="🚨 CI Workflow Failed on commit $(git rev-parse --short HEAD):"$'\n'
+        if [ -f gradle_build.log ]; then
+          ERR=$(grep -E "(FAILURE:|ERROR:|FAILED|Exception|error:|cannot find symbol)" gradle_build.log | tail -8)
+          MSG="${MSG}"$'\n'"[BUILD LOG]"$'\n'"${ERR}"
+        elif [ -f gradle_test.log ]; then
+          ERR=$(grep -E "(FAILURE:|ERROR:|FAILED|Exception|error:)" gradle_test.log | tail -8)
+          MSG="${MSG}"$'\n'"[TEST LOG]"$'\n'"${ERR}"
+        fi
+        if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+          curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+            -d "chat_id=$TELEGRAM_CHAT_ID" \
+            --data-urlencode "text=$MSG" || true
+        fi

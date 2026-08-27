@@ -96,25 +96,22 @@ jobs:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
-        FAIL_TEXT="🚨 <b>CI Unit Test Failure:</b>%0A"
-        FOUND=0
+        FAIL_TEXT="🚨 CI Unit Test Failure in commit $(git rev-parse --short HEAD):"$'\n'
         for f in $(find app/build/test-results -name "*.xml" 2>/dev/null); do
           if grep -q "<failure" "$f"; then
-            FOUND=1
             CLS=$(basename "$f" .xml | sed 's/TEST-//')
-            DETAIL=$(grep -oP 'message="[^"]*"' "$f" | head -1 | cut -d'"' -f2 | sed 's/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g')
-            FAIL_TEXT="${FAIL_TEXT}%0A• <code>${CLS}</code>: ${DETAIL}"
+            DETAIL=$(grep -oP 'message="[^"]*"' "$f" | head -1 | cut -d'"' -f2)
+            FAIL_TEXT="${FAIL_TEXT}"$'\n'"• ${CLS}: ${DETAIL}"
           fi
         done
-        if [ "$FOUND" -eq 0 ] && [ -f gradle_test.log ]; then
-          ERR_SNIPPET=$(grep -E "(FAILURE:|ERROR:|FAILED|Exception|error:)" gradle_test.log | tail -8 | sed 's/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g')
-          FAIL_TEXT="${FAIL_TEXT}%0A<pre>${ERR_SNIPPET}</pre>"
+        if [ -f gradle_test.log ]; then
+          ERR_SNIPPET=$(grep -E "(FAILURE:|ERROR:|FAILED|Exception|error:)" gradle_test.log | tail -10)
+          FAIL_TEXT="${FAIL_TEXT}"$'\n\n'"LOG:"$'\n'"${ERR_SNIPPET}"
         fi
         if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
           curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
             -d "chat_id=$TELEGRAM_CHAT_ID" \
-            -d "parse_mode=HTML" \
-            -d "text=$FAIL_TEXT" || true
+            --data-urlencode "text=$FAIL_TEXT" || true
         fi
 
     - name: Build Debug APK
@@ -135,12 +132,15 @@ jobs:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
+        FAIL_TEXT="🚨 CI AssembleDebug Failure in commit $(git rev-parse --short HEAD):"$'\n'
         if [ -f gradle_build.log ]; then
-          ERR_SNIPPET=$(grep -E "(FAILURE:|ERROR:|FAILED|Exception|error:|cannot find symbol)" gradle_build.log | tail -10 | sed 's/&/&amp;/g; s/</&lt;/g; s/>/&gt;/g')
+          ERR_SNIPPET=$(grep -E "(FAILURE:|ERROR:|FAILED|Exception|error:|cannot find symbol)" gradle_build.log | tail -10)
+          FAIL_TEXT="${FAIL_TEXT}"$'\n\n'"LOG:"$'\n'"${ERR_SNIPPET}"
+        fi
+        if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
           curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
             -d "chat_id=$TELEGRAM_CHAT_ID" \
-            -d "parse_mode=HTML" \
-            -d "text=🚨 <b>CI AssembleDebug Failure:</b>%0A<pre>${ERR_SNIPPET}</pre>" || true
+            --data-urlencode "text=$FAIL_TEXT" || true
         fi
 
     - name: Lint (hard gate)

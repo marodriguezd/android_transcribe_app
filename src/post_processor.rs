@@ -168,7 +168,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_PostProcessor_nativeNor
         Err(_) => "clean".to_string(),
     };
 
-    let custom_str: Option<String> = if !custom_prompt.is_null() {
+    let custom_str: Option<String> = if !custom_prompt.as_raw().is_null() {
         env.get_string(&custom_prompt).ok().map(|s| s.into())
     } else {
         None
@@ -181,7 +181,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_PostProcessor_nativeNor
 
     match result {
         Ok(text) => match env.new_string(text) {
-            Ok(jstr) => jstr.into_raw(),
+            Ok(jstr) => jstr.as_raw(),
             Err(_) => std::ptr::null_mut(),
         },
         Err(e) => {
@@ -198,7 +198,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_PostProcessor_nativeSet
     path: JString,
 ) {
     if let Ok(p_str) = env.get_string(&path) {
-        let path_buf = PathBuf::from(String::from(p_str));
+        let path_buf = PathBuf::from(p_str.to_str().unwrap_or(""));
         let mut guard = S1_STATE.lock().unwrap_or_else(|p| p.into_inner());
         guard.set_model_path(path_buf);
     }

@@ -392,10 +392,13 @@ public class RustInputMethodService extends InputMethodService {
         if (new File(getFilesDir(), "auto_record").exists()) {
             if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO)
                     == PackageManager.PERMISSION_GRANTED) {
+                UserDictionaryHelper.syncSystemUserDictionaryAsync(this);
                 if (isPauseAudioEnabled()) {
                     audioPauser.request(this);
                     pauseAudioActive = true;
                 }
+                SettingsManager sm = new SettingsManager(this);
+                AudioDeviceManager.acquireMicrophone(this, sm.getMicMode());
                 startRecording(isAutoStopEnabled(), ++currentSessionId);
                 updateRecordButtonUI(true);
             }
@@ -416,6 +419,7 @@ public class RustInputMethodService extends InputMethodService {
                     Log.w(TAG, "cancelRecording failed, falling back to stopRecording", t);
                     try { stopRecording(); } catch (Throwable ignored) { }
                 }
+                AudioDeviceManager.releaseMicrophone(this);
                 // The capture was discarded: nothing is pending, so the Cancel
                 // button must not linger when the keyboard is shown again.
                 resultPending = false;
@@ -596,9 +600,13 @@ public class RustInputMethodService extends InputMethodService {
         // with nothing to cancel.
         if (status != null && status.startsWith("Error")) {
             resultPending = false;
+            if (isRecording) {
+                AudioDeviceManager.releaseMicrophone(this);
+                updateRecordButtonUI(false);
+            }
         }
         updateUiState();
-        if (pendingSwitchBack && status.startsWith("Error")) {
+        if (pendingSwitchBack && status != null && status.startsWith("Error")) {
             pendingSwitchBack = false;
             switchToPreviousInputMethodSafe();
         }

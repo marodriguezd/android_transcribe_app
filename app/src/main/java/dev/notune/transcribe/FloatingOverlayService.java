@@ -1291,6 +1291,10 @@ public class FloatingOverlayService extends Service {
             mLastStatus = status != null ? status : "";
             if (mLastStatus.startsWith("Error")) {
                 mResultPending = false;
+                if (mIsRecording) {
+                    mIsRecording = false;
+                    AudioDeviceManager.releaseMicrophone(FloatingOverlayService.this);
+                }
                 stopPulseAnimation();
                 if (mProgress != null) mProgress.setVisibility(View.GONE);
                 if (mHintText != null) mHintText.setText(R.string.ime_tap_to_record);

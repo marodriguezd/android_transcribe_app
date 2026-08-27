@@ -56,7 +56,7 @@ public class PostProcessorTest {
     private MockWebServer server;
 
     /** Fake settings source for the processor under test. */
-    static final class FakeSettings implements PostProcessor.PostProcessorSettings {
+    static class FakeSettings implements PostProcessor.PostProcessorSettings {
         boolean enabled = true;
         String url;
         String key = "test-key";

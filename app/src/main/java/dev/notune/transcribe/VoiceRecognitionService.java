@@ -72,15 +72,19 @@ public class VoiceRecognitionService extends RecognitionService {
         }
 
         try {
+            SettingsManager sm = new SettingsManager(this);
+            AudioDeviceManager.acquireMicrophone(this, sm.getMicMode());
             startListening(this, currentSessionId);
         } catch (Throwable t) {
             Log.e(TAG, "startListening failed", t);
+            AudioDeviceManager.releaseMicrophone(this);
             safeError(SpeechRecognizer.ERROR_CLIENT);
         }
     }
 
     @Override
     protected void onStopListening(Callback callback) {
+        AudioDeviceManager.releaseMicrophone(this);
         try {
             stopListening();
         } catch (Throwable t) {
@@ -92,6 +96,7 @@ public class VoiceRecognitionService extends RecognitionService {
     protected void onCancel(Callback callback) {
         // Cancel this service's in-flight post-processing call when the
         // recognition session is cancelled — never another surface's (P0.1).
+        AudioDeviceManager.releaseMicrophone(this);
         PostProcessor.cancelAllFor(this);
         // Invalidate any post-processor callback that is still pending for
         // this session so it cannot deliver results after cancellation.
@@ -107,6 +112,7 @@ public class VoiceRecognitionService extends RecognitionService {
     public void onDestroy() {
         // Cancel this service's in-flight post-processing call when the
         // recognition service is destroyed (owner-scoped, P0.1).
+        AudioDeviceManager.releaseMicrophone(this);
         PostProcessor.cancelAllFor(this);
         // Invalidate any post-processor callback that is still pending so it
         // cannot deliver results to a released binder.
@@ -179,6 +185,7 @@ public class VoiceRecognitionService extends RecognitionService {
     public void onResults(String text, int sessionId) {
         mainHandler.post(() -> {
             if (sessionId != currentSessionId) return;
+            AudioDeviceManager.releaseMicrophone(VoiceRecognitionService.this);
             Callback cb = mCallback;
             if (cb == null) return;
             // Capture the id of the current recognition session so the async
@@ -234,6 +241,7 @@ public class VoiceRecognitionService extends RecognitionService {
     public void onError(int errorCode, int sessionId) {
         mainHandler.post(() -> {
             if (sessionId != currentSessionId) return;
+            AudioDeviceManager.releaseMicrophone(VoiceRecognitionService.this);
             Callback cb = mCallback;
             if (cb == null) return;
             try { cb.error(errorCode); } catch (RemoteException ignored) {}

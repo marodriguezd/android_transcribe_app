@@ -75,8 +75,11 @@ public class AudioDeviceManagerTest {
         AudioDeviceManager.acquireMicrophone(null, AudioDeviceManager.MIC_MODE_AUTO);
         AudioDeviceManager.acquireMicrophone(null, AudioDeviceManager.MIC_MODE_BLUETOOTH_ONLY);
         AudioDeviceManager.acquireMicrophone(null, AudioDeviceManager.MIC_MODE_BUILTIN_ONLY);
+        AudioDeviceManager.acquireMicrophone(null, "unknown_mode");
         AudioDeviceManager.acquireMicrophone(null, null);
 
+        // Multiple sequential and redundant releases must never throw
+        AudioDeviceManager.releaseMicrophone(null);
         AudioDeviceManager.releaseMicrophone(null);
     }
 
@@ -86,5 +89,13 @@ public class AudioDeviceManagerTest {
         List<String> devices = AudioDeviceManager.getConnectedInputDevices(null);
         assertNotNull(devices);
         assertTrue(devices.isEmpty());
+    }
+
+    @Test
+    public void testMicModeFallbackOnEmptyOrCorruptString() {
+        MarkerFileHelper.writeStringToFile(tempDirectory, "mic_mode", "   ");
+        String mode = MarkerFileHelper.readStringFromFile(tempDirectory, "mic_mode", AudioDeviceManager.MIC_MODE_AUTO);
+        // Trims to empty string; callers (like sm.getMicMode()) normalize to AUTO
+        assertTrue(mode.isEmpty() || AudioDeviceManager.MIC_MODE_AUTO.equals(mode));
     }
 }

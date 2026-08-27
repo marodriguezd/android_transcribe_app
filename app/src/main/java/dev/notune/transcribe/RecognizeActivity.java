@@ -163,6 +163,12 @@ public class RecognizeActivity extends AppCompatActivity {
     }
 
     private void showStatus(String s) {
+        if (s != null && s.startsWith("Error")) {
+            if (isRecording) {
+                isRecording = false;
+                AudioDeviceManager.releaseMicrophone(this);
+            }
+        }
         final String shown;
         if ("Ready".equals(s)) {
             shown = isRecording ? getString(R.string.rec_listening_tap_stop)

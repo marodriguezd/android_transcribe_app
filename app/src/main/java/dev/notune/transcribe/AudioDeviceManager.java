@@ -63,7 +63,7 @@ public final class AudioDeviceManager {
      * Must be called immediately when speech recording ends.
      */
     public static synchronized void releaseMicrophone(Context context) {
-        if (context == null || !isRoutingActive) return;
+        if (context == null) return;
         AudioManager am = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
         if (am == null) return;
 
@@ -71,10 +71,12 @@ public final class AudioDeviceManager {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 clearCommunicationDeviceApi31(am);
             } else {
-                if (am.isBluetoothScoOn()) {
+                try {
                     am.stopBluetoothSco();
+                } catch (Throwable ignored) {}
+                try {
                     am.setBluetoothScoOn(false);
-                }
+                } catch (Throwable ignored) {}
             }
             am.setMode(AudioManager.MODE_NORMAL);
         } catch (Throwable t) {
@@ -180,10 +182,12 @@ public final class AudioDeviceManager {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             routeToBuiltinMicApi31(am);
         } else {
-            if (am.isBluetoothScoOn()) {
+            try {
                 am.stopBluetoothSco();
+            } catch (Throwable ignored) {}
+            try {
                 am.setBluetoothScoOn(false);
-            }
+            } catch (Throwable ignored) {}
             am.setMode(AudioManager.MODE_NORMAL);
         }
     }
@@ -217,17 +221,21 @@ public final class AudioDeviceManager {
             }
         }
 
-        AudioManager am = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-        if (am == null) return false;
+        try {
+            AudioManager am = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+            if (am == null) return false;
 
-        AudioDeviceInfo[] devices = am.getDevices(AudioManager.GET_DEVICES_INPUTS);
-        if (devices == null) return false;
-        for (AudioDeviceInfo device : devices) {
-            int type = device.getType();
-            if (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == AudioDeviceInfo.TYPE_BLE_HEADSET)) {
-                return true;
+            AudioDeviceInfo[] devices = am.getDevices(AudioManager.GET_DEVICES_INPUTS);
+            if (devices == null) return false;
+            for (AudioDeviceInfo device : devices) {
+                int type = device.getType();
+                if (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == AudioDeviceInfo.TYPE_BLE_HEADSET)) {
+                    return true;
+                }
             }
+        } catch (Throwable t) {
+            Log.w(TAG, "Error checking bluetooth connected state", t);
         }
         return false;
     }
@@ -238,31 +246,37 @@ public final class AudioDeviceManager {
     public static List<String> getConnectedInputDevices(Context context) {
         List<String> result = new ArrayList<>();
         if (context == null) return result;
-        AudioManager am = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
-        if (am == null) return result;
+        try {
+            AudioManager am = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+            if (am == null) return result;
 
-        AudioDeviceInfo[] devices = am.getDevices(AudioManager.GET_DEVICES_INPUTS);
-        if (devices == null) return result;
-        for (AudioDeviceInfo d : devices) {
-            String label = "Audio Input";
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                CharSequence name = d.getProductName();
-                if (name != null && name.length() > 0) {
-                    label = name.toString();
+            AudioDeviceInfo[] devices = am.getDevices(AudioManager.GET_DEVICES_INPUTS);
+            if (devices == null) return result;
+            for (AudioDeviceInfo d : devices) {
+                String label = "Audio Input";
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    try {
+                        CharSequence name = d.getProductName();
+                        if (name != null && name.length() > 0) {
+                            label = name.toString();
+                        }
+                    } catch (Throwable ignored) {}
+                }
+                int type = d.getType();
+                if (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == AudioDeviceInfo.TYPE_BLE_HEADSET)) {
+                    result.add("🎧 " + label + " (Bluetooth)");
+                } else if (type == AudioDeviceInfo.TYPE_USB_HEADSET ||
+                           type == AudioDeviceInfo.TYPE_USB_DEVICE) {
+                    result.add("🎙️ " + label + " (USB)");
+                } else if (type == AudioDeviceInfo.TYPE_WIRED_HEADSET) {
+                    result.add("🎧 " + label + " (Cable)");
+                } else if (type == AudioDeviceInfo.TYPE_BUILTIN_MIC) {
+                    result.add("📱 " + label + " (Interno)");
                 }
             }
-            int type = d.getType();
-            if (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == AudioDeviceInfo.TYPE_BLE_HEADSET)) {
-                result.add("🎧 " + label + " (Bluetooth)");
-            } else if (type == AudioDeviceInfo.TYPE_USB_HEADSET ||
-                       type == AudioDeviceInfo.TYPE_USB_DEVICE) {
-                result.add("🎙️ " + label + " (USB)");
-            } else if (type == AudioDeviceInfo.TYPE_WIRED_HEADSET) {
-                result.add("🎧 " + label + " (Cable)");
-            } else if (type == AudioDeviceInfo.TYPE_BUILTIN_MIC) {
-                result.add("📱 " + label + " (Interno)");
-            }
+        } catch (Throwable t) {
+            Log.e(TAG, "Error querying connected input devices", t);
         }
         return result;
     }

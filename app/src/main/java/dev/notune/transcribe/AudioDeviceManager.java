@@ -1,5 +1,6 @@
 package dev.notune.transcribe;
 
+import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.media.AudioDeviceInfo;
@@ -68,14 +69,14 @@ public final class AudioDeviceManager {
 
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                am.clearCommunicationDevice();
+                clearCommunicationDeviceApi31(am);
             } else {
                 if (am.isBluetoothScoOn()) {
                     am.stopBluetoothSco();
                     am.setBluetoothScoOn(false);
                 }
-                am.setMode(AudioManager.MODE_NORMAL);
             }
+            am.setMode(AudioManager.MODE_NORMAL);
         } catch (Throwable t) {
             Log.e(TAG, "Error releasing microphone routing", t);
         } finally {
@@ -83,8 +84,32 @@ public final class AudioDeviceManager {
         }
     }
 
+    @TargetApi(Build.VERSION_CODES.S)
+    private static void clearCommunicationDeviceApi31(AudioManager am) {
+        try {
+            am.clearCommunicationDevice();
+        } catch (Throwable t) {
+            Log.w(TAG, "Error clearing communication device on API 31+", t);
+        }
+    }
+
     private static void routeAuto(Context context, AudioManager am) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            routeAutoApi31(am);
+        } else {
+            // Android 8 - 11 legacy SCO activation
+            if (isBluetoothConnected(context)) {
+                am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+                am.startBluetoothSco();
+                am.setBluetoothScoOn(true);
+            }
+        }
+    }
+
+    @TargetApi(Build.VERSION_CODES.S)
+    private static void routeAutoApi31(AudioManager am) {
+        try {
+            am.setMode(AudioManager.MODE_IN_COMMUNICATION);
             List<AudioDeviceInfo> commDevices = am.getAvailableCommunicationDevices();
             AudioDeviceInfo target = null;
 
@@ -113,30 +138,17 @@ public final class AudioDeviceManager {
 
             if (target != null) {
                 boolean set = am.setCommunicationDevice(target);
-                Log.d(TAG, "Auto routed to communication device: " + target.getProductName() + " (success=" + set + ")");
+                String name = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) ? String.valueOf(target.getProductName()) : "device";
+                Log.d(TAG, "Auto routed to communication device: " + name + " (success=" + set + ")");
             }
-        } else {
-            // Android 8 - 11 legacy SCO activation
-            if (isBluetoothConnected(context)) {
-                am.setMode(AudioManager.MODE_IN_COMMUNICATION);
-                am.startBluetoothSco();
-                am.setBluetoothScoOn(true);
-            }
+        } catch (Throwable t) {
+            Log.e(TAG, "Error in routeAutoApi31", t);
         }
     }
 
     private static void routeToBluetoothMic(Context context, AudioManager am) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            List<AudioDeviceInfo> commDevices = am.getAvailableCommunicationDevices();
-            for (AudioDeviceInfo d : commDevices) {
-                int type = d.getType();
-                if (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                    type == AudioDeviceInfo.TYPE_BLE_HEADSET) {
-                    am.setCommunicationDevice(d);
-                    Log.d(TAG, "Routed to Bluetooth device: " + d.getProductName());
-                    return;
-                }
-            }
+            routeToBluetoothMicApi31(am);
         } else {
             am.setMode(AudioManager.MODE_IN_COMMUNICATION);
             am.startBluetoothSco();
@@ -144,8 +156,42 @@ public final class AudioDeviceManager {
         }
     }
 
+    @TargetApi(Build.VERSION_CODES.S)
+    private static void routeToBluetoothMicApi31(AudioManager am) {
+        try {
+            am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+            List<AudioDeviceInfo> commDevices = am.getAvailableCommunicationDevices();
+            for (AudioDeviceInfo d : commDevices) {
+                int type = d.getType();
+                if (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                    type == AudioDeviceInfo.TYPE_BLE_HEADSET) {
+                    am.setCommunicationDevice(d);
+                    String name = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) ? String.valueOf(d.getProductName()) : "bluetooth";
+                    Log.d(TAG, "Routed to Bluetooth device: " + name);
+                    return;
+                }
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "Error in routeToBluetoothMicApi31", t);
+        }
+    }
+
     private static void routeToBuiltinMic(AudioManager am) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            routeToBuiltinMicApi31(am);
+        } else {
+            if (am.isBluetoothScoOn()) {
+                am.stopBluetoothSco();
+                am.setBluetoothScoOn(false);
+            }
+            am.setMode(AudioManager.MODE_NORMAL);
+        }
+    }
+
+    @TargetApi(Build.VERSION_CODES.S)
+    private static void routeToBuiltinMicApi31(AudioManager am) {
+        try {
+            am.setMode(AudioManager.MODE_IN_COMMUNICATION);
             List<AudioDeviceInfo> commDevices = am.getAvailableCommunicationDevices();
             for (AudioDeviceInfo d : commDevices) {
                 if (d.getType() == AudioDeviceInfo.TYPE_BUILTIN_MIC) {
@@ -154,12 +200,8 @@ public final class AudioDeviceManager {
                 }
             }
             am.clearCommunicationDevice();
-        } else {
-            if (am.isBluetoothScoOn()) {
-                am.stopBluetoothSco();
-                am.setBluetoothScoOn(false);
-            }
-            am.setMode(AudioManager.MODE_NORMAL);
+        } catch (Throwable t) {
+            Log.e(TAG, "Error in routeToBuiltinMicApi31", t);
         }
     }
 
@@ -179,10 +221,11 @@ public final class AudioDeviceManager {
         if (am == null) return false;
 
         AudioDeviceInfo[] devices = am.getDevices(AudioManager.GET_DEVICES_INPUTS);
+        if (devices == null) return false;
         for (AudioDeviceInfo device : devices) {
             int type = device.getType();
             if (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                type == AudioDeviceInfo.TYPE_BLE_HEADSET) {
+                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == AudioDeviceInfo.TYPE_BLE_HEADSET)) {
                 return true;
             }
         }
@@ -199,24 +242,26 @@ public final class AudioDeviceManager {
         if (am == null) return result;
 
         AudioDeviceInfo[] devices = am.getDevices(AudioManager.GET_DEVICES_INPUTS);
+        if (devices == null) return result;
         for (AudioDeviceInfo d : devices) {
-            CharSequence name = d.getProductName();
-            String label = (name != null && name.length() > 0) ? name.toString() : "Audio Input";
-            switch (d.getType()) {
-                case AudioDeviceInfo.TYPE_BLUETOOTH_SCO:
-                case AudioDeviceInfo.TYPE_BLE_HEADSET:
-                    result.add("🎧 " + label + " (Bluetooth)");
-                    break;
-                case AudioDeviceInfo.TYPE_USB_HEADSET:
-                case AudioDeviceInfo.TYPE_USB_DEVICE:
-                    result.add("🎙️ " + label + " (USB)");
-                    break;
-                case AudioDeviceInfo.TYPE_WIRED_HEADSET:
-                    result.add("🎧 " + label + " (Cable)");
-                    break;
-                case AudioDeviceInfo.TYPE_BUILTIN_MIC:
-                    result.add("📱 " + label + " (Interno)");
-                    break;
+            String label = "Audio Input";
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                CharSequence name = d.getProductName();
+                if (name != null && name.length() > 0) {
+                    label = name.toString();
+                }
+            }
+            int type = d.getType();
+            if (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == AudioDeviceInfo.TYPE_BLE_HEADSET)) {
+                result.add("🎧 " + label + " (Bluetooth)");
+            } else if (type == AudioDeviceInfo.TYPE_USB_HEADSET ||
+                       type == AudioDeviceInfo.TYPE_USB_DEVICE) {
+                result.add("🎙️ " + label + " (USB)");
+            } else if (type == AudioDeviceInfo.TYPE_WIRED_HEADSET) {
+                result.add("🎧 " + label + " (Cable)");
+            } else if (type == AudioDeviceInfo.TYPE_BUILTIN_MIC) {
+                result.add("📱 " + label + " (Interno)");
             }
         }
         return result;

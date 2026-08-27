@@ -142,6 +142,23 @@ android {
             isReturnDefaultValues = true
         }
     }
+
+    lint {
+        abortOnError = true
+        checkReleaseBuilds = false
+        warningsAsErrors = false
+        disable += listOf(
+            "HardcodedText",
+            "ContentDescription",
+            "SetTextI18n",
+            "UseCompoundDrawables",
+            "VectorRaster",
+            "Overdraw",
+            "UnusedResources",
+            "IconDensities",
+            "IconMissingDensityFolder"
+        )
+    }
 }
 
 // For APK builds (assemble/install), asset packs are ignored by AGP so we

@@ -87,6 +87,26 @@ public class PostProcessorTest {
         public String getActivePromptBody() {
             return prompt;
         }
+
+        @Override
+        public String getProviderId() {
+            return "custom";
+        }
+
+        @Override
+        public String getPostProcessPreset() {
+            return "clean";
+        }
+
+        @Override
+        public java.io.File getLocalS1ModelFile() {
+            return new java.io.File("/dev/null");
+        }
+
+        @Override
+        public boolean isLocalS1ModelInstalled() {
+            return false;
+        }
     }
 
     @Before
@@ -489,7 +509,7 @@ public class PostProcessorTest {
         CountDownLatch done = new CountDownLatch(1);
         AtomicReference<String> errorRef = new AtomicReference<>();
 
-        newProcessor(settings, this).process("hello world", new PostProcessor.PostProcessCallback() {
+        newProcessor(settings, new Object()).process("hello world", new PostProcessor.PostProcessCallback() {
             @Override
             public void onSuccess(String refinedText) {
                 done.countDown();

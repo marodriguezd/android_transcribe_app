@@ -78,7 +78,7 @@ jobs:
     # `testDebugUnitTest assembleDebug` would therefore assemble an APK
     # without the Rust .so and crash at launch.
     - name: Run unit tests (hard gate)
-      run: ./gradlew testDebugUnitTest
+      run: ./gradlew testDebugUnitTest --stacktrace --info
 
     - name: Run performance & latency benchmarks (optimization gate)
       run: python3 scripts/bench_performance.py

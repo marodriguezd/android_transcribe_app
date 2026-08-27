@@ -142,6 +142,18 @@
     <string name="pp_test_connection">Testa il post-processing</string>
     <string name="pp_test_success">Il post-processing funziona</string>
     <string name="pp_test_error">Test del post-processing fallito: %1$s</string>
+    <string name="pp_preset">Stile / Preset di post-elaborazione</string>
+    <string name="pp_preset_clean">Naturale / Pulito (Predefinito)</string>
+    <string name="pp_preset_formal">Professionale / Formale</string>
+    <string name="pp_preset_casual">Informale / Chat</string>
+    <string name="pp_preset_verbatim">Letterale / Grezzo (Senza LLM)</string>
+    <string name="pp_local_model_title">In locale: S1-mini (0.6B GGUF — Inglese)</string>
+    <string name="pp_local_model_installed">Modello installato (%1$s) — 100%% offline (Inglese)</string>
+    <string name="pp_local_model_not_installed">Normalizzatore opzionale in inglese (~380 MB di download)</string>
+    <string name="pp_download_s1">Scarica S1-mini GGUF</string>
+    <string name="pp_downloading_s1">Download di S1-mini GGUF in corso…</string>
+    <string name="pp_download_s1_done">S1-mini GGUF scaricato con successo</string>
+    <string name="pp_download_s1_error">Download non riuscito: %1$s</string>
 
     <!-- Dizionario di parole personalizzate (aggiunta del fork): correzione fonetica -->
     <string name="cw_card_title">Parole personalizzate</string>

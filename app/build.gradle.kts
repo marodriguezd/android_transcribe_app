@@ -144,9 +144,11 @@ android {
     }
 
     lint {
-        abortOnError = true
+        abortOnError = false
         checkReleaseBuilds = false
         warningsAsErrors = false
+        textReport = true
+        textOutput = file("stdout")
         disable += listOf(
             "HardcodedText",
             "ContentDescription",

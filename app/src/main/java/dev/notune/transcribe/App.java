@@ -102,4 +102,13 @@ public class App extends Application {
         // the model will fall back to its default language.
         MarkerFileHelper.writeString(this, name, value);
     }
+
+    @Override
+    public void onTrimMemory(int level) {
+        super.onTrimMemory(level);
+        try {
+            PostProcessor.nativeTrimMemory(level);
+        } catch (UnsatisfiedLinkError | NoClassDefFoundError ignored) {
+        }
+    }
 }

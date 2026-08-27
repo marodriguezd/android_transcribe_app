@@ -34,16 +34,37 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
     private SettingsManager settings;
     private MaterialSwitch switchEnabled;
     private AutoCompleteTextView dropdownProvider;
+    private AutoCompleteTextView dropdownPreset;
     private TextInputLayout layoutApiUrl;
     private TextInputLayout layoutApiKey;
+    private TextInputLayout layoutModel;
     private EditText editApiUrl;
     private EditText editApiKey;
     private AutoCompleteTextView editModel;
     private EditText editPrompt;
     private Button btnRefreshModels;
+    private View cardLocalModel;
+    private TextView txtS1Status;
+    private Button btnDownloadS1;
+    private ProgressBar progressS1;
 
     /** Provider id currently selected in the dropdown. */
     private String selectedProviderId;
+    private String selectedPreset;
+
+    private static final String[] PRESET_IDS = new String[] {
+            SettingsManager.PRESET_CLEAN,
+            SettingsManager.PRESET_FORMAL,
+            SettingsManager.PRESET_CASUAL,
+            SettingsManager.PRESET_VERBATIM
+    };
+
+    private static final int[] PRESET_STRING_RES = new int[] {
+            R.string.pp_preset_clean,
+            R.string.pp_preset_formal,
+            R.string.pp_preset_casual,
+            R.string.pp_preset_verbatim
+    };
 
     @Override
     protected void onDestroy() {
@@ -78,13 +99,19 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
 
         switchEnabled = findViewById(R.id.switch_pp_enabled);
         dropdownProvider = findViewById(R.id.dropdown_provider);
+        dropdownPreset = findViewById(R.id.dropdown_preset);
         layoutApiUrl = findViewById(R.id.layout_api_url);
         layoutApiKey = findViewById(R.id.layout_api_key);
+        layoutModel = findViewById(R.id.layout_model);
         editApiUrl = findViewById(R.id.edit_api_url);
         editApiKey = findViewById(R.id.edit_api_key);
         editModel = findViewById(R.id.edit_model);
         editPrompt = findViewById(R.id.edit_prompt);
         btnRefreshModels = findViewById(R.id.btn_refresh_models);
+        cardLocalModel = findViewById(R.id.card_local_model);
+        txtS1Status = findViewById(R.id.txt_s1_status);
+        btnDownloadS1 = findViewById(R.id.btn_download_s1);
+        progressS1 = findViewById(R.id.progress_s1);
 
         // Provider dropdown
         String[] labels = new String[SettingsManager.PROVIDERS.length];
@@ -104,21 +131,40 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
             updateProviderUi(p, true);
         });
 
+        // Preset dropdown
+        String[] presetLabels = new String[PRESET_STRING_RES.length];
+        for (int i = 0; i < PRESET_STRING_RES.length; i++) {
+            presetLabels[i] = getString(PRESET_STRING_RES[i]);
+        }
+        dropdownPreset.setAdapter(new ArrayAdapter<>(
+                this, android.R.layout.simple_list_item_1, presetLabels));
+
+        selectedPreset = settings.getPostProcessPreset();
+        int initialPresetIndex = 0;
+        for (int i = 0; i < PRESET_IDS.length; i++) {
+            if (PRESET_IDS[i].equals(selectedPreset)) {
+                initialPresetIndex = i;
+                break;
+            }
+        }
+        dropdownPreset.setText(presetLabels[initialPresetIndex], false);
+        dropdownPreset.setOnItemClickListener((parent, view, position, id) -> {
+            selectedPreset = PRESET_IDS[position];
+        });
+
+        // Local S1 model status & download
+        updateLocalModelCard();
+        btnDownloadS1.setOnClickListener(v -> downloadS1Model());
+
         switchEnabled.setChecked(settings.isPostProcessEnabled());
         editApiUrl.setText(settings.getApiUrl());
         editApiKey.setText(settings.getApiKey());
         editModel.setText(settings.getModelName());
         editPrompt.setText(settings.getActivePromptBody());
-        if (settings.isPostProcessEnabled() && settings.getApiKey().isEmpty()) {
+        if (settings.isPostProcessEnabled() && !SettingsManager.PROVIDER_LOCAL_S1.equals(selectedProviderId) && settings.getApiKey().isEmpty()) {
             layoutApiKey.setError(getString(R.string.pp_api_key_required));
         }
 
-        // Align the model field with the selected provider. A provider change
-        // leaves the old provider's model behind (e.g. switching OpenAI ->
-        // Groq kept "gpt-4o-mini"), which the new provider's API rejects,
-        // silently defeating post-processing. Replacing another provider's
-        // default (or an empty/unknown model) with the current provider's
-        // default keeps the stored model valid for the endpoint in use.
         updateProviderUi(current, false);
 
         btnRefreshModels.setOnClickListener(v -> fetchModels());
@@ -130,6 +176,74 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
         testConnection.setOnClickListener(v -> testConnection(testConnection));
     }
 
+    private void updateLocalModelCard() {
+        if (settings.isLocalS1ModelInstalled()) {
+            txtS1Status.setText(getString(R.string.pp_local_model_installed, "380 MB"));
+            btnDownloadS1.setVisibility(android.view.View.GONE);
+        } else {
+            txtS1Status.setText(getString(R.string.pp_local_model_not_installed));
+            btnDownloadS1.setVisibility(android.view.View.VISIBLE);
+        }
+    }
+
+    private void downloadS1Model() {
+        btnDownloadS1.setEnabled(false);
+        progressS1.setVisibility(android.view.View.VISIBLE);
+        progressS1.setIndeterminate(true);
+        txtS1Status.setText(R.string.pp_downloading_s1);
+
+        new Thread(() -> {
+            try {
+                java.io.File modelsDir = new java.io.File(getFilesDir(), "models");
+                if (!modelsDir.exists()) modelsDir.mkdirs();
+                java.io.File targetFile = new java.io.File(modelsDir, "s1-mini-q4_k_m.gguf");
+                java.io.File tempFile = new java.io.File(modelsDir, "s1-mini-q4_k_m.gguf.tmp");
+
+                String downloadUrl = "https://huggingface.co/superwhisper/s1-mini-GGUF/resolve/main/s1-mini-q4_k_m.gguf";
+                okhttp3.Request request = new okhttp3.Request.Builder().url(downloadUrl).build();
+                okhttp3.OkHttpClient client = new okhttp3.OkHttpClient.Builder()
+                        .connectTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+                        .readTimeout(300, java.util.concurrent.TimeUnit.SECONDS)
+                        .build();
+
+                try (okhttp3.Response response = client.newCall(request).execute()) {
+                    if (!response.isSuccessful()) {
+                        throw new java.io.IOException("HTTP " + response.code());
+                    }
+                    if (response.body() == null) {
+                        throw new java.io.IOException("Empty response");
+                    }
+                    try (java.io.InputStream in = response.body().byteStream();
+                         java.io.FileOutputStream out = new java.io.FileOutputStream(tempFile)) {
+                        byte[] buf = new byte[65536];
+                        int len;
+                        while ((len = in.read(buf)) != -1) {
+                            out.write(buf, 0, len);
+                        }
+                    }
+                    if (tempFile.renameTo(targetFile)) {
+                        runOnUiThread(() -> {
+                            progressS1.setVisibility(android.view.View.GONE);
+                            btnDownloadS1.setEnabled(true);
+                            btnDownloadS1.setVisibility(android.view.View.GONE);
+                            txtS1Status.setText(getString(R.string.pp_local_model_installed, "380 MB"));
+                            Toast.makeText(this, R.string.pp_download_s1_done, Toast.LENGTH_SHORT).show();
+                        });
+                    } else {
+                        throw new java.io.IOException("Failed to rename temporary file");
+                    }
+                }
+            } catch (Exception e) {
+                Log.e("PostProcessSettings", "Failed to download S1 model", e);
+                runOnUiThread(() -> {
+                    progressS1.setVisibility(android.view.View.GONE);
+                    btnDownloadS1.setEnabled(true);
+                    txtS1Status.setText(getString(R.string.pp_download_s1_error, e.getMessage()));
+                });
+            }
+        }).start();
+    }
+
     /**
      * Shows/hides the base-URL field (Custom only) and, on user-initiated
      * provider switches, pre-fills the model field with the provider's
@@ -137,7 +251,19 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
      * provider's default (avoids clobbering a hand-edited model).
      */
     private void updateProviderUi(SettingsManager.Provider p, boolean userInitiated) {
-        boolean isCustom = p.baseUrl == null;
+        boolean isLocal = SettingsManager.PROVIDER_LOCAL_S1.equals(p.id);
+        boolean isCustom = p.baseUrl == null && !isLocal;
+
+        cardLocalModel.setVisibility(isLocal ? android.view.View.VISIBLE : android.view.View.GONE);
+        layoutApiUrl.setVisibility(isCustom ? android.view.View.VISIBLE : android.view.View.GONE);
+        layoutApiKey.setVisibility(isLocal ? android.view.View.GONE : android.view.View.VISIBLE);
+        layoutModel.setVisibility(isLocal ? android.view.View.GONE : android.view.View.VISIBLE);
+        btnRefreshModels.setVisibility(isLocal ? android.view.View.GONE : android.view.View.VISIBLE);
+
+        if (isLocal) {
+            updateLocalModelCard();
+            layoutApiKey.setError(null);
+        }
         layoutApiUrl.setVisibility(isCustom ? android.view.View.VISIBLE : android.view.View.GONE);
 
         // Keep the model field consistent with the selected provider.
@@ -232,10 +358,14 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
         boolean nowEnabled = switchEnabled.isChecked();
         settings.setPostProcessEnabled(nowEnabled);
         settings.setProviderId(selectedProviderId);
+        if (selectedPreset != null) {
+            settings.setPostProcessPreset(selectedPreset);
+        }
         settings.setApiUrl(editApiUrl.getText().toString().trim());
         String apiKey = editApiKey.getText().toString().trim();
         settings.setApiKey(apiKey);
-        layoutApiKey.setError(apiKey.isEmpty() && nowEnabled
+        boolean isLocal = SettingsManager.PROVIDER_LOCAL_S1.equals(selectedProviderId);
+        layoutApiKey.setError(apiKey.isEmpty() && nowEnabled && !isLocal
                 ? getString(R.string.pp_api_key_required) : null);
         settings.setModelName(editModel.getText().toString().trim());
 

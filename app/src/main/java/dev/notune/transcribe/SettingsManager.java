@@ -51,6 +51,7 @@ public class SettingsManager implements PostProcessor.PostProcessorSettings {
     private static final String PP_MODEL_FILE = "pp_model";
     private static final String PP_PROMPT_FILE = "pp_prompt";
     private static final String PP_API_KEY_FILE = "pp_api_key";
+    private static final String PP_PRESET_FILE = "pp_preset";
 
     // Sentinel that guarantees the legacy -> marker migration runs at most once.
     private static final String MIGRATION_SENTINEL = "pp_migrated";
@@ -59,7 +60,12 @@ public class SettingsManager implements PostProcessor.PostProcessorSettings {
     private static final String DEFAULT_API_URL = "https://api.openai.com/v1";
     private static final String DEFAULT_MODEL = "gpt-4o-mini";
 
+    public static final String PROVIDER_LOCAL_S1 = "local_s1";
 
+    public static final String PRESET_CLEAN = "clean";
+    public static final String PRESET_FORMAL = "formal";
+    public static final String PRESET_CASUAL = "casual";
+    public static final String PRESET_VERBATIM = "verbatim";
 
     /**
      * Provider presets: known OpenAI-compatible endpoints. The user picks a
@@ -81,6 +87,7 @@ public class SettingsManager implements PostProcessor.PostProcessorSettings {
     }
 
     public static final Provider[] PROVIDERS = new Provider[] {
+        new Provider(PROVIDER_LOCAL_S1, "On-Device (SuperWhisper S1-mini)", null, "s1-mini-q4_k_m.gguf"),
         new Provider("groq",      "Groq",       "https://api.groq.com/openai/v1",       "llama-3.3-70b-versatile"),
         new Provider("openai",    "OpenAI",     "https://api.openai.com/v1",            "gpt-4o-mini"),
         new Provider("cerebras",  "Cerebras",   "https://api.cerebras.ai/v1",           "llama-3.3-70b"),
@@ -201,6 +208,28 @@ public class SettingsManager implements PostProcessor.PostProcessorSettings {
 
     public String getDefaultPrompt() {
         return appContext.getString(R.string.pp_default_prompt);
+    }
+
+    public String getPostProcessPreset() {
+        String p = readMarker(PP_PRESET_FILE);
+        return (p == null || p.isEmpty()) ? PRESET_CLEAN : p;
+    }
+
+    public void setPostProcessPreset(String preset) {
+        writeMarker(PP_PRESET_FILE, preset);
+    }
+
+    public File getLocalS1ModelFile() {
+        File modelsDir = new File(appContext.getFilesDir(), "models");
+        File preferred = new File(modelsDir, "s1-mini-q4_k_m.gguf");
+        if (preferred.exists()) return preferred;
+        File alt = new File(modelsDir, "s1-mini.gguf");
+        if (alt.exists()) return alt;
+        return preferred;
+    }
+
+    public boolean isLocalS1ModelInstalled() {
+        return getLocalS1ModelFile().exists();
     }
 
     // ----------------------------------------------------------------------

@@ -117,6 +117,15 @@ public class PostProcessor {
         this.owner = owner;
     }
 
+    private static final java.util.concurrent.ExecutorService onDeviceExecutor =
+            java.util.concurrent.Executors.newSingleThreadExecutor();
+
+    public static native String nativeNormalizeOnDevice(String rawText, String preset, String customPrompt);
+    public static native void nativeSetS1ModelPath(String path);
+    public static native void nativeUnloadS1();
+    public static native boolean nativeIsS1Loaded();
+    public static native void nativeTrimMemory(int level);
+
     /**
      * The settings surface {@link PostProcessor} reads. Implemented by
      * {@link SettingsManager} in production; a fake implements it in the
@@ -132,6 +141,22 @@ public class PostProcessor {
         String getModelName();
 
         String getActivePromptBody();
+
+        default String getProviderId() {
+            return "custom";
+        }
+
+        default String getPostProcessPreset() {
+            return "clean";
+        }
+
+        default java.io.File getLocalS1ModelFile() {
+            return new java.io.File("/dev/null");
+        }
+
+        default boolean isLocalS1ModelInstalled() {
+            return false;
+        }
     }
 
     private static OkHttpClient getSharedClient() {
@@ -247,6 +272,11 @@ public class PostProcessor {
         // can change between receiving the ASR result and creating this call.
         if (!forceRequest && !settings.isPostProcessEnabled()) {
             dispatchToUi(() -> callback.onSuccess(rawText));
+            return;
+        }
+
+        if (SettingsManager.PROVIDER_LOCAL_S1.equals(settings.getProviderId())) {
+            processOnDeviceInternal(rawText, callback, forceRequest);
             return;
         }
 
@@ -386,6 +416,45 @@ public class PostProcessor {
             debugLog("Failed to create post-processing request: " + e.getClass().getSimpleName());
             dispatchToUi(() -> callback.onError("Request setup error: " + error));
         }
+    }
+
+    private void processOnDeviceInternal(final String rawText, final PostProcessCallback callback,
+                                         final boolean forceRequest) {
+        if (!settings.isLocalS1ModelInstalled()) {
+            dispatchToUi(() -> callback.onError("On-device S1-mini model not found. Download it in settings."));
+            return;
+        }
+
+        final java.io.File modelFile = settings.getLocalS1ModelFile();
+        final String modelPath = (modelFile != null) ? modelFile.getAbsolutePath() : "";
+        final String preset = settings.getPostProcessPreset();
+        final String customPrompt = settings.getActivePromptBody();
+
+        onDeviceExecutor.execute(() -> {
+            try {
+                nativeSetS1ModelPath(modelPath);
+                if (forceRequest) {
+                    // Diagnostic probe for on-device S1 normalizer
+                    String result = nativeNormalizeOnDevice(DIAGNOSTIC_INPUT, "clean", null);
+                    if (result != null) {
+                        dispatchToUi(() -> callback.onSuccess(DIAGNOSTIC_MARKER));
+                    } else {
+                        dispatchToUi(() -> callback.onError("On-device model initialization failed"));
+                    }
+                    return;
+                }
+
+                String refined = nativeNormalizeOnDevice(rawText, preset, customPrompt);
+                if (refined != null && !refined.trim().isEmpty()) {
+                    dispatchToUi(() -> callback.onSuccess(refined));
+                } else {
+                    dispatchToUi(() -> callback.onError("On-device normalizer returned empty output"));
+                }
+            } catch (Throwable t) {
+                Log.e(TAG, "Error running on-device normalization", t);
+                dispatchToUi(() -> callback.onError(t.getMessage() != null ? t.getMessage() : "On-device normalization error"));
+            }
+        });
     }
 
     /** Returns a release-safe explanation for common provider failures. */

@@ -472,6 +472,41 @@ public class PostProcessorTest {
         assertEquals("exactly one final delivery", 1, deliveries.get());
     }
 
+    @Test
+    public void localS1ProviderWithoutModelFailsSafely() throws Exception {
+        FakeSettings settings = new FakeSettings() {
+            @Override
+            public String getProviderId() {
+                return SettingsManager.PROVIDER_LOCAL_S1;
+            }
+
+            @Override
+            public boolean isLocalS1ModelInstalled() {
+                return false;
+            }
+        };
+
+        CountDownLatch done = new CountDownLatch(1);
+        AtomicReference<String> errorRef = new AtomicReference<>();
+
+        newProcessor(settings, this).process("hello world", new PostProcessor.PostProcessCallback() {
+            @Override
+            public void onSuccess(String refinedText) {
+                done.countDown();
+            }
+
+            @Override
+            public void onError(String error) {
+                errorRef.set(error);
+                done.countDown();
+            }
+        });
+
+        assertTrue(done.await(5, TimeUnit.SECONDS));
+        assertNotNull(errorRef.get());
+        assertTrue(errorRef.get().contains("S1-mini"));
+    }
+
     private static PostProcessor.PostProcessCallback callback(
             final String okPrefix, final String errPrefix,
             final AtomicReference<String> outcome, final CountDownLatch done) {

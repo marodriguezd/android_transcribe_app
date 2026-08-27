@@ -15,6 +15,7 @@ import android.os.Build;
 import android.os.Bundle;
 import android.provider.Settings;
 import android.speech.RecognizerIntent;
+import android.text.TextUtils;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.View;
@@ -38,6 +39,8 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.util.ArrayList;
+import java.util.List;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -366,7 +369,7 @@ public class MainActivity extends AppCompatActivity {
             if (!connected.isEmpty()) {
                 StringBuilder sb = new StringBuilder(getString(R.string.desc_audio_input));
                 sb.append("\n\n").append(getString(R.string.mic_connected_label)).append(" ");
-                sb.append(String.join(", ", connected));
+                sb.append(TextUtils.join(", ", connected));
                 txtConnected.setText(sb.toString());
             } else {
                 txtConnected.setText(R.string.desc_audio_input);

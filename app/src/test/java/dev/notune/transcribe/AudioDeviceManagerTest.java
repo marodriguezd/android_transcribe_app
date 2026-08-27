@@ -81,6 +81,7 @@ public class AudioDeviceManagerTest {
         // Multiple sequential and redundant releases must never throw
         AudioDeviceManager.releaseMicrophone(null);
         AudioDeviceManager.releaseMicrophone(null);
+        assertFalse(AudioDeviceManager.isRoutingActive());
     }
 
     @Test

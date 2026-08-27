@@ -102,10 +102,12 @@ public class MainActivity extends AppCompatActivity {
     static {
         try {
             System.loadLibrary("c++_shared");
-        } catch (UnsatisfiedLinkError e) {
-            Log.w(TAG, "Failed to load c++_shared", e);
+            System.loadLibrary("android_transcribe_app");
+        } catch (Throwable t) {
+            try {
+                Log.w(TAG, "Failed to load native libraries", t);
+            } catch (Throwable ignored) {}
         }
-        System.loadLibrary("android_transcribe_app");
     }
 
     private TextView statusText;

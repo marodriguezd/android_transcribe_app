@@ -51,8 +51,10 @@ public class TranscribeFileActivity extends AppCompatActivity {
         try {
             System.loadLibrary("c++_shared");
             System.loadLibrary("android_transcribe_app");
-        } catch (UnsatisfiedLinkError e) {
-            Log.e(TAG, "Failed to load native libraries", e);
+        } catch (Throwable t) {
+            try {
+                Log.e(TAG, "Failed to load native libraries", t);
+            } catch (Throwable ignored) {}
         }
     }
 

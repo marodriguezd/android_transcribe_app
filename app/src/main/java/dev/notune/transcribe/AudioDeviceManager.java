@@ -35,6 +35,13 @@ public final class AudioDeviceManager {
     }
 
     /**
+     * Returns true if audio routing is currently active for recording.
+     */
+    public static boolean isRoutingActive() {
+        return isRoutingActive;
+    }
+
+    /**
      * Acquires the best audio input device based on user preference and hardware state.
      * Must be called immediately before opening the audio capture stream.
      */

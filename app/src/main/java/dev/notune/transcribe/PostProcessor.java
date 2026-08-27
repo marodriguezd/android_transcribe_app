@@ -457,7 +457,9 @@ public class PostProcessor {
                     dispatchToUi(() -> callback.onError("On-device normalizer returned empty output"));
                 }
             } catch (Throwable t) {
-                Log.e(TAG, "Error running on-device normalization", t);
+                try {
+                    Log.e(TAG, "Error running on-device normalization", t);
+                } catch (Throwable ignored) {}
                 dispatchToUi(() -> callback.onError(t.getMessage() != null ? t.getMessage() : "On-device normalization error"));
             }
         });
@@ -529,7 +531,10 @@ public class PostProcessor {
     /** Keeps diagnostic details out of release logs, including transcript data. */
     private static void debugLog(String message) {
         if (BuildConfig.DEBUG) {
-            Log.d(TAG, message);
+            try {
+                Log.d(TAG, message);
+            } catch (Throwable ignored) {
+            }
         }
     }
 

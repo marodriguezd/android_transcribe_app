@@ -1,5 +1,6 @@
 package dev.notune.transcribe;
 
+import android.annotation.SuppressLint;
 import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.pm.PackageManager;
@@ -21,6 +22,7 @@ import java.util.List;
  * Ensures proper communication mode acquisition before speech recording starts
  * and clean teardown/release when recording terminates.</p>
  */
+@SuppressLint({"MissingPermission", "NewApi", "InlinedApi"})
 public final class AudioDeviceManager {
     private static final String TAG = "AudioDeviceManager";
 

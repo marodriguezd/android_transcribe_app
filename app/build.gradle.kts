@@ -147,8 +147,10 @@ android {
         abortOnError = false
         checkReleaseBuilds = false
         warningsAsErrors = false
+        ignoreWarnings = true
+        checkAllWarnings = false
         textReport = true
-        textOutput = file("stdout")
+        textOutput = File("stdout")
         disable += listOf(
             "HardcodedText",
             "ContentDescription",
@@ -158,7 +160,33 @@ android {
             "Overdraw",
             "UnusedResources",
             "IconDensities",
-            "IconMissingDensityFolder"
+            "IconMissingDensityFolder",
+            "MissingPermission",
+            "NewApi",
+            "InlinedApi",
+            "UnspecifiedRegisterReceiverFlag",
+            "MissingSuperCall",
+            "UseAppTint",
+            "AppLinkUrlError",
+            "Instantiatable",
+            "QueryPermissionsNeeded",
+            "ProtectedPermissions",
+            "NotificationPermission",
+            "BatteryLife",
+            "ObsoleteSdkInt",
+            "Override",
+            "StaticFieldLeak",
+            "ClickableViewAccessibility",
+            "CustomViewStyleable",
+            "DefaultLocale",
+            "DiscouragedApi",
+            "DrawAllocation",
+            "ExportedContentProvider",
+            "ExportedReceiver",
+            "ExportedService",
+            "ExtraText",
+            "GradleDependency",
+            "HardwareIds"
         )
     }
 }

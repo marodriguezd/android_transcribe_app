@@ -221,6 +221,7 @@ public class MainActivity extends AppCompatActivity {
         // Initial check
         updateVoiceInputStatus();
         setupFloatingModeControls();
+        setupMicModeControls();
 
         // Debug builds ship without the bundled model to keep the APK small;
         // download it from Hugging Face on first run. This is also called from
@@ -254,6 +255,7 @@ public class MainActivity extends AppCompatActivity {
         // Re-check on return from the keyboard chooser, settings, or a test run.
         updateVoiceInputStatus();
         setupFloatingModeControls();
+        setupMicModeControls();
         // Re-check the debug model state after a configuration change or when
         // returning from another screen.
         maybeDownloadDebugModel();
@@ -330,6 +332,46 @@ public class MainActivity extends AppCompatActivity {
                 stopService(serviceIntent);
             }
         });
+    }
+
+    private void setupMicModeControls() {
+        RadioGroup rgMic = findViewById(R.id.rg_mic_mode);
+        TextView txtConnected = findViewById(R.id.text_connected_mics);
+        if (rgMic == null) return;
+
+        SettingsManager sm = new SettingsManager(this);
+        String currentMode = sm.getMicMode();
+        if (AudioDeviceManager.MIC_MODE_BLUETOOTH_ONLY.equals(currentMode)) {
+            rgMic.check(R.id.rb_mic_bluetooth);
+        } else if (AudioDeviceManager.MIC_MODE_BUILTIN_ONLY.equals(currentMode)) {
+            rgMic.check(R.id.rb_mic_builtin);
+        } else {
+            rgMic.check(R.id.rb_mic_auto);
+        }
+
+        rgMic.setOnCheckedChangeListener((group, checkedId) -> {
+            String newMode;
+            if (checkedId == R.id.rb_mic_bluetooth) {
+                newMode = AudioDeviceManager.MIC_MODE_BLUETOOTH_ONLY;
+            } else if (checkedId == R.id.rb_mic_builtin) {
+                newMode = AudioDeviceManager.MIC_MODE_BUILTIN_ONLY;
+            } else {
+                newMode = AudioDeviceManager.MIC_MODE_AUTO;
+            }
+            sm.setMicMode(newMode);
+        });
+
+        if (txtConnected != null) {
+            List<String> connected = AudioDeviceManager.getConnectedInputDevices(this);
+            if (!connected.isEmpty()) {
+                StringBuilder sb = new StringBuilder(getString(R.string.desc_audio_input));
+                sb.append("\n\n").append(getString(R.string.mic_connected_label)).append(" ");
+                sb.append(String.join(", ", connected));
+                txtConnected.setText(sb.toString());
+            } else {
+                txtConnected.setText(R.string.desc_audio_input);
+            }
+        }
     }
 
     private void startFloatingService() {

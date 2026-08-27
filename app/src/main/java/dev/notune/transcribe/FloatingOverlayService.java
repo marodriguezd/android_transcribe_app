@@ -710,6 +710,8 @@ public class FloatingOverlayService extends Service {
         mStatusText.setText(getString(R.string.floating_status_listening));
         mCancelButton.setVisibility(View.VISIBLE);
         startPulseAnimation();
+        SettingsManager sm = new SettingsManager(this);
+        AudioDeviceManager.acquireMicrophone(this, sm.getMicMode());
         startRecording(new File(getFilesDir(), "auto_stop").exists(), ++mCurrentSessionId);
     }
 
@@ -722,6 +724,7 @@ public class FloatingOverlayService extends Service {
         if (mProgress != null) mProgress.setVisibility(View.VISIBLE);
         if (mHintText != null) mHintText.setText(R.string.ime_tap_to_record);
         stopPulseAnimation();
+        AudioDeviceManager.releaseMicrophone(this);
         stopRecording();
     }
 
@@ -732,6 +735,7 @@ public class FloatingOverlayService extends Service {
         mLastRawTranscript = null;
         mTranscribedResult = null;
         try { cancelRecording(); } catch (Throwable ignored) { }
+        AudioDeviceManager.releaseMicrophone(this);
         PostProcessor.cancelAllFor(this);
         stopPulseAnimation();
         if (mProgress != null) mProgress.setVisibility(View.GONE);
@@ -970,6 +974,7 @@ public class FloatingOverlayService extends Service {
             saveBubblePosition();
         }
         try { cancelRecording(); } catch (Throwable ignored) { }
+        AudioDeviceManager.releaseMicrophone(this);
         try { cleanupNative(); } catch (Throwable ignored) { }
         PostProcessor.cancelAllFor(this);
         if (mIsDismissTargetAttached && mWindowManager != null && mDismissTargetView != null) {

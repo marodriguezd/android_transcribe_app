@@ -266,4 +266,12 @@
     <string name="floating_card_subtitle">Bolla fluttuante stile Whisperflow con incolla automatico via Accessibilità.</string>
     <string name="btn_overlay_permission">Autorizzazione Sovrapposizione</string>
     <string name="btn_accessibility_permission">Autorizzazione Accessibilità</string>
+
+    <!-- Ingresso audio e microfoni -->
+    <string name="section_audio_input">Ingresso audio e microfoni</string>
+    <string name="desc_audio_input">Seleziona la sorgente del microfono per la dettatura (cuffie Bluetooth, microfoni USB o microfono interno).</string>
+    <string name="mic_mode_auto">Automatico (Bluetooth / USB se collegato)</string>
+    <string name="mic_mode_bluetooth">Preferisci microfono Bluetooth</string>
+    <string name="mic_mode_builtin">Solo microfono interno del telefono</string>
+    <string name="mic_connected_label">Dispositivi collegati:</string>
 </resources>

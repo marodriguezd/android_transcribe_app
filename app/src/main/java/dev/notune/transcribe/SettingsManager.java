@@ -52,6 +52,7 @@ public class SettingsManager implements PostProcessor.PostProcessorSettings {
     private static final String PP_PROMPT_FILE = "pp_prompt";
     private static final String PP_API_KEY_FILE = "pp_api_key";
     private static final String PP_PRESET_FILE = "pp_preset";
+    private static final String MIC_MODE_FILE = "mic_mode";
 
     // Sentinel that guarantees the legacy -> marker migration runs at most once.
     private static final String MIGRATION_SENTINEL = "pp_migrated";
@@ -230,6 +231,15 @@ public class SettingsManager implements PostProcessor.PostProcessorSettings {
 
     public boolean isLocalS1ModelInstalled() {
         return getLocalS1ModelFile().exists();
+    }
+
+    public String getMicMode() {
+        String val = readMarker(MIC_MODE_FILE);
+        return val != null && !val.trim().isEmpty() ? val.trim() : AudioDeviceManager.MIC_MODE_AUTO;
+    }
+
+    public void setMicMode(String mode) {
+        writeMarker(MIC_MODE_FILE, mode != null ? mode : AudioDeviceManager.MIC_MODE_AUTO);
     }
 
     // ----------------------------------------------------------------------

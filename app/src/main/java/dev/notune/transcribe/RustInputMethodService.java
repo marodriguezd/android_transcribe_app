@@ -338,6 +338,7 @@ public class RustInputMethodService extends InputMethodService {
                 }
 
                 if (isRecording) {
+                    AudioDeviceManager.releaseMicrophone(this);
                     stopRecording();
                     if (pauseAudioActive) {
                         audioPauser.abandon(this);
@@ -354,6 +355,8 @@ public class RustInputMethodService extends InputMethodService {
                         audioPauser.request(this);
                         pauseAudioActive = true;
                     }
+                    SettingsManager sm = new SettingsManager(this);
+                    AudioDeviceManager.acquireMicrophone(this, sm.getMicMode());
                     startRecording(isAutoStopEnabled(), ++currentSessionId);
                     updateRecordButtonUI(true);
                 }
@@ -530,6 +533,7 @@ public class RustInputMethodService extends InputMethodService {
     public void onDestroy() {
         currentSessionId++;
         try { cancelRecording(); } catch (Throwable ignored) { }
+        AudioDeviceManager.releaseMicrophone(this);
         super.onDestroy();
         isDestroyed = true;
         currentSessionId++;
@@ -560,6 +564,7 @@ public class RustInputMethodService extends InputMethodService {
         mainHandler.post(() -> {
             if (sessionId != currentSessionId) return;
             if (isRecording) {
+                AudioDeviceManager.releaseMicrophone(RustInputMethodService.this);
                 stopRecording();
                 if (pauseAudioActive) {
                     audioPauser.abandon(this);
@@ -684,6 +689,7 @@ public class RustInputMethodService extends InputMethodService {
         resultPending = false;
         lastRawTranscript = null;
         try { cancelRecording(); } catch (Throwable ignored) { }
+        AudioDeviceManager.releaseMicrophone(this);
         PostProcessor.cancelAllFor(this);
         if (pauseAudioActive) {
             audioPauser.abandon(this);

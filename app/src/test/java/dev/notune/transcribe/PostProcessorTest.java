@@ -497,7 +497,7 @@ public class PostProcessorTest {
         FakeSettings settings = new FakeSettings() {
             @Override
             public String getProviderId() {
-                return SettingsManager.PROVIDER_LOCAL_S1;
+                return PostProcessor.PROVIDER_LOCAL_S1;
             }
 
             @Override

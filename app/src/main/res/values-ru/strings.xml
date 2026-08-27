@@ -266,4 +266,12 @@
     <string name="floating_card_subtitle">Плавающий пузырь в стиле Whisperflow с автовставкой через Специальные возможности.</string>
     <string name="btn_overlay_permission">Наложение поверх</string>
     <string name="btn_accessibility_permission">Спец. возможности</string>
+
+    <!-- Аудиовход и микрофоны -->
+    <string name="section_audio_input">Аудиовход и микрофоны</string>
+    <string name="desc_audio_input">Выберите предпочтительный микрофон для диктовки (Bluetooth-гарнитуры, USB-микрофоны или встроенный микрофон).</string>
+    <string name="mic_mode_auto">Автоматически (Bluetooth / USB при подключении)</string>
+    <string name="mic_mode_bluetooth">Предпочитать Bluetooth-гарнитуру</string>
+    <string name="mic_mode_builtin">Только встроенный микрофон телефона</string>
+    <string name="mic_connected_label">Подключенные устройства:</string>
 </resources>

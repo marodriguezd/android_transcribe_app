@@ -117,6 +117,12 @@ public class PostProcessor {
         this.owner = owner;
     }
 
+    public static final String PROVIDER_LOCAL_S1 = "local_s1";
+    public static final String PRESET_CLEAN = "clean";
+    public static final String PRESET_FORMAL = "formal";
+    public static final String PRESET_CASUAL = "casual";
+    public static final String PRESET_VERBATIM = "verbatim";
+
     private static final java.util.concurrent.ExecutorService onDeviceExecutor =
             java.util.concurrent.Executors.newSingleThreadExecutor();
 
@@ -275,7 +281,7 @@ public class PostProcessor {
             return;
         }
 
-        if (SettingsManager.PROVIDER_LOCAL_S1.equals(settings.getProviderId())) {
+        if (PROVIDER_LOCAL_S1.equals(settings.getProviderId())) {
             processOnDeviceInternal(rawText, callback, forceRequest);
             return;
         }

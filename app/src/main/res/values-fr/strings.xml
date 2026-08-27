@@ -266,4 +266,12 @@
     <string name="floating_card_subtitle">Bulle flottante style Whisperflow avec collage automatique par Accessibilité.</string>
     <string name="btn_overlay_permission">Permission Superposition</string>
     <string name="btn_accessibility_permission">Permission Accessibilité</string>
+
+    <!-- Entrée audio et microphones -->
+    <string name="section_audio_input">Entrée audio et microphones</string>
+    <string name="desc_audio_input">Sélectionnez la source de microphone préférée pour la dictée (casques Bluetooth, micros USB ou micro interne).</string>
+    <string name="mic_mode_auto">Automatique (Bluetooth / USB si connecté)</string>
+    <string name="mic_mode_bluetooth">Préférer le micro Bluetooth</string>
+    <string name="mic_mode_builtin">Microphone interne du téléphone uniquement</string>
+    <string name="mic_connected_label">Appareils connectés :</string>
 </resources>

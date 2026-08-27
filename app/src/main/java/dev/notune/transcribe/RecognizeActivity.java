@@ -70,6 +70,8 @@ public class RecognizeActivity extends AppCompatActivity {
             audioPauser.request(this);
             pauseAudioActive = true;
         }
+        SettingsManager sm = new SettingsManager(this);
+        AudioDeviceManager.acquireMicrophone(this, sm.getMicMode());
         startRecording(isAutoStopEnabled(), ++currentSessionId);
     }
 
@@ -78,6 +80,7 @@ public class RecognizeActivity extends AppCompatActivity {
         isRecording = false;
         currentSessionId++;
         try { cancelRecording(); } catch (Throwable ignored) { }
+        AudioDeviceManager.releaseMicrophone(this);
         PostProcessor.cancelAllFor(this);
         if (pauseAudioActive) {
             audioPauser.abandon(this);
@@ -92,6 +95,7 @@ public class RecognizeActivity extends AppCompatActivity {
         if (!isRecording) return;
         isRecording = false;
         status.setText(getString(R.string.rec_processing));
+        AudioDeviceManager.releaseMicrophone(this);
         stopRecording();
         if (pauseAudioActive) {
             audioPauser.abandon(this);
@@ -119,6 +123,7 @@ public class RecognizeActivity extends AppCompatActivity {
             isRecording = false;
             currentSessionId++;
             try { cancelRecording(); } catch (Throwable t) { /* ignore */ }
+            AudioDeviceManager.releaseMicrophone(this);
             if (pauseAudioActive) {
                 audioPauser.abandon(this);
                 pauseAudioActive = false;
@@ -132,6 +137,7 @@ public class RecognizeActivity extends AppCompatActivity {
     protected void onDestroy() {
         currentSessionId++;
         try { cancelRecording(); } catch (Throwable ignored) { }
+        AudioDeviceManager.releaseMicrophone(this);
         super.onDestroy();
         if (pauseAudioActive) {
             audioPauser.abandon(this);

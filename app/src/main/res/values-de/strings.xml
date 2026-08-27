@@ -266,4 +266,12 @@
     <string name="floating_card_subtitle">Schwebende Blase im Whisperflow-Stil mit automatischer Einfügung.</string>
     <string name="btn_overlay_permission">Überlagerungsberechtigung</string>
     <string name="btn_accessibility_permission">Barrierefreiheit-Berechtigung</string>
+
+    <!-- Audioeingang & Mikrofone -->
+    <string name="section_audio_input">Audioeingang &amp; Mikrofone</string>
+    <string name="desc_audio_input">Bevorzugte Mikrofonquelle für Diktate auswählen (Bluetooth-Headsets, USB-Mikrofone oder internes Mikrofon).</string>
+    <string name="mic_mode_auto">Automatisch (Bluetooth / USB falls verbunden)</string>
+    <string name="mic_mode_bluetooth">Bluetooth-Headset-Mikrofon bevorzugen</string>
+    <string name="mic_mode_builtin">Nur internes Telefonmikrofon</string>
+    <string name="mic_connected_label">Verbundene Geräte:</string>
 </resources>

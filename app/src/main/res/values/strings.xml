@@ -287,4 +287,12 @@
     <string name="floating_card_subtitle">Whisperflow-style floating bubble with direct Accessibility auto-paste.</string>
     <string name="btn_overlay_permission">Overlay Permission</string>
     <string name="btn_accessibility_permission">Accessibility Permission</string>
+
+    <!-- Audio input / microphone selection -->
+    <string name="section_audio_input">Audio Input &amp; Microphones</string>
+    <string name="desc_audio_input">Select preferred microphone source for dictation (Bluetooth headsets, USB mics, or internal phone mic).</string>
+    <string name="mic_mode_auto">Auto (Bluetooth / USB if connected)</string>
+    <string name="mic_mode_bluetooth">Prefer Bluetooth headset mic</string>
+    <string name="mic_mode_builtin">Internal phone microphone only</string>
+    <string name="mic_connected_label">Connected devices:</string>
 </resources>

@@ -264,6 +264,14 @@
     <string name="accessibility_paste_failed">Error al pegar texto</string>
     <string name="floating_card_title">Dictado Flotante y Accesibilidad</string>
     <string name="floating_card_subtitle">Burbuja flotante tipo Whisperflow con pegado automático por Accesibilidad.</string>
-    <string name="btn_overlay_permission">Permiso Superposición</string>
-    <string name="btn_accessibility_permission">Permiso Accesibilidad</string>
+    <string name="btn_overlay_permission">Permiso de superposición</string>
+    <string name="btn_accessibility_permission">Permiso de accesibilidad</string>
+
+    <!-- Entrada de audio y micrófonos -->
+    <string name="section_audio_input">Entrada de audio y micrófonos</string>
+    <string name="desc_audio_input">Selecciona la fuente de micrófono preferida para dictar (auriculares Bluetooth, micrófonos USB o micrófono interno).</string>
+    <string name="mic_mode_auto">Automático (Bluetooth / USB si está conectado)</string>
+    <string name="mic_mode_bluetooth">Preferir micrófono Bluetooth</string>
+    <string name="mic_mode_builtin">Solo micrófono interno del teléfono</string>
+    <string name="mic_connected_label">Dispositivos detectados:</string>
 </resources>

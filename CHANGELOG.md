@@ -4,14 +4,16 @@ Change log of **Aura Transcribe** (Next-Gen evolution of [notune/android_transcr
 
 # v0.2.1
 
-Quality, audio, and stability release introducing default internal microphone selection, wireless Bluetooth headset detection, audio routing fixes, AI post-processing configuration guardrails, and smart UI feedback:
+Quality, audio, and intelligence release introducing the universal WhisperFlow prompt engine, curated model packs for lightweight/offline workflows, default internal microphone selection, wireless Bluetooth headset detection, AI post-processing configuration guardrails, and smart UI feedback:
 
+- **Universal WhisperFlow-Level Prompt Engine:** Engineered an advanced system prompt for all model tiers (7B–27B up to 70B/120B) capable of context-adaptive formatting (Markdown bullet/numbered lists for shopping/tasks, atomic technical casing for coding/agent prompts, fluent conversational cadence), disfluency removal, self-correction resolution, and meta-voice command execution (*"borra eso"*, *"entre comillas"*, *"en negrita"*).
+- **Curated Recommended Model Packs:** Added interactive packs dialog in `ModelsActivity` featuring 1-tap presets for *⚡ Ultralight Offline Pack (Canary 180M / Parakeet 110M + S1-mini)*, *🏆 Pro Integrated Pack (Nemotron 0.6B + AI Fix Cloud)*, and *🚀 Whisper Extended Pack (Whisper Large-v3-Turbo)*.
 - **Built-in Device Mic by Default:** Default microphone mode is set to `MIC_MODE_BUILTIN_ONLY` ensuring 100% out-of-the-box capture reliability. Users can toggle "Automático" or "Solo Bluetooth" on demand.
 - **Wireless Bluetooth Headset Detection & Routing:** Overhauled `AudioDeviceManager` to seamlessly detect and route audio from wireless earbuds (SCO, A2DP, BLE Audio, Hearing Aids), USB mics, and wired headsets with runtime `BLUETOOTH_CONNECT` permission handling on Android 12–15+.
 - **AI Fix Configuration Guardrails:** `SettingsManager.isPostProcessEnabled()` requires `isPostProcessConfigured()`. AI post-processing cannot run or stay enabled without a valid API key (Cloud providers) or the S1-mini model installed (Local provider).
 - **Smart Toggle Feedback:** On-screen keyboard (`RustInputMethodService`) and floating overlay (`FloatingOverlayService`) reject turning on "AI Fix" when not configured, showing a localized toast guidance message.
 - **Settings Screen Error Handling:** `PostProcessSettingsActivity` validates API key presence and model installation upon toggling and saving.
-- **100% i18n Parity (248 Strings):** Added `pp_not_configured_prompt` in all 6 localized resource files (`de`, `es`, `fr`, `it`, `pt`, `ru`).
+- **100% i18n Parity (257 Strings across 6 Locales):** Complete translation coverage in all supported locales (`de`, `es`, `fr`, `it`, `pt`, `ru`).
 - **Guardrail & Audio Test Suite:** Added plain-JVM decoupled unit test suite `PostProcessConfigurationGuardTest.java` and audio device routing suite `AudioDeviceManagerTest.java`.
 
 # v0.2.0

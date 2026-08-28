@@ -82,6 +82,8 @@ public class ModelsActivity extends AppCompatActivity {
     private static final ModelLink[] MODEL_LINKS = {
             new ModelLink("Parakeet TDT 110M", R.string.model_desc_parakeet110m, "135 MB",
                     "https://huggingface.co/handy-computer/parakeet-tdt_ctc-110m-gguf/resolve/main/parakeet-tdt_ctc-110m-Q8_0.gguf"),
+            new ModelLink("Canary 180M Flash", R.string.model_desc_canary_180m, "210 MB",
+                    "https://huggingface.co/epapanita/canary-180m-flash-gguf/resolve/main/canary-180m-flash-q8_0.gguf"),
             new ModelLink("SenseVoice Small", R.string.model_desc_sensevoice, "241 MB",
                     "https://huggingface.co/handy-computer/SenseVoiceSmall-gguf/resolve/main/SenseVoiceSmall-Q8_0.gguf"),
             new ModelLink("Whisper Small", R.string.model_desc_whisper_small, "257 MB",
@@ -96,6 +98,41 @@ public class ModelsActivity extends AppCompatActivity {
                     "https://huggingface.co/superwhisper/s1-mini-GGUF/resolve/main/s1-mini-q4_k_m.gguf"),
             new ModelLink("huggingface.co/handy-computer", R.string.model_desc_browse, "",
                     "https://huggingface.co/handy-computer"),
+    };
+
+    private static final class RecommendedPack {
+        final int titleRes;
+        final int descRes;
+        final String actionUrl;
+        final boolean isPostProcessSettings;
+
+        RecommendedPack(int titleRes, int descRes, String actionUrl, boolean isPostProcessSettings) {
+            this.titleRes = titleRes;
+            this.descRes = descRes;
+            this.actionUrl = actionUrl;
+            this.isPostProcessSettings = isPostProcessSettings;
+        }
+    }
+
+    private static final RecommendedPack[] RECOMMENDED_PACKS = {
+            new RecommendedPack(
+                    R.string.pack_pro_title,
+                    R.string.pack_pro_desc,
+                    null,
+                    true
+            ),
+            new RecommendedPack(
+                    R.string.pack_ultralight_title,
+                    R.string.pack_ultralight_desc,
+                    "https://huggingface.co/epapanita/canary-180m-flash-gguf/resolve/main/canary-180m-flash-q8_0.gguf",
+                    false
+            ),
+            new RecommendedPack(
+                    R.string.pack_multilingual_title,
+                    R.string.pack_multilingual_desc,
+                    "https://huggingface.co/handy-computer/whisper-large-v3-turbo-gguf/resolve/main/whisper-large-v3-turbo-Q8_0.gguf",
+                    false
+            )
     };
 
     private LinearLayout modelList;
@@ -127,6 +164,10 @@ public class ModelsActivity extends AppCompatActivity {
         });
 
         findViewById(R.id.btn_model_links).setOnClickListener(v -> showLinksDialog());
+        View btnPacks = findViewById(R.id.btn_recommended_packs);
+        if (btnPacks != null) {
+            btnPacks.setOnClickListener(v -> showRecommendedPacksDialog());
+        }
 
         setupLanguageSpinner();
         setupThreadsSpinner();
@@ -478,6 +519,39 @@ public class ModelsActivity extends AppCompatActivity {
                         startActivity(view);
                     } catch (android.content.ActivityNotFoundException e) {
                         snackbar(getString(R.string.models_no_browser));
+                    }
+                })
+                .setPositiveButton(android.R.string.ok, null)
+                .show();
+    }
+
+    private void showRecommendedPacksDialog() {
+        ArrayAdapter<RecommendedPack> adapter = new ArrayAdapter<RecommendedPack>(
+                this, R.layout.item_model_link, RECOMMENDED_PACKS) {
+            @Override
+            public View getView(int position, View convertView, android.view.ViewGroup parent) {
+                View row = convertView != null ? convertView
+                        : getLayoutInflater().inflate(R.layout.item_model_link, parent, false);
+                RecommendedPack pack = RECOMMENDED_PACKS[position];
+                ((TextView) row.findViewById(R.id.txt_link_name)).setText(pack.titleRes);
+                ((TextView) row.findViewById(R.id.txt_link_size)).setText("");
+                ((TextView) row.findViewById(R.id.txt_link_desc)).setText(pack.descRes);
+                return row;
+            }
+        };
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.models_recommended_packs_title)
+                .setAdapter(adapter, (d, which) -> {
+                    RecommendedPack pack = RECOMMENDED_PACKS[which];
+                    if (pack.isPostProcessSettings) {
+                        startActivity(new Intent(this, PostProcessSettingsActivity.class));
+                    } else if (pack.actionUrl != null) {
+                        Intent view = new Intent(Intent.ACTION_VIEW, Uri.parse(pack.actionUrl));
+                        try {
+                            startActivity(view);
+                        } catch (android.content.ActivityNotFoundException e) {
+                            snackbar(getString(R.string.models_no_browser));
+                        }
                     }
                 })
                 .setPositiveButton(android.R.string.ok, null)

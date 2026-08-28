@@ -18,8 +18,8 @@ android {
         applicationId = "com.auratranscribe.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 40
-        versionName = "0.2.1"
+        versionCode = 41
+        versionName = "0.2.2"
         ndk {
             abiFilters += "arm64-v8a"
         }

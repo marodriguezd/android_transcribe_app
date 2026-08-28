@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Background Dark Gradient -->
+    <radialGradient id="bgGlow" cx="50%" cy="50%" r="70%" fx="35%" fy="35%">
+      <stop offset="0%" stop-color="#1E1B4B" />
+      <stop offset="60%" stop-color="#0F172A" />
+      <stop offset="100%" stop-color="#030712" />
+    </radialGradient>
+
+    <!-- Aura Primary Vibrant Ring Gradient -->
+    <linearGradient id="auraGrad1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00F2FE" />
+      <stop offset="35%" stop-color="#4FACFE" />
+      <stop offset="70%" stop-color="#8A2387" />
+      <stop offset="100%" stop-color="#FF007F" />
+    </linearGradient>
+
+    <!-- Aura Secondary Glow Gradient -->
+    <linearGradient id="auraGrad2" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#00FFCC" />
+      <stop offset="50%" stop-color="#7928CA" />
+      <stop offset="100%" stop-color="#FF0080" />
+    </linearGradient>
+
+    <!-- Core Microphone & Waves Gradient -->
+    <linearGradient id="micGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" />
+      <stop offset="100%" stop-color="#E2E8F0" />
+    </linearGradient>
+
+    <!-- Glow Filter for Ethereal Aura Effect -->
+    <filter id="glowEffect" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="16" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+
+    <filter id="subtleGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="8" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Background Base Container -->
+  <rect width="512" height="512" rx="128" fill="url(#bgGlow)" />
+  
+  <!-- Outer Subtle Ambient Aura Ring -->
+  <circle cx="256" cy="256" r="195" fill="none" stroke="url(#auraGrad2)" stroke-width="6" opacity="0.4" filter="url(#glowEffect)" />
+  
+  <!-- Primary Luminous Aura Ring with Energy Waves -->
+  <circle cx="256" cy="256" r="180" fill="none" stroke="url(#auraGrad1)" stroke-width="12" stroke-linecap="round" stroke-dasharray="800 120" filter="url(#subtleGlow)" />
+
+  <!-- Acoustic Voice Waveform Orbiting Aura -->
+  <!-- Left Side Waves -->
+  <path d="M 125 256 Q 105 210 125 160" fill="none" stroke="url(#auraGrad1)" stroke-width="8" stroke-linecap="round" opacity="0.85" />
+  <path d="M 95 256 Q 70 200 95 140" fill="none" stroke="url(#auraGrad2)" stroke-width="6" stroke-linecap="round" opacity="0.6" />
+  
+  <!-- Right Side Waves -->
+  <path d="M 387 256 Q 407 302 387 352" fill="none" stroke="url(#auraGrad1)" stroke-width="8" stroke-linecap="round" opacity="0.85" />
+  <path d="M 417 256 Q 442 312 417 372" fill="none" stroke="url(#auraGrad2)" stroke-width="6" stroke-linecap="round" opacity="0.6" />
+
+  <!-- Center Glowing Microphone Capsule -->
+  <!-- Capsule Body -->
+  <rect x="216" y="148" width="80" height="152" rx="40" fill="url(#micGrad)" filter="url(#subtleGlow)" />
+
+  <!-- Inner Dynamic Sound Waves Inside Mic Body -->
+  <line x1="240" y1="200" x2="272" y2="200" stroke="#6366F1" stroke-width="5" stroke-linecap="round" />
+  <line x1="232" y1="218" x2="280" y2="218" stroke="#8B5CF6" stroke-width="5" stroke-linecap="round" />
+  <line x1="240" y1="236" x2="272" y2="236" stroke="#EC4899" stroke-width="5" stroke-linecap="round" />
+  <line x1="248" y1="254" x2="264" y2="254" stroke="#3B82F6" stroke-width="5" stroke-linecap="round" />
+
+  <!-- Outer Pickup Arc Bracket -->
+  <path d="M 180 236 C 180 326 332 326 332 236" fill="none" stroke="url(#micGrad)" stroke-width="14" stroke-linecap="round" />
+
+  <!-- Microphone Base Stem & Stand -->
+  <path d="M 256 318 L 256 376" fill="none" stroke="url(#micGrad)" stroke-width="14" stroke-linecap="round" />
+  <path d="M 206 376 L 306 376" fill="none" stroke="url(#micGrad)" stroke-width="14" stroke-linecap="round" />
+
+  <!-- AI Intelligence Sparkle Stars (Top Right & Bottom Left) -->
+  <!-- Top Right Sparkle -->
+  <path d="M 360 130 Q 372 142 384 142 Q 372 142 360 154 Q 348 142 336 142 Q 348 142 360 130 Z" fill="#00F2FE" filter="url(#subtleGlow)" />
+  <!-- Bottom Left Sparkle -->
+  <path d="M 152 350 Q 160 358 168 358 Q 160 358 152 366 Q 144 358 136 358 Q 144 358 152 350 Z" fill="#FF007F" filter="url(#subtleGlow)" />
+</svg>

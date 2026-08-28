@@ -4,7 +4,7 @@
     <string name="welcome_subtitle">Completamente offline, privato e veloce.</string>
 
     <string name="section_ime">Alternativa: tastiera vocale</string>
-    <string name="desc_ime">Preferisci una tastiera dedicata? Attiva la tastiera Offline Voice Input, poi passa a essa dal selettore delle tastiere quando vuoi l\'immissione vocale come tastiera a sé.</string>
+    <string name="desc_ime">Preferisci una tastiera dedicata? Attiva la tastiera Aura Transcribe, poi passa a essa dal selettore delle tastiere quando vuoi l\'immissione vocale come tastiera a sé.</string>
     <string name="btn_ime_settings">Apri impostazioni tastiera</string>
 
     <string name="section_subs">Sottotitoli in tempo reale</string>
@@ -113,7 +113,7 @@
     <string name="section_voice">Immissione vocale</string>
     <string name="voice_status_ready">Pronto. In qualsiasi app, tocca il microfono di una tastiera supportata e il tuo parlato viene digitato nel campo di testo.</string>
     <string name="voice_status_need_mic">Per l\'immissione vocale è necessario l\'accesso al microfono.</string>
-    <string name="voice_status_almost">Ci sei quasi. Quando tocchi il microfono della tastiera, scegli «Offline Voice Input» e poi «Sempre». Tocca «Prova immissione vocale» qui sotto per configurarlo ora.</string>
+    <string name="voice_status_almost">Ci sei quasi. Quando tocchi il microfono della tastiera, scegli «Aura Transcribe» e poi «Sempre». Tocca «Prova immissione vocale» qui sotto per configurarlo ora.</string>
     <string name="btn_voice_try">Prova immissione vocale</string>
     <string name="btn_voice_grant">Concedi accesso al microfono</string>
     <string name="btn_voice_help">Guida alla configurazione</string>
@@ -123,7 +123,7 @@
     <string name="voice_test_failed">Impossibile avviare l\'immissione vocale su questo dispositivo.</string>
 
     <string name="voice_help_title">Configurazione dell\'immissione vocale</string>
-    <string name="voice_help_body">Come usarlo\n• Apri qualsiasi app e tocca il microfono di una tastiera/app supportata. Appare un piccolo pannello, parli, tocchi per fermare e il testo viene inserito. (Attiva «Arresto automatico dopo il silenzio» nelle impostazioni per farlo fermare da solo.)\n\nQuali tastiere aprono il pannello vocale\n• Microsoft SwiftKey (non open source) e la ricerca vocale dei siti web aprono il pannello direttamente.\n• AnySoftKeyboard è la via open source al pannello: il suo tasto microfono lo apre finché nessuna tastiera vocale è attivata sul sistema.\n\nAltre tastiere open source\n• HeliBoard, FlorisBoard, OpenBoard, Fossify Keyboard e Unexpected Keyboard non aprono il pannello: il loro tasto microfono passa alla tastiera «Offline Voice Input». Attivala una volta (vedi «Alternativa: tastiera vocale»), parla lì e torna indietro con il suo tasto di cambio tastiera. FUTO Keyboard include una propria immissione vocale.\n• Gboard usa solo l\'immissione vocale di Google e non può usare affatto questa app.\n\nSe si apre l\'immissione vocale di SwiftKey\n• Impostazioni → Immissione avanzata → disattiva «Immissione vocale multimodale».\n• Poi tocca di nuovo il microfono e scegli «Offline Voice Input».\n\nSe Android chiede quale app usare\n• Scegli «Offline Voice Input» e tocca «Sempre».\n\nSe si apre sempre un\'altra app\n• Apri Impostazioni → App → quell\'app → «Apri per impostazione predefinita» → Cancella impostazioni predefinite, e riprova.</string>
+    <string name="voice_help_body">Come usarlo\n• Apri qualsiasi app e tocca il microfono di una tastiera/app supportata. Appare un piccolo pannello, parli, tocchi per fermare e il testo viene inserito. (Attiva «Arresto automatico dopo il silenzio» nelle impostazioni per farlo fermare da solo.)\n\nQuali tastiere aprono il pannello vocale\n• Microsoft SwiftKey (non open source) e la ricerca vocale dei siti web aprono il pannello direttamente.\n• AnySoftKeyboard è la via open source al pannello: il suo tasto microfono lo apre finché nessuna tastiera vocale è attivata sul sistema.\n\nAltre tastiere open source\n• HeliBoard, FlorisBoard, OpenBoard, Fossify Keyboard e Unexpected Keyboard non aprono il pannello: il loro tasto microfono passa alla tastiera «Aura Transcribe». Attivala una volta (vedi «Alternativa: tastiera vocale»), parla lì e torna indietro con il suo tasto di cambio tastiera. FUTO Keyboard include una propria immissione vocale.\n• Gboard usa solo l\'immissione vocale di Google e non può usare affatto questa app.\n\nSe si apre l\'immissione vocale di SwiftKey\n• Impostazioni → Immissione avanzata → disattiva «Immissione vocale multimodale».\n• Poi tocca di nuovo il microfono e scegli «Aura Transcribe».\n\nSe Android chiede quale app usare\n• Scegli «Aura Transcribe» e tocca «Sempre».\n\nSe si apre sempre un\'altra app\n• Apri Impostazioni → App → quell\'app → «Apri per impostazione predefinita» → Cancella impostazioni predefinite, e riprova.</string>
     <string name="pp_card_title">Post-elaborazione con IA</string>
     <string name="pp_card_subtitle">Perfeziona le trascrizioni con un LLM compatibile con OpenAI.</string>
     <string name="pp_card_button">Impostazioni di post-elaborazione</string>

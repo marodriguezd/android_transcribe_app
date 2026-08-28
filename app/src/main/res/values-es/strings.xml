@@ -4,7 +4,7 @@
     <string name="welcome_subtitle">Totalmente sin conexión, privado y rápido.</string>
 
     <string name="section_ime">Alternativa: teclado de voz</string>
-    <string name="desc_ime">¿Prefieres un teclado dedicado? Activa el teclado Offline Voice Input y cambia a él desde el selector de teclados cuando quieras la entrada de voz como teclado propio.</string>
+    <string name="desc_ime">¿Prefieres un teclado dedicado? Activa el teclado Aura Transcribe y cambia a él desde el selector de teclados cuando quieras la entrada de voz como teclado propio.</string>
     <string name="btn_ime_settings">Abrir ajustes del teclado</string>
 
     <string name="section_subs">Subtítulos en directo</string>
@@ -113,7 +113,7 @@
     <string name="section_voice">Entrada de voz</string>
     <string name="voice_status_ready">Listo. En cualquier app, toca el micrófono de un teclado compatible y tu voz se escribe en el campo de texto.</string>
     <string name="voice_status_need_mic">Se necesita acceso al micrófono para la entrada de voz.</string>
-    <string name="voice_status_almost">Casi listo. Cuando toques el micrófono de tu teclado, elige «Offline Voice Input» y luego «Siempre». Toca «Probar entrada de voz» abajo para configurarlo ahora.</string>
+    <string name="voice_status_almost">Casi listo. Cuando toques el micrófono de tu teclado, elige «Aura Transcribe» y luego «Siempre». Toca «Probar entrada de voz» abajo para configurarlo ahora.</string>
     <string name="btn_voice_try">Probar entrada de voz</string>
     <string name="btn_voice_grant">Conceder acceso al micrófono</string>
     <string name="btn_voice_help">Ayuda de configuración</string>
@@ -123,7 +123,7 @@
     <string name="voice_test_failed">No se pudo iniciar la entrada de voz en este dispositivo.</string>
 
     <string name="voice_help_title">Configuración de la entrada de voz</string>
-    <string name="voice_help_body">Cómo usarlo\n• Abre cualquier app y toca el micrófono de un teclado/una app compatible. Aparece un panel pequeño, hablas, tocas para detener y el texto se inserta. (Activa «Parada automática tras silencio» en los ajustes para que se detenga solo.)\n\nQué teclados abren el panel de voz\n• Microsoft SwiftKey (no es de código abierto) y la búsqueda por voz de los sitios web abren el panel directamente.\n• AnySoftKeyboard es la vía de código abierto al panel: su tecla de micrófono lo abre mientras no haya ningún teclado de voz activado en tu sistema.\n\nOtros teclados de código abierto\n• HeliBoard, FlorisBoard, OpenBoard, Fossify Keyboard y Unexpected Keyboard no abren el panel: su tecla de micrófono cambia al teclado «Offline Voice Input». Actívalo una vez (mira «Alternativa: teclado de voz»), habla allí y vuelve con su tecla de cambio de teclado. FUTO Keyboard trae su propia entrada de voz.\n• Gboard solo usa la entrada de voz de Google y no puede usar esta app en absoluto.\n\nSi se abre la entrada de voz propia de SwiftKey\n• Ajustes → Entrada enriquecida → desactiva «Entrada de voz multimodal».\n• Luego toca de nuevo el micrófono y elige «Offline Voice Input».\n\nSi Android pregunta qué app usar\n• Elige «Offline Voice Input» y toca «Siempre».\n\nSi siempre se abre otra app\n• Abre Ajustes → Aplicaciones → esa app → «Abrir de forma predeterminada» → Borrar valores predeterminados, e inténtalo de nuevo.</string>
+    <string name="voice_help_body">Cómo usarlo\n• Abre cualquier app y toca el micrófono de un teclado/una app compatible. Aparece un panel pequeño, hablas, tocas para detener y el texto se inserta. (Activa «Parada automática tras silencio» en los ajustes para que se detenga solo.)\n\nQué teclados abren el panel de voz\n• Microsoft SwiftKey (no es de código abierto) y la búsqueda por voz de los sitios web abren el panel directamente.\n• AnySoftKeyboard es la vía de código abierto al panel: su tecla de micrófono lo abre mientras no haya ningún teclado de voz activado en tu sistema.\n\nOtros teclados de código abierto\n• HeliBoard, FlorisBoard, OpenBoard, Fossify Keyboard y Unexpected Keyboard no abren el panel: su tecla de micrófono cambia al teclado «Aura Transcribe». Actívalo una vez (mira «Alternativa: teclado de voz»), habla allí y vuelve con su tecla de cambio de teclado. FUTO Keyboard trae su propia entrada de voz.\n• Gboard solo usa la entrada de voz de Google y no puede usar esta app en absoluto.\n\nSi se abre la entrada de voz propia de SwiftKey\n• Ajustes → Entrada enriquecida → desactiva «Entrada de voz multimodal».\n• Luego toca de nuevo el micrófono y elige «Aura Transcribe».\n\nSi Android pregunta qué app usar\n• Elige «Aura Transcribe» y toca «Siempre».\n\nSi siempre se abre otra app\n• Abre Ajustes → Aplicaciones → esa app → «Abrir de forma predeterminada» → Borrar valores predeterminados, e inténtalo de nuevo.</string>
     <string name="pp_card_title">Posprocesado con IA</string>
     <string name="pp_card_subtitle">Refina las transcripciones con un LLM compatible con OpenAI.</string>
     <string name="pp_card_button">Ajustes de posprocesado</string>

@@ -15,7 +15,7 @@ android {
     ndkVersion = "28.0.13004108"
 
     defaultConfig {
-        applicationId = "dev.notune.transcribe"
+        applicationId = "com.auratranscribe.app"
         minSdk = 26
         targetSdk = 34
         versionCode = 38

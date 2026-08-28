@@ -120,14 +120,14 @@ jobs:
           exit 1
         fi
         echo "Found built APK at: $APK_SRC"
-        cp "$APK_SRC" "android_transcribe_app_v${{ env.VERSION_NAME }}-debug.apk"
-        ls -lh "android_transcribe_app_v${{ env.VERSION_NAME }}-debug.apk"
+        cp "$APK_SRC" "Aura_Transcribe_v${{ env.VERSION_NAME }}-debug.apk"
+        ls -lh "Aura_Transcribe_v${{ env.VERSION_NAME }}-debug.apk"
 
     - name: Upload APK Artifact
       uses: actions/upload-artifact@v4
       with:
-        name: app-debug-apk-v${{ env.VERSION_NAME }}
-        path: android_transcribe_app_v${{ env.VERSION_NAME }}-debug.apk
+        name: Aura-Transcribe-v${{ env.VERSION_NAME }}-debug
+        path: Aura_Transcribe_v${{ env.VERSION_NAME }}-debug.apk
 
     - name: Send APK to Telegram
       env:
@@ -137,8 +137,8 @@ jobs:
         COMMIT_MSG=$(git log -1 --pretty=%s)
         COMMIT_SHA=$(git rev-parse --short HEAD)
         curl -s -F chat_id="$TELEGRAM_CHAT_ID" \
-             -F document=@"android_transcribe_app_v${{ env.VERSION_NAME }}-debug.apk" \
-             -F caption="🔧 Debug Build v${{ env.VERSION_NAME }} ($COMMIT_SHA)
+             -F document=@"Aura_Transcribe_v${{ env.VERSION_NAME }}-debug.apk" \
+             -F caption="✨ Aura Transcribe v${{ env.VERSION_NAME }} ($COMMIT_SHA)
         $COMMIT_MSG" \
              "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument"
 

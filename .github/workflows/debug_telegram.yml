@@ -181,6 +181,16 @@ jobs:
         $COMMIT_MSG" \
              "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument"
 
+    - name: Print Logs on Failure
+      if: failure()
+      run: |
+        echo "=================== GRADLE BUILD LOG ==================="
+        cat gradle_build.log || true
+        echo "=================== GRADLE TEST LOG ==================="
+        cat gradle_test.log || true
+        echo "=================== CARGO BUILD LOG ==================="
+        cat cargo_build.log || true
+
     - name: Upload Build Logs on Failure
       if: failure()
       uses: actions/upload-artifact@v4

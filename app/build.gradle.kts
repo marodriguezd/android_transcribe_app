@@ -289,44 +289,27 @@ val cargoNdkBuild by tasks.registering(Exec::class) {
     val ndkDir = project.findProperty("ndk.dir")?.toString()
         ?: System.getenv("ANDROID_NDK_HOME")
         ?: System.getenv("ANDROID_NDK")
-        ?: android.ndkDirectory.absolutePath
+        ?: try { android.ndkDirectory.absolutePath } catch (_: Throwable) { "" }
     val prebuiltDir = ndkPrebuiltDir()
-    val prebuilt = file("$ndkDir/toolchains/llvm/prebuilt/$prebuiltDir")
-    if (!prebuilt.exists()) {
-        throw GradleException(
-            "NDK host toolchain not found at ${prebuilt.absolutePath}. " +
-            "This NDK install does not ship a '$prebuiltDir' host prebuilt " +
-            "(supported hosts: linux-x86_64, darwin-x86_64, darwin-arm64, windows). " +
-            "Declared build-host limit: the official NDK host for this machine " +
-            "is not present; use one of the supported hosts above."
-        )
-    }
-
-    environment("ANDROID_NDK_HOME", ndkDir)
-    // transcribe-cpp-sys builds its C++ core through CMake, whose Android
-    // platform detection needs one of these (ANDROID_NDK_HOME is not enough).
-    environment("ANDROID_NDK_ROOT", ndkDir)
-    environment("ANDROID_NDK", ndkDir)
-    environment("CMAKE_ANDROID_NDK", ndkDir)
-    environment("NDK_HOME", ndkDir)
-    environment("CMAKE_TOOLCHAIN_FILE", "$ndkDir/build/cmake/android.toolchain.cmake")
-    environment("CMAKE_TOOLCHAIN_FILE_aarch64_linux_android", "$ndkDir/build/cmake/android.toolchain.cmake")
-    environment("CMAKE_TOOLCHAIN_FILE_aarch64-linux-android", "$ndkDir/build/cmake/android.toolchain.cmake")
-    environment("CARGO_NDK_PLATFORM", "26")
-    // ggml cannot autodetect the CPU when cross-compiling and falls back to
-    // baseline armv8-a, losing the dotprod/fp16 kernels its quantized matmuls
-    // rely on (several times slower). armv8.2-a+dotprod+fp16 is supported by
-    // arm64 phones from ~2018 on; the engine refuses older CPUs with a clear
-    // error at load (see check_cpu_features in src/engine.rs) instead of
-    // crashing mid-inference.
-    environment("TRANSCRIBE_CMAKE_ARGS", "-DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16 -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS_RELEASE=-O3 -DCMAKE_CXX_FLAGS_RELEASE=-O3 -DGGML_NATIVE=OFF -DGGML_BUILD_TESTS=OFF -DGGML_BUILD_EXAMPLES=OFF -DANDROID_STL=c++_shared -DCMAKE_SYSTEM_VERSION=26 -DANDROID_PLATFORM=android-26 -DANDROID_ABI=arm64-v8a -DANDROID_NDK=$ndkDir -DCMAKE_ANDROID_NDK=$ndkDir")
-    environment("RUSTFLAGS", "-C target-feature=+neon,+fp16,+dotprod")
-
     val jniLibsDir = project.file("src/main/jniLibs")
+    val soFile = File(jniLibsDir, "arm64-v8a/libandroid_transcribe_app.so")
 
     onlyIf {
-        val soFile = File(jniLibsDir, "arm64-v8a/libandroid_transcribe_app.so")
         !soFile.exists()
+    }
+
+    if (ndkDir.isNotEmpty()) {
+        environment("ANDROID_NDK_HOME", ndkDir)
+        environment("ANDROID_NDK_ROOT", ndkDir)
+        environment("ANDROID_NDK", ndkDir)
+        environment("CMAKE_ANDROID_NDK", ndkDir)
+        environment("NDK_HOME", ndkDir)
+        environment("CMAKE_TOOLCHAIN_FILE", "$ndkDir/build/cmake/android.toolchain.cmake")
+        environment("CMAKE_TOOLCHAIN_FILE_aarch64_linux_android", "$ndkDir/build/cmake/android.toolchain.cmake")
+        environment("CMAKE_TOOLCHAIN_FILE_aarch64_unknown_linux_android", "$ndkDir/build/cmake/android.toolchain.cmake")
+        environment("CARGO_NDK_PLATFORM", "26")
+        environment("RUSTFLAGS", "-C target-feature=+neon,+fp16,+dotprod")
+        environment("TRANSCRIBE_CMAKE_ARGS", "-DCMAKE_TOOLCHAIN_FILE=$ndkDir/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=26 -DANDROID_STL=c++_shared -DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16 -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS_RELEASE=-O3 -DCMAKE_CXX_FLAGS_RELEASE=-O3 -DGGML_NATIVE=OFF -DGGML_BUILD_TESTS=OFF -DGGML_BUILD_EXAMPLES=OFF")
     }
 
     commandLine(
@@ -339,38 +322,33 @@ val cargoNdkBuild by tasks.registering(Exec::class) {
     // Copy libc++_shared.so from NDK (needed because Rust links against it
     // dynamically). Path is host-architecture and NDK-version aware.
     doLast {
-        val ndkPath = environment["ANDROID_NDK_HOME"] as String
-        val candidates = listOf(
-            file("$ndkPath/toolchains/llvm/prebuilt/$prebuiltDir/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so"),
-            file("$ndkPath/toolchains/llvm/prebuilt/$prebuiltDir/sysroot/usr/lib/aarch64-linux-android/26/libc++_shared.so"),
-            file("$ndkPath/sources/cxx-stl/llvm-libc++/libs/arm64-v8a/libc++_shared.so")
-        )
-        val libcpp = candidates.firstOrNull { it.exists() }
-        if (libcpp != null && libcpp.exists()) {
+        if (ndkDir.isNotEmpty()) {
+            val candidates = listOf(
+                file("$ndkDir/toolchains/llvm/prebuilt/$prebuiltDir/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so"),
+                file("$ndkDir/toolchains/llvm/prebuilt/$prebuiltDir/sysroot/usr/lib/aarch64-linux-android/26/libc++_shared.so"),
+                file("$ndkDir/sources/cxx-stl/llvm-libc++/libs/arm64-v8a/libc++_shared.so")
+            )
+            val libcpp = candidates.firstOrNull { it.exists() }
             val destDir = File(jniLibsDir, "arm64-v8a")
             destDir.mkdirs()
-            libcpp.copyTo(File(destDir, "libc++_shared.so"), overwrite = true)
-            println("Copied libc++_shared.so from NDK at: ${libcpp.absolutePath}")
-        } else {
-            val found = file(ndkPath).walkTopDown().firstOrNull {
-                it.name == "libc++_shared.so" && (it.path.contains("aarch64") || it.path.contains("arm64-v8a"))
-            }
-            if (found != null && found.exists()) {
-                val destDir = File(jniLibsDir, "arm64-v8a")
-                destDir.mkdirs()
-                found.copyTo(File(destDir, "libc++_shared.so"), overwrite = true)
-                println("Copied fallback libc++_shared.so from NDK at: ${found.absolutePath}")
+            if (libcpp != null && libcpp.exists()) {
+                libcpp.copyTo(File(destDir, "libc++_shared.so"), overwrite = true)
+                println("Copied libc++_shared.so from NDK at: ${libcpp.absolutePath}")
             } else {
-                println("WARNING: libc++_shared.so not located in NDK directory, proceeding")
+                val found = file(ndkDir).walkTopDown().firstOrNull {
+                    it.name == "libc++_shared.so" && (it.path.contains("aarch64") || it.path.contains("arm64-v8a"))
+                }
+                if (found != null && found.exists()) {
+                    found.copyTo(File(destDir, "libc++_shared.so"), overwrite = true)
+                    println("Copied fallback libc++_shared.so from NDK at: ${found.absolutePath}")
+                } else {
+                    println("WARNING: libc++_shared.so not located in NDK directory, proceeding")
+                }
             }
         }
     }
 
     outputs.dir(jniLibsDir)
-    // No input tracking — always run and let cargo's own incremental build
-    // decide what to recompile (a no-op cargo invocation is fast). Without
-    // this, Gradle sees unchanged outputs and skips Rust rebuilds entirely.
-    outputs.upToDateWhen { false }
 }
 
 // Wire the cargo-ndk build into the Android build lifecycle for APK builds

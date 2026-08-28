@@ -144,15 +144,6 @@ public class LiveSubtitleService extends Service {
 
     private void stopSubtitleSession() {
         isRecording = false;
-        if (mAudioThread != null) {
-            try {
-                // Bounded wait: read() can block until the next audio buffer.
-                mAudioThread.join(1000);
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-            }
-            mAudioThread = null;
-        }
         if (mAudioRecord != null) {
             // stop() throws IllegalStateException when the AudioRecord was
             // never initialized/started (e.g. capture failed); a teardown path
@@ -163,6 +154,17 @@ public class LiveSubtitleService extends Service {
                 }
             } catch (Exception ignored) {
             }
+        }
+        if (mAudioThread != null) {
+            try {
+                // Bounded wait: read() unblocks immediately upon audioRecord.stop().
+                mAudioThread.join(500);
+            } catch (InterruptedException e) {
+                e.printStackTrace();
+            }
+            mAudioThread = null;
+        }
+        if (mAudioRecord != null) {
             try {
                 mAudioRecord.release();
             } catch (Exception ignored) {
@@ -394,19 +396,10 @@ public class LiveSubtitleService extends Service {
                     floatBuffer[i] = buffer[i] * invScale;
                 }
                 pushAudio(floatBuffer, read);
-            } else {
-                if (read == AudioRecord.ERROR_INVALID_OPERATION) {
-                    Log.e(TAG, "Audio read error: INVALID_OPERATION");
-                } else if (read == AudioRecord.ERROR_BAD_VALUE) {
-                    Log.e(TAG, "Audio read error: BAD_VALUE");
-                } else if (read == AudioRecord.ERROR_DEAD_OBJECT) {
-                    Log.e(TAG, "Audio read error: DEAD_OBJECT");
-                    isRecording = false;
-                } else if (read == 0) {
-                     // Sometimes happens if no audio is playing?
-                } else {
-                     Log.e(TAG, "Audio read error: " + read);
-                }
+            } else if (read < 0) {
+                Log.e(TAG, "Audio read error: " + read);
+                isRecording = false;
+                break;
             }
         }
         Log.d(TAG, "Audio loop finished");

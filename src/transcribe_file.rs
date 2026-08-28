@@ -38,7 +38,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_TranscribeFileActivity_
         target_ref: target_ref.clone(),
         current_cancel: Mutex::new(None),
     };
-    *STATE.lock().unwrap() = Some(state);
+    *STATE.lock().unwrap_or_else(|p| p.into_inner()) = Some(state);
 
     // Load engine in background
     let vm_clone = vm_arc.clone();
@@ -54,7 +54,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_TranscribeFileActivity_
     _env: JNIEnv,
     _class: JClass,
 ) {
-    *STATE.lock().unwrap() = None;
+    *STATE.lock().unwrap_or_else(|p| p.into_inner()) = None;
 }
 
 #[no_mangle]
@@ -65,7 +65,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_TranscribeFileActivity_
     length: jint,
     op_id: jint,
 ) {
-    let guard = STATE.lock().unwrap();
+    let guard = STATE.lock().unwrap_or_else(|p| p.into_inner());
     let state = match guard.as_ref() {
         Some(s) => s,
         None => return,
@@ -103,7 +103,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_TranscribeFileActivity_
     if let Some(previous) = state
         .current_cancel
         .lock()
-        .unwrap()
+        .unwrap_or_else(|p| p.into_inner())
         .replace(cancelled.clone())
     {
         previous.store(true, Ordering::SeqCst);
@@ -168,8 +168,13 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_TranscribeFileActivity_
     _env: JNIEnv,
     _class: JClass,
 ) {
-    if let Some(state) = STATE.lock().unwrap().as_ref() {
-        if let Some(cancelled) = state.current_cancel.lock().unwrap().as_ref() {
+    if let Some(state) = STATE.lock().unwrap_or_else(|p| p.into_inner()).as_ref() {
+        if let Some(cancelled) = state
+            .current_cancel
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .as_ref()
+        {
             cancelled.store(true, Ordering::SeqCst);
         }
     }

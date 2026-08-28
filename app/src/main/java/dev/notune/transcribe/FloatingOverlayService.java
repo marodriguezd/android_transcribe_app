@@ -731,7 +731,7 @@ public class FloatingOverlayService extends Service {
         AudioDeviceManager.acquireMicrophone(this, sm.getMicMode());
         startRecording(new File(getFilesDir(), "auto_stop").exists(), ++mCurrentSessionId);
         int sid = mCurrentSessionId;
-        mAudioRecordBridge.start(this, sm.getMicMode(), new AudioRecordBridge.Callback() {
+        boolean started = mAudioRecordBridge.start(this, sm.getMicMode(), new AudioRecordBridge.Callback() {
             @Override
             public void onAudioChunk(java.nio.ByteBuffer directBuffer, int bytesRead) {
                 pushAudioDirect(directBuffer, bytesRead, sid);
@@ -743,6 +743,10 @@ public class FloatingOverlayService extends Service {
                 Log.e(TAG, "AudioRecord error: " + message);
             }
         });
+        if (!started) {
+            cancelCurrentTranscription();
+            return;
+        }
         boolean isBt = AudioDeviceManager.isBluetoothConnected(this);
         if (mBubbleIcon != null) mBubbleIcon.setImageResource(isBt ? R.drawable.ic_headset : R.drawable.ic_mic);
         if (mMicIcon != null) mMicIcon.setImageResource(isBt ? R.drawable.ic_headset : R.drawable.ic_mic);

@@ -145,14 +145,13 @@ public final class AudioDeviceManager {
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 clearCommunicationDeviceApi31(am);
-            } else {
-                try {
-                    am.stopBluetoothSco();
-                } catch (Throwable ignored) {}
-                try {
-                    am.setBluetoothScoOn(false);
-                } catch (Throwable ignored) {}
             }
+            try {
+                am.stopBluetoothSco();
+            } catch (Throwable ignored) {}
+            try {
+                am.setBluetoothScoOn(false);
+            } catch (Throwable ignored) {}
             try {
                 am.setSpeakerphoneOn(false);
             } catch (Throwable ignored) {}
@@ -268,8 +267,39 @@ public final class AudioDeviceManager {
                 );
             }
         } catch (Throwable t) {
-            Log.e(TAG, "Error creating AudioRecord", t);
+            Log.e(TAG, "Error creating AudioRecord with VOICE_COMMUNICATION", t);
         }
+
+        // Fallback to standard MIC audio source if VOICE_COMMUNICATION failed to initialize
+        if (record == null || record.getState() != AudioRecord.STATE_INITIALIZED) {
+            if (record != null) {
+                try { record.release(); } catch (Throwable ignored) {}
+            }
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    AudioRecord.Builder builder = new AudioRecord.Builder()
+                        .setAudioSource(MediaRecorder.AudioSource.MIC)
+                        .setAudioFormat(new AudioFormat.Builder()
+                            .setEncoding(AUDIO_FORMAT)
+                            .setSampleRate(SAMPLE_RATE)
+                            .setChannelMask(CHANNEL_CONFIG)
+                            .build())
+                        .setBufferSizeInBytes(bufferSize);
+                    record = builder.build();
+                } else {
+                    record = new AudioRecord(
+                        MediaRecorder.AudioSource.MIC,
+                        SAMPLE_RATE,
+                        CHANNEL_CONFIG,
+                        AUDIO_FORMAT,
+                        bufferSize
+                    );
+                }
+            } catch (Throwable t) {
+                Log.e(TAG, "Error creating AudioRecord fallback with MIC source", t);
+            }
+        }
+
         return record;
     }
 

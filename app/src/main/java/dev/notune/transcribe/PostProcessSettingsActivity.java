@@ -253,6 +253,10 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
                 }
             } catch (Exception e) {
                 Log.e("PostProcessSettings", "Failed to download S1 model", e);
+                try {
+                    java.io.File tempFile = new java.io.File(new java.io.File(getFilesDir(), "models"), "s1-mini-q4_k_m.gguf.tmp");
+                    if (tempFile.exists()) tempFile.delete();
+                } catch (Throwable ignored) {}
                 runOnUiThread(() -> {
                     progressS1.setVisibility(android.view.View.GONE);
                     btnDownloadS1.setEnabled(true);

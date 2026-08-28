@@ -372,7 +372,7 @@ public class RustInputMethodService extends InputMethodService {
                     AudioDeviceManager.acquireMicrophone(this, sm.getMicMode());
                     startRecording(isAutoStopEnabled(), ++currentSessionId);
                     int sid = currentSessionId;
-                    audioRecordBridge.start(this, sm.getMicMode(), new AudioRecordBridge.Callback() {
+                    boolean started = audioRecordBridge.start(this, sm.getMicMode(), new AudioRecordBridge.Callback() {
                         @Override
                         public void onAudioChunk(java.nio.ByteBuffer directBuffer, int bytesRead) {
                             pushAudioDirect(directBuffer, bytesRead, sid);
@@ -384,6 +384,10 @@ public class RustInputMethodService extends InputMethodService {
                             Log.e(TAG, "AudioRecord error: " + message);
                         }
                     });
+                    if (!started) {
+                        cancelCurrentTranscription();
+                        return;
+                    }
                     updateRecordButtonUI(true);
                 }
             });
@@ -429,7 +433,7 @@ public class RustInputMethodService extends InputMethodService {
                 AudioDeviceManager.acquireMicrophone(this, sm.getMicMode());
                 startRecording(isAutoStopEnabled(), ++currentSessionId);
                 int sid = currentSessionId;
-                audioRecordBridge.start(this, sm.getMicMode(), new AudioRecordBridge.Callback() {
+                boolean started = audioRecordBridge.start(this, sm.getMicMode(), new AudioRecordBridge.Callback() {
                     @Override
                     public void onAudioChunk(java.nio.ByteBuffer directBuffer, int bytesRead) {
                         pushAudioDirect(directBuffer, bytesRead, sid);
@@ -441,6 +445,10 @@ public class RustInputMethodService extends InputMethodService {
                         Log.e(TAG, "AudioRecord error: " + message);
                     }
                 });
+                if (!started) {
+                    cancelCurrentTranscription();
+                    return;
+                }
                 updateRecordButtonUI(true);
             }
         }

@@ -507,7 +507,10 @@ enum LoadState {
 }
 
 pub fn get_engine() -> Option<Arc<Mutex<Engine>>> {
-    GLOBAL_ENGINE.lock().unwrap().clone()
+    GLOBAL_ENGINE
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clone()
 }
 
 /// Runs a transcription on the shared engine. Two layers of hardening keep a
@@ -606,7 +609,10 @@ pub fn transcribe_stream_shared(
 }
 
 pub fn is_engine_loaded() -> bool {
-    GLOBAL_ENGINE.lock().unwrap().is_some()
+    GLOBAL_ENGINE
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .is_some()
 }
 
 /// Drops the loaded engine and clears the load state so the next
@@ -615,11 +621,11 @@ pub fn is_engine_loaded() -> bool {
 /// previous selection. Call from a background thread.
 pub fn reset() {
     let (lock, cvar) = &*LOAD_STATE;
-    let mut state = lock.lock().unwrap();
+    let mut state = lock.lock().unwrap_or_else(|p| p.into_inner());
     while *state == LoadState::Loading {
-        state = cvar.wait(state).unwrap();
+        state = cvar.wait(state).unwrap_or_else(|p| p.into_inner());
     }
-    *GLOBAL_ENGINE.lock().unwrap() = None;
+    *GLOBAL_ENGINE.lock().unwrap_or_else(|p| p.into_inner()) = None;
     *state = LoadState::Idle;
 }
 
@@ -663,7 +669,7 @@ pub fn ensure_loaded_from_thread(
     }
 
     let (lock, cvar) = &*LOAD_STATE;
-    let mut state = lock.lock().unwrap();
+    let mut state = lock.lock().unwrap_or_else(|p| p.into_inner());
 
     // Re-check under lock
     if is_engine_loaded() {
@@ -676,7 +682,7 @@ pub fn ensure_loaded_from_thread(
             // Another thread is loading — wait for it
             notify("Waiting for model...");
             while *state == LoadState::Loading {
-                state = cvar.wait(state).unwrap();
+                state = cvar.wait(state).unwrap_or_else(|p| p.into_inner());
             }
             drop(state);
 
@@ -717,7 +723,7 @@ pub fn ensure_loaded_from_thread(
                 Err("Failed to attach JNI thread".to_string())
             };
 
-            let mut state = lock.lock().unwrap();
+            let mut state = lock.lock().unwrap_or_else(|p| p.into_inner());
             match &result {
                 Ok(()) => *state = LoadState::Done,
                 Err(msg) => *state = LoadState::Failed(msg.clone()),
@@ -872,7 +878,8 @@ fn do_load(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
         ) {
             Ok(engine) => {
                 let status = engine.ready_status;
-                *GLOBAL_ENGINE.lock().unwrap() = Some(Arc::new(Mutex::new(engine)));
+                *GLOBAL_ENGINE.lock().unwrap_or_else(|p| p.into_inner()) =
+                    Some(Arc::new(Mutex::new(engine)));
                 notify_status(env, context, status);
                 return Ok(());
             }
@@ -909,7 +916,8 @@ fn do_load(env: &mut JNIEnv, context: &JObject) -> Result<(), String> {
     ) {
         Ok(engine) => {
             let status = engine.ready_status;
-            *GLOBAL_ENGINE.lock().unwrap() = Some(Arc::new(Mutex::new(engine)));
+            *GLOBAL_ENGINE.lock().unwrap_or_else(|p| p.into_inner()) =
+                Some(Arc::new(Mutex::new(engine)));
             notify_status(env, context, status);
             Ok(())
         }

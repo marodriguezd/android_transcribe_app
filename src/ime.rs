@@ -7,6 +7,14 @@ use crate::voice_session::{self, VoiceSessionState};
 
 static IME_STATE: Lazy<Mutex<Option<VoiceSessionState>>> = Lazy::new(|| Mutex::new(None));
 
+/// Poison-tolerant lock on the shared IME session state. If a prior call
+/// panicked while holding the lock, recover the poisoned guard instead of
+/// panicking on unwrap.
+fn with_ime_state<T>(f: impl FnOnce(&mut Option<VoiceSessionState>) -> T) -> T {
+    let mut guard = IME_STATE.lock().unwrap_or_else(|p| p.into_inner());
+    f(&mut guard)
+}
+
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_notune_transcribe_RustInputMethodService_initNative(
     env: JNIEnv,
@@ -14,7 +22,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_RustInputMethodService_
     service: JObject,
 ) {
     let state = voice_session::init_session(env, service);
-    *IME_STATE.lock().unwrap() = Some(state);
+    *IME_STATE.lock().unwrap_or_else(|p| p.into_inner()) = Some(state);
 }
 
 #[no_mangle]
@@ -22,7 +30,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_RustInputMethodService_
     _env: JNIEnv,
     _class: JClass,
 ) {
-    *IME_STATE.lock().unwrap() = None;
+    *IME_STATE.lock().unwrap_or_else(|p| p.into_inner()) = None;
 }
 
 #[no_mangle]
@@ -32,10 +40,11 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_RustInputMethodService_
     auto_stop: jni::sys::jboolean,
     session_id: jni::sys::jint,
 ) {
-    let mut guard = IME_STATE.lock().unwrap();
-    if let Some(state) = guard.as_mut() {
-        voice_session::start_recording(env, state, auto_stop != 0, session_id as i32);
-    }
+    with_ime_state(|state| {
+        if let Some(state) = state.as_mut() {
+            voice_session::start_recording(env, state, auto_stop != 0, session_id as i32);
+        }
+    });
 }
 
 #[no_mangle]
@@ -43,10 +52,11 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_RustInputMethodService_
     env: JNIEnv,
     _class: JClass,
 ) {
-    let mut guard = IME_STATE.lock().unwrap();
-    if let Some(state) = guard.as_mut() {
-        voice_session::stop_recording(env, state);
-    }
+    with_ime_state(|state| {
+        if let Some(state) = state.as_mut() {
+            voice_session::stop_recording(env, state);
+        }
+    });
 }
 
 #[no_mangle]
@@ -54,10 +64,11 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_RustInputMethodService_
     env: JNIEnv,
     _class: JClass,
 ) {
-    let mut guard = IME_STATE.lock().unwrap();
-    if let Some(state) = guard.as_mut() {
-        voice_session::cancel_recording(env, state);
-    }
+    with_ime_state(|state| {
+        if let Some(state) = state.as_mut() {
+            voice_session::cancel_recording(env, state);
+        }
+    });
 }
 
 #[no_mangle]
@@ -68,14 +79,15 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_RustInputMethodService_
     byte_count: jni::sys::jint,
     session_id: jni::sys::jint,
 ) {
-    let mut guard = IME_STATE.lock().unwrap();
-    if let Some(state) = guard.as_mut() {
-        voice_session::push_audio_direct(
-            &mut env,
-            state,
-            &buffer,
-            byte_count as i32,
-            session_id as i32,
-        );
-    }
+    with_ime_state(|state| {
+        if let Some(state) = state.as_mut() {
+            voice_session::push_audio_direct(
+                &mut env,
+                state,
+                &buffer,
+                byte_count as i32,
+                session_id as i32,
+            );
+        }
+    });
 }

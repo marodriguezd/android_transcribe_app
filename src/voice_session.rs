@@ -128,7 +128,12 @@ pub fn start_recording(
         // Drop the old cpal stream before opening a replacement. Otherwise a
         // failed new device/configuration can leave the old callback alive.
         state.stream = None;
-        if let Some(tx) = state.stream_cmd_tx.lock().unwrap().take() {
+        if let Some(tx) = state
+            .stream_cmd_tx
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .take()
+        {
             let _ = tx.send(crate::engine::StreamCmd::Cancel);
         }
         // Keep old pumps isolated from the next recording. They retain the
@@ -137,6 +142,7 @@ pub fn start_recording(
         state.audio_buffer = Arc::new(Mutex::new(Vec::new()));
         state.streaming_active = Arc::new(AtomicBool::new(false));
     }
+    state.session_id = session_id;
     let buffer_clone = state.audio_buffer.clone();
 
     // End any previous session's monitor, then arm a fresh flag.
@@ -156,7 +162,7 @@ pub fn start_recording(
     } else {
         None
     };
-    *state.endpoint.lock().unwrap() = endpoint.clone();
+    *state.endpoint.lock().unwrap_or_else(|p| p.into_inner()) = endpoint.clone();
 
     let jvm = state.jvm.clone();
     let target_ref = state.target_ref.clone();
@@ -168,7 +174,10 @@ pub fn start_recording(
     // buffer into a cache-aware transcribe.cpp stream and reports
     // partial hypotheses live.
     let (cmd_tx, cmd_rx) = crossbeam_channel::unbounded::<crate::engine::StreamCmd>();
-    *state.stream_cmd_tx.lock().unwrap() = Some(cmd_tx.clone());
+    *state
+        .stream_cmd_tx
+        .lock()
+        .unwrap_or_else(|p| p.into_inner()) = Some(cmd_tx.clone());
     state.streaming_active.store(false, Ordering::SeqCst);
     let jvm_pump = state.jvm.clone();
     let target_ref_pump = state.target_ref.clone();
@@ -339,7 +348,8 @@ pub fn push_audio_direct(
     }
     let samples_count = (byte_count as usize) / 2;
     let i16_slice = unsafe { std::slice::from_raw_parts(addr as *const i16, samples_count) };
-    let f32_samples: Vec<f32> = i16_slice.iter().map(|&s| s as f32 / 32768.0).collect();
+    const INV_SCALE: f32 = 1.0 / 32768.0;
+    let f32_samples: Vec<f32> = i16_slice.iter().map(|&s| s as f32 * INV_SCALE).collect();
 
     state
         .audio_buffer
@@ -350,7 +360,7 @@ pub fn push_audio_direct(
     let rms = crate::audio::fast_rms(&f32_samples);
     let level = (rms * 6.0).clamp(0.0, 1.0);
 
-    let ep_guard = state.endpoint.lock().unwrap();
+    let ep_guard = state.endpoint.lock().unwrap_or_else(|p| p.into_inner());
     if let Some(ep) = ep_guard.as_ref() {
         let floor = f32::from_bits(ep.noise_floor_bits.load(Ordering::Relaxed));
         let is_speech = level > MIN_SPEECH_LEVEL && level > floor + SPEECH_MARGIN;
@@ -552,10 +562,18 @@ pub fn stop_recording(mut env: JNIEnv, state: &mut VoiceSessionState) {
     {
         let _guard = state.stream_lock.lock().unwrap_or_else(|p| p.into_inner());
         if state.streaming_active.load(Ordering::SeqCst) {
-            if let Some(tx) = state.stream_cmd_tx.lock().unwrap().clone() {
+            if let Some(tx) = state
+                .stream_cmd_tx
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .clone()
+            {
                 let _ = tx.send(crate::engine::StreamCmd::Stop);
             }
-            *state.stream_cmd_tx.lock().unwrap() = None;
+            *state
+                .stream_cmd_tx
+                .lock()
+                .unwrap_or_else(|p| p.into_inner()) = None;
             return;
         }
     }
@@ -565,7 +583,10 @@ pub fn stop_recording(mut env: JNIEnv, state: &mut VoiceSessionState) {
         .lock()
         .unwrap_or_else(|p| p.into_inner())
         .clone();
-    *state.stream_cmd_tx.lock().unwrap() = None;
+    *state
+        .stream_cmd_tx
+        .lock()
+        .unwrap_or_else(|p| p.into_inner()) = None;
 
     // Guard against empty buffer (mic permission denied, instant stop, etc.)
     if buffer.is_empty() {
@@ -647,16 +668,68 @@ pub fn cancel_recording(mut env: JNIEnv, state: &mut VoiceSessionState) {
         .unwrap_or_else(|p| p.into_inner())
         .clear();
     // Abort the streaming pump (if any); it delivers nothing on cancel.
-    if let Some(tx) = state.stream_cmd_tx.lock().unwrap().clone() {
+    if let Some(tx) = state
+        .stream_cmd_tx
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clone()
+    {
         let _ = tx.send(crate::engine::StreamCmd::Cancel);
     }
     // Clear the sender so a later recording cannot accidentally signal this
     // session's channel.
-    *state.stream_cmd_tx.lock().unwrap() = None;
+    *state
+        .stream_cmd_tx
+        .lock()
+        .unwrap_or_else(|p| p.into_inner()) = None;
     notify_status_with_session(
         &mut env,
         state.target_ref.as_obj(),
         "Canceled",
         state.session_id,
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_inv_scale_multiplication_parity() {
+        const INV_SCALE: f32 = 1.0 / 32768.0;
+        let test_values: [i16; 8] = [i16::MIN, -16384, -1, 0, 1, 16384, 32767, -32768];
+        for &s in &test_values {
+            let div_result = s as f32 / 32768.0;
+            let mul_result = s as f32 * INV_SCALE;
+            assert_eq!(
+                div_result.to_bits(),
+                mul_result.to_bits(),
+                "Mismatch for sample {}: div={} mul={}",
+                s,
+                div_result,
+                mul_result
+            );
+        }
+    }
+
+    #[test]
+    fn test_endpointing_state_transitions() {
+        let ep = Endpointing {
+            started_at: Instant::now(),
+            last_voice_ms: AtomicU64::new(0),
+            noise_floor_bits: AtomicU32::new(0.05f32.to_bits()),
+            speech_started: AtomicBool::new(false),
+            speech_run_samples: AtomicUsize::new(0),
+        };
+
+        assert_eq!(ep.speech_started.load(Ordering::SeqCst), false);
+        assert_eq!(ep.speech_run_samples.load(Ordering::SeqCst), 0);
+        let floor = f32::from_bits(ep.noise_floor_bits.load(Ordering::Relaxed));
+        assert!((floor - 0.05).abs() < 1e-6);
+
+        ep.speech_run_samples.fetch_add(1600, Ordering::SeqCst);
+        assert_eq!(ep.speech_run_samples.load(Ordering::SeqCst), 1600);
+        ep.speech_started.store(true, Ordering::SeqCst);
+        assert_eq!(ep.speech_started.load(Ordering::SeqCst), true);
+    }
 }

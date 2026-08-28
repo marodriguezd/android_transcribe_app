@@ -54,28 +54,50 @@ public class AudioRecordBridge {
 
             directBuffer = ByteBuffer.allocateDirect(CHUNK_SIZE_BYTES).order(ByteOrder.nativeOrder());
             audioRecord.startRecording();
+            if (audioRecord.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) {
+                Log.e(TAG, "AudioRecord failed to start recording");
+                if (callback != null) callback.onError("AudioRecord failed to start recording");
+                stop();
+                AudioDeviceManager.releaseMicrophone(context);
+                return false;
+            }
             isRecording.set(true);
 
             captureThread = new Thread(() -> {
                 Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO);
-                while (isRecording.get()) {
-                    directBuffer.clear();
-                    int read = audioRecord.read(directBuffer, CHUNK_SIZE_BYTES);
-                    if (read > 0) {
-                        directBuffer.position(0);
-                        directBuffer.limit(read);
-
-                        float rms = calculateRms(directBuffer, read);
-                        if (callback != null) {
-                            callback.onAudioLevel(rms);
-                            callback.onAudioChunk(directBuffer, read);
+                try {
+                    while (isRecording.get()) {
+                        AudioRecord record = audioRecord;
+                        ByteBuffer buf = directBuffer;
+                        if (record == null || buf == null) {
+                            break;
                         }
-                    } else if (read < 0) {
-                        Log.w(TAG, "AudioRecord read error: " + read);
-                        if (read == AudioRecord.ERROR_INVALID_OPERATION || read == AudioRecord.ERROR_BAD_VALUE) {
+                        buf.clear();
+                        int read = record.read(buf, CHUNK_SIZE_BYTES);
+                        if (read > 0) {
+                            buf.position(0);
+                            buf.limit(read);
+
+                            float rms = calculateRms(buf, read);
+                            if (callback != null && isRecording.get()) {
+                                callback.onAudioLevel(rms);
+                                callback.onAudioChunk(buf, read);
+                            }
+                        } else if (read < 0) {
+                            Log.w(TAG, "AudioRecord read error: " + read);
+                            if (callback != null && isRecording.get()) {
+                                callback.onError("AudioRecord read error: " + read);
+                            }
                             break;
                         }
                     }
+                } catch (Throwable t) {
+                    Log.w(TAG, "Exception in AudioRecord capture thread", t);
+                    if (callback != null && isRecording.get()) {
+                        callback.onError(t.getMessage());
+                    }
+                } finally {
+                    isRecording.set(false);
                 }
             }, "AudioRecordCaptureThread");
             captureThread.start();
@@ -84,12 +106,20 @@ public class AudioRecordBridge {
             Log.e(TAG, "Error starting AudioRecord capture", t);
             if (callback != null) callback.onError(t.getMessage());
             stop();
+            AudioDeviceManager.releaseMicrophone(context);
             return false;
         }
     }
 
     public synchronized void stop() {
         isRecording.set(false);
+        if (audioRecord != null) {
+            try {
+                if (audioRecord.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
+                    audioRecord.stop();
+                }
+            } catch (Throwable ignored) {}
+        }
         if (captureThread != null) {
             try {
                 captureThread.join(500);
@@ -98,15 +128,11 @@ public class AudioRecordBridge {
         }
         if (audioRecord != null) {
             try {
-                if (audioRecord.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {
-                    audioRecord.stop();
-                }
-            } catch (Throwable ignored) {}
-            try {
                 audioRecord.release();
             } catch (Throwable ignored) {}
             audioRecord = null;
         }
+        directBuffer = null;
     }
 
     public boolean isRecording() {

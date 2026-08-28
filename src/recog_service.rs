@@ -173,14 +173,20 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
     // startListening twice without cancel) so its monitor/finaliser can never
     // deliver stale results to this new session.
     {
-        let mut guard = SESSION.lock().unwrap();
+        let mut guard = SESSION.lock().unwrap_or_else(|p| p.into_inner());
         if let Some(old) = guard.take() {
             old.shared.cancelled.store(true, Ordering::SeqCst);
             old.shared.finalized.store(true, Ordering::SeqCst);
-            if let Some(tx) = old.shared.stream_cmd_tx.lock().unwrap().clone() {
+            if let Some(tx) = old
+                .shared
+                .stream_cmd_tx
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .clone()
+            {
                 let _ = tx.send(crate::engine::StreamCmd::Cancel);
             }
-            *old.stream.lock().unwrap() = None;
+            *old.stream.lock().unwrap_or_else(|p| p.into_inner()) = None;
         }
     }
 
@@ -251,7 +257,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
     match stream {
         Ok(s) => {
             s.play().ok();
-            *stream_holder.lock().unwrap() = Some(SendStream(s));
+            *stream_holder.lock().unwrap_or_else(|p| p.into_inner()) = Some(SendStream(s));
         }
         Err(e) => {
             log::error!("Failed to open microphone: {}", e);
@@ -276,11 +282,14 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
     // onPartialText. Exits silently for models without native streaming, in
     // which case finalize uses the whole-buffer path as before.
     let (cmd_tx, cmd_rx) = crossbeam_channel::unbounded::<crate::engine::StreamCmd>();
-    *shared.stream_cmd_tx.lock().unwrap() = Some(cmd_tx);
+    *shared
+        .stream_cmd_tx
+        .lock()
+        .unwrap_or_else(|p| p.into_inner()) = Some(cmd_tx);
     let pump_shared = shared.clone();
     std::thread::spawn(move || streaming_pump(pump_shared, cmd_rx));
 
-    *SESSION.lock().unwrap() = Some(Session {
+    *SESSION.lock().unwrap_or_else(|p| p.into_inner()) = Some(Session {
         shared,
         stream: stream_holder,
     });
@@ -295,7 +304,7 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
 ) {
     let session = SESSION
         .lock()
-        .unwrap()
+        .unwrap_or_else(|p| p.into_inner())
         .as_ref()
         .map(|s| (s.shared.clone(), s.stream.clone()));
     if let Some((shared, stream)) = session {
@@ -309,14 +318,20 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
     _env: JNIEnv,
     _class: JClass,
 ) {
-    let mut guard = SESSION.lock().unwrap();
+    let mut guard = SESSION.lock().unwrap_or_else(|p| p.into_inner());
     if let Some(session) = guard.as_ref() {
         session.shared.cancelled.store(true, Ordering::SeqCst);
         session.shared.finalized.store(true, Ordering::SeqCst);
-        if let Some(tx) = session.shared.stream_cmd_tx.lock().unwrap().clone() {
+        if let Some(tx) = session
+            .shared
+            .stream_cmd_tx
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
+        {
             let _ = tx.send(crate::engine::StreamCmd::Cancel);
         }
-        *session.stream.lock().unwrap() = None;
+        *session.stream.lock().unwrap_or_else(|p| p.into_inner()) = None;
     }
     *guard = None;
 }
@@ -547,7 +562,7 @@ fn finalize(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>>) {
     }
 
     // Stop the microphone (also drops the audio callback's Arc<Endpoint>).
-    *stream.lock().unwrap() = None;
+    *stream.lock().unwrap_or_else(|p| p.into_inner()) = None;
 
     let mut env = match shared.jvm.attach_current_thread() {
         Ok(e) => e,
@@ -564,7 +579,12 @@ fn finalize(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>>) {
     // drained buffer, which the pump consumes as it goes).
     if shared.total_pushed.load(Ordering::SeqCst) < 3200 {
         // Abort the streaming pump (if any) so it delivers nothing.
-        if let Some(tx) = shared.stream_cmd_tx.lock().unwrap().clone() {
+        if let Some(tx) = shared
+            .stream_cmd_tx
+            .lock()
+            .unwrap_or_else(|p| p.into_inner())
+            .clone()
+        {
             let _ = tx.send(crate::engine::StreamCmd::Cancel);
         }
         call_error(&mut env, target, ERROR_NO_MATCH, shared.session_id);
@@ -585,7 +605,12 @@ fn finalize(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>>) {
         if shared.streaming_active.load(Ordering::SeqCst) {
             // Streaming pump owns the transcription: signal end of input; the
             // pump finalizes, delivers the results and clears the session.
-            if let Some(tx) = shared.stream_cmd_tx.lock().unwrap().clone() {
+            if let Some(tx) = shared
+                .stream_cmd_tx
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .clone()
+            {
                 let _ = tx.send(crate::engine::StreamCmd::Stop);
             }
             return;
@@ -621,7 +646,7 @@ fn finalize(shared: Arc<Endpoint>, stream: Arc<Mutex<Option<SendStream>>>) {
 /// Clear the global session, but only if it is still *this* session — a newer
 /// `startListening` may already have installed a fresh one.
 fn clear_session(shared: &Arc<Endpoint>) {
-    let mut guard = SESSION.lock().unwrap();
+    let mut guard = SESSION.lock().unwrap_or_else(|p| p.into_inner());
     if let Some(s) = guard.as_ref() {
         if Arc::ptr_eq(&s.shared, shared) {
             *guard = None;

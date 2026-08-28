@@ -116,7 +116,7 @@ public class PostProcessConfigurationGuardTest {
         settings.provider = "groq";
         settings.apiKey = ""; // Missing API key
 
-        PostProcessor processor = new PostProcessor(settings);
+        PostProcessor processor = new PostProcessor(settings, null, null, null);
         AtomicReference<String> resultRef = new AtomicReference<>();
         AtomicBoolean errorCalled = new AtomicBoolean(false);
 

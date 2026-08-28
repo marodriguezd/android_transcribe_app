@@ -283,9 +283,9 @@ public class PostProcessor {
             return;
         }
 
-        // Re-check the marker and configuration here, not only at each caller, because the toggle
+        // Re-check the marker here, not only at each caller, because the toggle
         // can change between receiving the ASR result and creating this call.
-        if (!forceRequest && (!settings.isPostProcessEnabled() || !settings.isPostProcessConfigured())) {
+        if (!forceRequest && !settings.isPostProcessEnabled()) {
             dispatchToUi(() -> callback.onSuccess(rawText));
             return;
         }

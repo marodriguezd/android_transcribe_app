@@ -2,6 +2,16 @@
 
 Change log of **Aura Transcribe** (Next-Gen evolution of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app)).
 
+# v0.2.1
+
+Quality and stability release introducing AI post-processing configuration guardrails and smart UI feedback:
+
+- **AI FX Configuration Guardrails:** `SettingsManager.isPostProcessEnabled()` requires `isPostProcessConfigured()`. AI post-processing cannot run or stay enabled without a valid API key (Cloud providers) or the S1-mini model installed (Local provider).
+- **Smart Toggle Feedback:** On-screen keyboard (`RustInputMethodService`) and floating overlay (`FloatingOverlayService`) reject turning on "AI FX" when not configured, showing a localized toast guidance message.
+- **Settings Screen Error Handling:** `PostProcessSettingsActivity` validates API key presence and model installation upon toggling and saving.
+- **100% i18n Parity (248 Strings):** Added `pp_not_configured_prompt` in all 6 localized resource files (`de`, `es`, `fr`, `it`, `pt`, `ru`).
+- **Guardrail Test Suite:** Added plain-JVM decoupled unit test suite `PostProcessConfigurationGuardTest.java`.
+
 # v0.2.0
 
 Major Milestone Release: Official rebranding to **Aura Transcribe** (`com.auratranscribe.app`), Adaptive Icon architecture, Bluetooth audio routing, and AI post-processing layer:

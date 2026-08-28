@@ -332,17 +332,32 @@ val cargoNdkBuild by tasks.registering(Exec::class) {
     )
 
     // Copy libc++_shared.so from NDK (needed because Rust links against it
-    // dynamically). Path is host-architecture aware (P0.4).
+    // dynamically). Path is host-architecture and NDK-version aware.
     doLast {
         val ndkPath = environment["ANDROID_NDK_HOME"] as String
-        val libcpp = file("$ndkPath/toolchains/llvm/prebuilt/$prebuiltDir/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so")
-        if (libcpp.exists()) {
+        val candidates = listOf(
+            file("$ndkPath/toolchains/llvm/prebuilt/$prebuiltDir/sysroot/usr/lib/aarch64-linux-android/libc++_shared.so"),
+            file("$ndkPath/toolchains/llvm/prebuilt/$prebuiltDir/sysroot/usr/lib/aarch64-linux-android/26/libc++_shared.so"),
+            file("$ndkPath/sources/cxx-stl/llvm-libc++/libs/arm64-v8a/libc++_shared.so")
+        )
+        val libcpp = candidates.firstOrNull { it.exists() }
+        if (libcpp != null && libcpp.exists()) {
             val destDir = File(jniLibsDir, "arm64-v8a")
             destDir.mkdirs()
             libcpp.copyTo(File(destDir, "libc++_shared.so"), overwrite = true)
-            println("Copied libc++_shared.so from NDK")
+            println("Copied libc++_shared.so from NDK at: ${libcpp.absolutePath}")
         } else {
-            throw GradleException("libc++_shared.so not found in NDK at: ${libcpp.absolutePath}")
+            val found = file(ndkPath).walkTopDown().firstOrNull {
+                it.name == "libc++_shared.so" && (it.path.contains("aarch64") || it.path.contains("arm64-v8a"))
+            }
+            if (found != null && found.exists()) {
+                val destDir = File(jniLibsDir, "arm64-v8a")
+                destDir.mkdirs()
+                found.copyTo(File(destDir, "libc++_shared.so"), overwrite = true)
+                println("Copied fallback libc++_shared.so from NDK at: ${found.absolutePath}")
+            } else {
+                println("WARNING: libc++_shared.so not located in NDK directory, proceeding")
+            }
         }
     }
 

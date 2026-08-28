@@ -319,7 +319,7 @@ val cargoNdkBuild by tasks.registering(Exec::class) {
     // arm64 phones from ~2018 on; the engine refuses older CPUs with a clear
     // error at load (see check_cpu_features in src/engine.rs) instead of
     // crashing mid-inference.
-    environment("TRANSCRIBE_CMAKE_ARGS", "-DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16 -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS_RELEASE=\"-O3 -flto -ffast-math -fno-finite-math-only\" -DCMAKE_CXX_FLAGS_RELEASE=\"-O3 -flto -ffast-math -fno-finite-math-only\" -DGGML_NATIVE=OFF -DGGML_BUILD_TESTS=OFF -DGGML_BUILD_EXAMPLES=OFF -DANDROID_STL=c++_shared -DCMAKE_SYSROOT=$ndkDir/toolchains/llvm/prebuilt/$prebuiltDir/sysroot -DCMAKE_SYSTEM_VERSION=26 -DANDROID_PLATFORM=android-26 -DANDROID_ABI=arm64-v8a -DANDROID_NDK=$ndkDir -DCMAKE_ANDROID_NDK=$ndkDir")
+    environment("TRANSCRIBE_CMAKE_ARGS", "-DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16 -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS_RELEASE=-O3 -DCMAKE_CXX_FLAGS_RELEASE=-O3 -DGGML_NATIVE=OFF -DGGML_BUILD_TESTS=OFF -DGGML_BUILD_EXAMPLES=OFF -DANDROID_STL=c++_shared -DCMAKE_SYSTEM_VERSION=26 -DANDROID_PLATFORM=android-26 -DANDROID_ABI=arm64-v8a -DANDROID_NDK=$ndkDir -DCMAKE_ANDROID_NDK=$ndkDir")
     environment("RUSTFLAGS", "-C target-feature=+neon,+fp16,+dotprod")
 
     val jniLibsDir = project.file("src/main/jniLibs")
@@ -327,6 +327,7 @@ val cargoNdkBuild by tasks.registering(Exec::class) {
     commandLine(
         "cargo", "ndk",
         "-t", "arm64-v8a",
+        "-p", "26",
         "-o", jniLibsDir.absolutePath,
         "build", "--release"
     )

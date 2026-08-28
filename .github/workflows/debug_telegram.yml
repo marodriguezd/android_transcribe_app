@@ -91,11 +91,13 @@ jobs:
 
     - name: Build Debug APK
       run: |
+        export PATH="$HOME/.cargo/bin:$PATH"
         set -e -o pipefail
         ./gradlew assembleDebug --stacktrace 2>&1 | tee gradle_build.log
 
     - name: Lint (hard gate)
       run: |
+        export PATH="$HOME/.cargo/bin:$PATH"
         set -e -o pipefail
         ./gradlew lintDebug --stacktrace 2>&1 | tee gradle_lint.log
 
@@ -142,6 +144,15 @@ jobs:
         $COMMIT_MSG" \
              "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument"
 
+    - name: Upload Build Logs on Failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: failure-build-logs
+        path: |
+          *.log
+          app/build/reports/
+
     - name: Alert Workflow Failure to Telegram
       if: failure()
       env:
@@ -149,12 +160,12 @@ jobs:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
         MSG="🚨 CI Workflow Failed on commit $(git rev-parse --short HEAD):"$'\n'
-        if [ -f gradle_lint.log ] && grep -qE "(FAILURE:|ERROR:|FAILED|Exception|error:)" gradle_lint.log; then
-          ERR=$(grep -E "(FAILURE:|ERROR:|FAILED|Exception|error:)" gradle_lint.log | tail -8)
-          MSG="${MSG}"$'\n'"[LINT LOG]"$'\n'"${ERR}"
-        elif [ -f gradle_build.log ] && grep -qE "(FAILURE:|ERROR:|FAILED|Exception|error:|cannot find symbol)" gradle_build.log; then
+        if [ -f gradle_build.log ] && grep -qE "(FAILURE:|ERROR:|FAILED|Exception|error:|cannot find symbol)" gradle_build.log; then
           ERR=$(grep -E "(FAILURE:|ERROR:|FAILED|Exception|error:|cannot find symbol)" gradle_build.log | tail -8)
           MSG="${MSG}"$'\n'"[BUILD LOG]"$'\n'"${ERR}"
+        elif [ -f gradle_lint.log ] && grep -qE "(FAILURE:|ERROR:|FAILED|Exception|error:)" gradle_lint.log; then
+          ERR=$(grep -E "(FAILURE:|ERROR:|FAILED|Exception|error:)" gradle_lint.log | tail -8)
+          MSG="${MSG}"$'\n'"[LINT LOG]"$'\n'"${ERR}"
         elif [ -f gradle_test.log ] && grep -qE "(FAILURE:|ERROR:|FAILED|Exception|error:)" gradle_test.log; then
           ERR=$(grep -E "(FAILURE:|ERROR:|FAILED|Exception|error:)" gradle_test.log | tail -8)
           MSG="${MSG}"$'\n'"[TEST LOG]"$'\n'"${ERR}"

@@ -87,6 +87,9 @@ public final class AudioDeviceManager {
                     am.setBluetoothScoOn(false);
                 } catch (Throwable ignored) {}
             }
+            try {
+                am.setSpeakerphoneOn(false);
+            } catch (Throwable ignored) {}
             am.setMode(AudioManager.MODE_NORMAL);
         } catch (Throwable t) {
             Log.e(TAG, "Error releasing microphone routing", t);
@@ -171,6 +174,9 @@ public final class AudioDeviceManager {
 
     private static void routeToBluetoothMic(Context context, AudioManager am) {
         am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+        try {
+            am.setSpeakerphoneOn(false);
+        } catch (Throwable ignored) {}
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             routeToBluetoothMicApi31(am);
         }

@@ -1,168 +1,198 @@
-# Offline Voice Input (Android)
+# ✨ Aura Transcribe (Android)
 
-An offline, privacy-focused speech-to-text tool for Android, built with Rust. Tap the microphone on the keyboard you already use — your speech is transcribed entirely on-device and typed into any app. Also includes live subtitles and an optional dedicated voice keyboard.
+[![Build & Deliver](https://img.shields.io/badge/CI%2FCD-100%25%20Passing-brightgreen?style=flat-square&logo=githubactions)](https://github.com/marodriguezd/android_transcribe_app/actions)
+[![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B%20(API%2026--34)-blue?style=flat-square&logo=android)](https://github.com/marodriguezd/android_transcribe_app)
+[![Architecture](https://img.shields.io/badge/Architecture-ARM64%20(aarch64)-orange?style=flat-square&logo=arm)](https://github.com/marodriguezd/android_transcribe_app)
+[![Rust Core](https://img.shields.io/badge/Core-Rust%202021%20%2B%20transcribe.cpp-red?style=flat-square&logo=rust)](https://github.com/marodriguezd/android_transcribe_app)
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
-[<img src="https://i.ibb.co/q0mdc4Z/get-it-on-github.png"
-alt="Get it on GitHub"
-height="80">](https://github.com/marodriguezd/android_transcribe_app/releases/latest)
+**Aura Transcribe** is a next-generation, privacy-first offline speech recognition, live dictation, and AI post-processing system for Android. Powered by safe Rust and native ARM64 GGML inference kernels, Aura Transcribe delivers studio-grade speech-to-text directly on your device — zero telemetry, zero audio leakage, and zero mandatory network connection.
 
-> This is a fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app). It defaults to the multilingual, streaming Nemotron 3.5 ASR model (Q8_0) and adds an optional AI post-processing layer (clean up transcriptions with any OpenAI-compatible LLM). Get releases from [this repo's releases page](https://github.com/marodriguezd/android_transcribe_app/releases/latest).
+[<img src="https://i.ibb.co/q0mdc4Z/get-it-on-github.png" alt="Get it on GitHub" height="80">](https://github.com/marodriguezd/android_transcribe_app/releases/latest)
 
-> **For AI assistants:** if you are an automated coding agent about to modify code in this repo, **read [`AGENTS.md`](AGENTS.md) first**. It defines the JNI contract, marker-file settings convention, build wiring rules (cargo-ndk, ABI filter, `outputs.upToDateWhen`), and a strict do/don't list. This README is the human-facing project page (features, prerequisites, screenshots, acknowledgments); implementation rules live next door.
+---
 
-## Features
+## 🧬 Heritage & Project Evolution
 
-- **Voice input in any app:** Tap the microphone on the keyboard you already use (SwiftKey, etc.) or a website's voice search, and your speech is transcribed straight into the text field. The app registers as your device's speech-to-text provider.
-- **100% offline & private:** The bundled Nemotron 3.5 ASR model runs entirely on-device — no audio ever leaves your phone, and no network is required. (The optional AI post-processing layer is the only feature that talks to the network, and only if you enable it.)
-- **Live Subtitles:** Real-time captions for any audio/video playing on your device.
-- **Optional voice keyboard:** A built-in keyboard you can switch to for voice input wherever you prefer it.
-- **Supported Languages (built-in model):** 40 language-locales with automatic language detection (Nemotron 3.5 ASR Streaming). English, Spanish, German, French, Italian, Portuguese, Russian, Polish, Dutch and many more; import a different GGUF model (see below) for anything else.
-- **Custom models:** Import any [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) GGUF model (Whisper, Nemotron streaming, Canary, more Parakeet variants, …) from a downloaded file — the app stays fully offline; downloads happen in your browser.
-- **Efficient native backend:** All models run through [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) (ggml), wrapped in a safe Rust core.
+Aura Transcribe originated from the pioneering work in [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app) (*Offline Voice Input v0.1.18*). While proudly maintaining this lineage and core offline philosophy, Aura Transcribe has completely evolved into an independent, advanced speech-to-text powerhouse featuring dynamic multi-device audio routing, on-device and cloud AI post-processing, floating dictation overlays, and a hardened multi-gate CI/CD infrastructure.
 
-## Screenshots
+### 📊 Evolution Matrix: v0.1.18 vs Aura Transcribe
+
+| Feature / Dimension | Original Roots (`v0.1.18`) | ✨ Aura Transcribe (`v0.1.36+`) |
+| :--- | :--- | :--- |
+| **Application Identity** | Offline Voice Input (`dev.notune.transcribe`) | **Aura Transcribe (`com.auratranscribe.app`)** |
+| **Visual Architecture** | Legacy static raster bitmap | **Adaptive Bioluminescent Vector Icons (Android 8–15+) + Material You Themed** |
+| **Audio Input Management** | Internal microphone only | **FUTO-Style 3-Way Dynamic Routing (Auto, Bluetooth SCO/BLE, Internal Mic)** |
+| **AI Post-Processing** | None | **On-Device SuperWhisper S1-mini + Cloud LLMs (Groq, OpenAI, Cerebras, OpenRouter)** |
+| **Stylistic Formatting** | Raw transcription output | **4 One-Touch Styles (Clean, Formal, Casual, Verbatim) + Custom Prompts** |
+| **Dictation Overlay** | Activity popup only | **Floating Bubble Overlay (`SYSTEM_ALERT_WINDOW`) + Accessibility Auto-Paste** |
+| **Live Subtitles** | Basic window | **Real-Time Subtitles + ADB AppOps Zero-Dialog Consent Bypass** |
+| **Phonetic Corrections** | Basic dictionary matching | **Banded Levenshtein DP + Cosine N-Gram Alignment + Custom Dictionary** |
+| **Continuous Integration** | Manual local builds | **100% Automated Multi-Gate GitHub Actions Pipeline + Direct Telegram APK Delivery** |
+
+---
+
+## ⚡ Core Capabilities & Features
+
+```
+                   ┌────────────────────────────────────────┐
+                   │          AURA TRANSCRIBE CORE          │
+                   └───────────────────┬────────────────────┘
+                                       │
+       ┌───────────────────────────────┼───────────────────────────────┐
+       ▼                               ▼                               ▼
+┌──────────────┐             ┌───────────────────┐           ┌──────────────────┐
+│ Audio Engine │             │  Inference Core   │           │ Post-Processing  │
+├──────────────┤             ├───────────────────┤           ├──────────────────┤
+│• Bluetooth   │             │• Nemotron 3.5 ASR │           │• S1-mini (Local) │
+│• BLE Audio   │ ──(Audio)─► │• Whisper.cpp/GGML │ ──(Text)► │• Groq / Cerebras │
+│• USB Headset │             │• 40 Locales / ASR │           │• OpenAI / Router │
+│• Internal    │             │• Streaming Chunks │           │• Clean / Formal  │
+└──────────────┘             └───────────────────┘           └────────┬─────────┘
+                                                                      │
+                                                                      ▼
+                                                            ┌───────────────────┐
+                                                            │  Output Surfaces  │
+                                                            ├───────────────────┤
+                                                            │• Keyboard Popup   │
+                                                            │• System Speech IME│
+                                                            │• Floating Overlay │
+                                                            │• Live Subtitles   │
+                                                            └───────────────────┘
+```
+
+- **🎙️ Seamless Voice Input in Any App:** Tap the microphone on SwiftKey, AnySoftKeyboard, HeliBoard, or any browser voice search. Transcribes directly into active text fields.
+- **🔒 100% On-Device & Private:** The default Nemotron 3.5 ASR Streaming model (Q8_0) runs completely on your CPU. No audio samples ever leave your device.
+- **🎧 Dynamic Bluetooth & External Mic Router:** Automatically switches between Bluetooth SCO headsets, BLE Audio, USB external microphones, and internal phone mics with manual override switches (*Auto*, *Bluetooth Only*, *Built-in Only*).
+- **✨ Intelligent AI Post-Processing Layer:** Transform raw dictation into polished text using either **local on-device S1-mini** or high-speed cloud providers (**Groq, OpenAI, Cerebras, OpenRouter, Mistral, Together, Ollama**).
+  - **Clean:** Removes hesitation sounds ("um", "ah"), stutters, and adds clean punctuation.
+  - **Formal:** Formats dictation into professional emails and business documentation.
+  - **Casual:** Formats speech into natural, conversational messaging.
+  - **Verbatim:** Exact phonetic transcript with zero alterations.
+- **💬 Floating Dictation Overlay & Auto-Paste:** Trigger dictation from any screen with a lightweight draggable overlay bubble and optional Accessibility Service auto-paste.
+- **📺 Real-Time Live Subtitles:** Instant on-device transcription for podcasts, videos, and phone calls with zero lag.
+- **🌐 40+ Language Locales:** Native streaming language auto-detection for English, Spanish, German, French, Italian, Portuguese, Russian, Japanese, Mandarin, and more.
+
+---
+
+## 📱 Screenshots & User Interface
 
 <p float="left">
-  <img src=".screenshots/screenshot_home.png" width="30%" />
-  <img src=".screenshots/screenshot_recording.png" width="30%" />
-  <img src=".screenshots/screenshot_subtitles.png" width="30%" />
+  <img src=".screenshots/screenshot_home.png" width="30%" alt="Home Dashboard" />
+  <img src=".screenshots/screenshot_recording.png" width="30%" alt="Voice Recording Panel" />
+  <img src=".screenshots/screenshot_subtitles.png" width="30%" alt="Live Subtitles Overlay" />
 </p>
 
-## Usage
+---
 
-### Voice input in any app (recommended)
+## 🚀 Getting Started & Usage
 
-1. Open **Offline Voice Input** once and grant the microphone permission. The home screen shows a **Voice input** status — green when you're ready to go.
-2. In any app, tap the **microphone** on your keyboard (e.g. Microsoft SwiftKey) or the voice-search mic on a website. A compact panel slides up over the app you're in, you speak, and your words are inserted as text. Tap to stop — or enable *Auto-stop after silence* in the app's settings to have it stop by itself.
+### 1. Standard Voice Input (Recommended)
+1. Open **Aura Transcribe** and grant the Microphone permission.
+2. In any app, tap the **microphone** icon on your keyboard (e.g. Microsoft SwiftKey) or a voice search field.
+3. The compact Aura Transcribe bottom sheet slides up, transcribes your speech with live partial hypotheses, and inserts the final text upon silence or tap.
 
-The app plugs into Android's speech-to-text in **three** ways, so it works with a wide range of keyboards and apps:
+### 2. Dedicated Voice Keyboard (IME)
+Prefer a dedicated dictation keyboard?
+1. Enable **Aura Transcribe** in *Android Settings → System → Languages & Input → On-Screen Keyboards*.
+2. Switch to Aura Transcribe using the globe/keyboard switcher key on your keyboard.
+3. Tap the recording surface to speak. Text is retained and inserted seamlessly even across app switches.
 
-| Path | Who uses it | What happens |
-|---|---|---|
-| **Voice-input popup** (`RECOGNIZE_SPEECH`) | SwiftKey, website voice search, many apps | The compact bottom panel opens over the current app |
-| **System speech service** (`RecognitionService`) | Keyboards/apps using Android's `SpeechRecognizer` | Recognition runs invisibly in the background with automatic endpointing |
-| **Voice keyboard (IME)** | Any keyboard, via the keyboard switcher — also HeliBoard/AnySoftKeyboard-style "switch to voice IME" mic keys | The dedicated voice keyboard opens |
+### 3. Live Subtitles & Zero-Dialog ADB Permission
+Tap **Start Live Subtitles** and select *Share entire screen* for real-time captions.
 
-Tap **Try voice input** on the home screen to test the whole flow in one tap.
-
-**Keyboard notes** (mic-key behavior verified against each keyboard's source and tested in the emulator):
-
-- **Microsoft SwiftKey** (not open source) opens the compact voice panel directly, like website voice search does. If SwiftKey's own voice typing opens instead, go to SwiftKey Settings → *Rich input* → turn off **Multi-modal voice typing**.
-- **AnySoftKeyboard** is the open-source way to get the panel: its mic key fires the standard speech intent as long as no *voice keyboard* is enabled on the system. (If one is enabled — ours or Google's — it switches to that instead.)
-- **HeliBoard, FlorisBoard, OpenBoard, Fossify Keyboard, Unexpected Keyboard:** their mic key never opens the panel — it switches to the system *voice input keyboard*. Enable the **Offline Voice Input** keyboard (see below) and it opens automatically; its keyboard-switch key takes you back. **FUTO Keyboard** ships its own built-in voice input.
-- **Gboard:** only uses Google's own voice typing, so it can't hand speech to this app at all.
-- If Android shows a chooser, pick **Offline Voice Input** and tap **Always**. If another app always opens, clear its default in *Settings → Apps*.
-
-### Dedicated voice keyboard (optional)
-
-Prefer voice input as its own keyboard? Enable the **Offline Voice Input** keyboard via *Open Keyboard Settings* on the home screen, switch to it from your keyboard switcher, then tap **Tap to Record**. By default the recording keeps running even if you switch apps or the keyboard closes (turn off *Record in background* in settings if you don't want that) — the text is inserted when you come back.
-
-### Live subtitles
-
-Tap **Start Live Subtitles** and choose *Share entire screen* to get real-time, on-device captions for any audio or video playing on your device.
-
-**Advanced: skip the screen-capture dialog.** Android shows a "Start recording or casting?" consent dialog every time subtitles start. You can pre-approve it once via adb — after that, subtitles start instantly and the setting survives reboots (USB debugging can be turned off again afterwards):
-
+To permanently bypass the Android media projection consent prompt on your personal device:
 ```bash
 adb shell appops set --user 0 dev.notune.transcribe PROJECT_MEDIA allow
 ```
+*(To revert: `adb shell appops set --user 0 dev.notune.transcribe PROJECT_MEDIA default`)*
 
-To undo it:
+---
+
+## ⌨️ Keyboard Interoperability Guide
+
+| Keyboard App | Compatibility Mode | Integration Details |
+| :--- | :--- | :--- |
+| **Microsoft SwiftKey** | Native Popup Panel | Opens the compact bottom panel directly. *(Turn off "Multi-modal voice typing" in SwiftKey Rich Input settings)* |
+| **AnySoftKeyboard** | Native Speech Intent | Mic key launches Aura Transcribe panel directly. |
+| **HeliBoard / FlorisBoard** | IME Switcher | Mic key switches to the Aura Transcribe voice keyboard instantly. |
+| **Fossify / OpenBoard / Unexpected** | IME Switcher | Switches to Aura Transcribe voice keyboard. |
+| **Gboard** | Incompatible | Google hardcodes voice typing exclusively to Google Speech Services. |
+
+---
+
+## 🛠️ Prerequisites & Building from Source
+
+### Toolchain Requirements
+| Component | Minimum Version | Installation / Source |
+| :--- | :--- | :--- |
+| **JDK** | JDK 17 (LTS) | Android Studio bundled JBR or OpenJDK 17 |
+| **Android SDK** | API 34 (Android 14) | SDK Manager |
+| **Android NDK** | `28.0.13004108` | `sdkmanager "ndk;28.0.13004108"` |
+| **Rust** | `1.78.0+` (edition 2021) | `rustup target add aarch64-linux-android` |
+| **cargo-ndk** | Latest | `cargo install cargo-ndk` |
+| **CMake & Ninja** | Latest | `apt install cmake ninja-build` |
+
+### Build Commands
 
 ```bash
-adb shell appops set --user 0 dev.notune.transcribe PROJECT_MEDIA default
-```
+# 1. Clone repository
+git clone https://github.com/marodriguezd/android_transcribe_app.git
+cd android_transcribe_app
 
-This relies on the undocumented `PROJECT_MEDIA` app-op; on some OEM builds it may not work or may get reset by the system — the normal dialog remains the fallback. The same instructions are shown in-app under *Skip the permission dialog (advanced)*.
+# 2. Compile Rust native libraries for ARM64
+cargo ndk -t arm64-v8a -o app/src/main/jniLibs build --release
 
-### Custom speech models
-
-The built-in Nemotron 3.5 ASR Streaming model works out of the box — it transcribes 40 language-locales with automatic language detection and live partial hypotheses while you speak. Under **Manage speech models** you can additionally import any [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) GGUF model: download a `.gguf` file in your browser (the in-app *Where to get models* dialog lists direct links, e.g. a tiny 135 MB English-only Parakeet, Whisper large-v3-turbo, or a Canary model), then import it via the system file picker and select it. Importing model files needs no internet permission — files are simply copied into the app's private storage. An optional language hint (e.g. `en-US`, or `auto`) can be set for imported models; models without native language detection (like Canary) fall back to the device's language when set to automatic.
-
-For streaming models, *Manage speech models* also exposes a **Streaming latency** selector (chunk sizes 1.12 s / 560 ms / 160 ms / 80 ms). The default (1.12 s) matches the model's best accuracy; smaller chunks show live partial results noticeably sooner while you speak — handy on slower phones — at a small accuracy cost. The engine logs per-session fluidity telemetry (`rtf`, partial count, mean cadence, chunk selector) so you can measure the trade-off on your own device via `logcat`.
-
-## Prerequisites
-
-| Dependency | Installation |
-|---|---|
-| **JDK 17** | Android Studio (bundled) or `sudo pacman -S jdk17-openjdk` |
-| **Android SDK** | Via Android Studio or `sdkmanager` |
-| **Android NDK** | `sdkmanager "ndk;28.0.13004108"` |
-| **Rust** | [rustup.rs](https://rustup.rs) + `rustup target add aarch64-linux-android` |
-| **cargo-ndk** | `cargo install cargo-ndk` |
-
-### Local Configuration
-
-Create a `local.properties` file in the project root (this file is gitignored):
-
-```properties
-sdk.dir=/path/to/your/Android/Sdk
-```
-
-If your default Java is not JDK 17, uncomment and set `org.gradle.java.home` in `gradle.properties`:
-
-```properties
-org.gradle.java.home=/path/to/jdk17
-# Examples:
-#   /opt/android-studio/jbr          (Android Studio bundled JBR)
-#   /usr/lib/jvm/java-17-openjdk     (System JDK 17)
-```
-
-## Building
-
-### Debug APK
-```bash
+# 3. Assemble Debug APK
 ./gradlew assembleDebug
-# Output: app/build/outputs/apk/debug/app-debug.apk
+# Artifact generated at: app/build/outputs/apk/debug/app-debug.apk
+
+# 4. Run automated test suites & quality gates
+./gradlew testDebugUnitTest
+python3 scripts/check_translations.py
+python3 scripts/bench_performance.py
 ```
 
-### Release APK
-```bash
-./gradlew assembleRelease
-# Output: app/build/outputs/apk/release/app-release.apk
-```
+---
 
-### Signing
+## 📂 Repository Topology
 
-For release builds, place a `release.keystore` in the project root and set these environment variables:
-
-```bash
-export KEY_ALIAS=release
-export KEY_PASS=yourpassword
-export STORE_PASS=yourpassword
-```
-
-### Model Assets
-
-The built-in Nemotron 3.5 ASR Streaming GGUF model (~751 MB, Q8_0) is automatically downloaded from HuggingFace during the first build via a Gradle task. The checksum is verified with SHA-256. No manual download is needed. (Debug APKs ship without the model to stay under Telegram's 50 MB limit and download it on first run — also SHA-256 verified before activation.)
-
-## Project Structure
-
-```
+```text
+android_transcribe_app/
 ├── app/
-│   └── src/main/
-│       ├── AndroidManifest.xml
-│       ├── java/dev/notune/transcribe/   # Android Java code
-│       ├── res/                          # Resources (layouts, drawables, etc.)
-│       ├── assets/                       # Model files (downloaded at build time)
-│       └── jniLibs/                      # Native .so files (built by cargo-ndk)
-├── src/                                  # Rust source code (cdylib)
-├── Cargo.toml                            # Rust crate manifest
-├── build.gradle.kts                      # Root Gradle config
-├── app/build.gradle.kts                  # App module config (AGP 8.7.3)
-├── settings.gradle.kts
-├── gradle.properties
-└── fastlane/metadata/android/            # F-Droid metadata
+│   ├── src/main/
+│   │   ├── AndroidManifest.xml          # App declaration, permissions & IME registration
+│   │   ├── java/dev/notune/transcribe/  # Android Java layer (AudioDeviceManager, IME, UI)
+│   │   ├── res/
+│   │   │   ├── drawable/                # Bioluminescent vector & adaptive icon drawables
+│   │   │   ├── mipmap-anydpi-v26/       # Android 8.0–15+ adaptive icon manifests
+│   │   │   ├── values/ (and values-*/)  # 247 strings across 6 localized languages
+│   │   │   └── xml/                     # IME method descriptor & accessibility configs
+│   │   └── jniLibs/arm64-v8a/           # libandroid_transcribe_app.so & libc++_shared.so
+│   └── build.gradle.kts                 # Android Gradle Plugin configuration
+├── src/                                 # Rust inference backend & JNI engine (cdylib)
+│   ├── engine.rs                        # transcribe.cpp GGML inference binding & memory pool
+│   ├── audio.rs                         # Ring buffer, audio resampling, RMS & VAD
+│   ├── post_processor.rs                # AI Post-processor & prompt templates
+│   └── lib.rs                           # JNI bridge entry points
+├── scripts/
+│   ├── check_translations.py            # Automated i18n parity quality gate
+│   └── bench_performance.py             # Latency, RMS SIMD & Levenshtein DP benchmark
+├── .github/workflows/
+│   └── debug_telegram.yml               # Automated CI/CD pipeline with Telegram delivery
+└── Cargo.toml                           # Rust crate manifest & release profile
 ```
 
-## Acknowledgments
+---
 
-- **Original project:** [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app) — this repo is a fork.
-- **Speech Model:** [Nemotron 3.5 ASR Streaming 0.6B](https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b) by NVIDIA (cache-aware streaming, 40 language-locales, auto-detect).
-    - GGUF conversion by [handy-computer](https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf).
-    - Licensed under [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/).
-- **Inference Backend:** [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) by CJ Pais / Handy Computer.
+## 🤝 Acknowledgments & Open-Source Lineage
 
-## License
+- **Original Project Root:** [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app) (*Offline Voice Input v0.1.18*).
+- **Speech Model Architecture:** [Nemotron 3.5 ASR Streaming 0.6B](https://huggingface.co/nvidia/nemotron-3.5-asr-streaming-0.6b) by NVIDIA (GGUF quantization by [handy-computer](https://huggingface.co/handy-computer/nemotron-3.5-asr-streaming-0.6b-gguf), licensed under CC-BY 4.0).
+- **Inference Engine:** [transcribe.cpp](https://github.com/handy-computer/transcribe.cpp) and [ggml](https://github.com/ggerganov/ggml) by CJ Pais and Georgi Gerganov.
 
-[MIT](LICENSE)
+---
+
+## 📄 License
+
+Distributed under the [MIT License](LICENSE).

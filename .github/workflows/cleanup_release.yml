@@ -1,0 +1,19 @@
+name: Cleanup Release
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete release v0.2.1
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete v0.2.1 -y || curl -X DELETE -H "Authorization: token $GH_TOKEN" -H "Accept: application/vnd.github+json" https://api.github.com/repos/marodriguezd/android_transcribe_app/releases/378635275 || true

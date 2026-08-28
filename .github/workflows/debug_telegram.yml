@@ -39,6 +39,10 @@ jobs:
       run: |
         sdkmanager --install "ndk;28.0.13004108"
         echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.0.13004108" >> $GITHUB_ENV
+        echo "ANDROID_NDK_ROOT=$ANDROID_HOME/ndk/28.0.13004108" >> $GITHUB_ENV
+        echo "ANDROID_NDK=$ANDROID_HOME/ndk/28.0.13004108" >> $GITHUB_ENV
+        echo "NDK_HOME=$ANDROID_HOME/ndk/28.0.13004108" >> $GITHUB_ENV
+        echo "CMAKE_ANDROID_NDK=$ANDROID_HOME/ndk/28.0.13004108" >> $GITHUB_ENV
 
     - name: Setup Rust
       uses: dtolnay/rust-toolchain@stable
@@ -49,7 +53,9 @@ jobs:
       run: sudo apt-get update && sudo apt-get install -y cmake ninja-build
 
     - name: Install cargo-ndk
-      run: cargo install cargo-ndk
+      run: |
+        cargo install cargo-ndk
+        echo "$HOME/.cargo/bin" >> $GITHUB_PATH
 
     - name: Rust format check (hard gate)
       run: cargo fmt --all -- --check
@@ -60,7 +66,6 @@ jobs:
         path: |
           ~/.cargo/registry
           ~/.cargo/git
-          target
         key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
         restore-keys: |
           ${{ runner.os }}-cargo-
@@ -92,20 +97,13 @@ jobs:
     - name: Compile Rust native libraries (cargo-ndk)
       run: |
         mkdir -p app/src/main/jniLibs/arm64-v8a
-        export PATH="$HOME/.cargo/bin:$PATH"
-        export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
-        export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/28.0.13004108"
-        export ANDROID_NDK="$ANDROID_HOME/ndk/28.0.13004108"
-        export CMAKE_ANDROID_NDK="$ANDROID_HOME/ndk/28.0.13004108"
-        export NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
-        export CMAKE_TOOLCHAIN_FILE="$ANDROID_HOME/ndk/28.0.13004108/build/cmake/android.toolchain.cmake"
-        export CMAKE_TOOLCHAIN_FILE_aarch64_linux_android="$ANDROID_HOME/ndk/28.0.13004108/build/cmake/android.toolchain.cmake"
-        export CMAKE_TOOLCHAIN_FILE_aarch64-linux-android="$ANDROID_HOME/ndk/28.0.13004108/build/cmake/android.toolchain.cmake"
         export CARGO_NDK_PLATFORM="26"
+        export CMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
+        export CMAKE_TOOLCHAIN_FILE_aarch64_linux_android="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
+        export CMAKE_TOOLCHAIN_FILE_aarch64-linux-android="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
         export RUSTFLAGS="-C target-feature=+neon,+fp16,+dotprod"
-        export TRANSCRIBE_CMAKE_ARGS="-DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16 -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS_RELEASE=-O3 -DCMAKE_CXX_FLAGS_RELEASE=-O3 -DGGML_NATIVE=OFF -DGGML_BUILD_TESTS=OFF -DGGML_BUILD_EXAMPLES=OFF -DANDROID_STL=c++_shared -DCMAKE_SYSTEM_VERSION=26 -DANDROID_PLATFORM=android-26 -DANDROID_ABI=arm64-v8a -DANDROID_NDK=$ANDROID_HOME/ndk/28.0.13004108 -DCMAKE_ANDROID_NDK=$ANDROID_HOME/ndk/28.0.13004108"
-        set -e -o pipefail
-        cargo ndk -t arm64-v8a -o app/src/main/jniLibs build --release 2>&1 | tee cargo_build.log
+        export TRANSCRIBE_CMAKE_ARGS="-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=26 -DANDROID_STL=c++_shared -DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16 -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS_RELEASE=-O3 -DCMAKE_CXX_FLAGS_RELEASE=-O3 -DGGML_NATIVE=OFF -DGGML_BUILD_TESTS=OFF -DGGML_BUILD_EXAMPLES=OFF"
+        cargo ndk -t arm64-v8a -o app/src/main/jniLibs --verbose build --release 2>&1 | tee cargo_build.log
 
     - name: Copy NDK libc++_shared.so
       run: |
@@ -187,22 +185,24 @@ jobs:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
-        MSG="🚨 CI Workflow Failed on commit $(git rev-parse --short HEAD):"$'\n'
-        if [ -f cargo_build.log ]; then
-          ERR=$(tail -n 25 cargo_build.log)
-          MSG="${MSG}"$'\n'"[CARGO LOG]"$'\n'"${ERR}"
-        elif [ -f gradle_build.log ]; then
-          ERR=$(tail -n 25 gradle_build.log)
-          MSG="${MSG}"$'\n'"[BUILD LOG]"$'\n'"${ERR}"
-        elif [ -f gradle_lint.log ]; then
-          ERR=$(tail -n 25 gradle_lint.log)
-          MSG="${MSG}"$'\n'"[LINT LOG]"$'\n'"${ERR}"
-        elif [ -f gradle_test.log ]; then
-          ERR=$(tail -n 25 gradle_test.log)
-          MSG="${MSG}"$'\n'"[TEST LOG]"$'\n'"${ERR}"
-        fi
-        if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then
+        COMMIT_SHA=$(git rev-parse --short HEAD)
+        if [ -f cargo_build.log ] && [ -s cargo_build.log ]; then
+          curl -s -F chat_id="$TELEGRAM_CHAT_ID" \
+               -F document=@"cargo_build.log" \
+               -F caption="🚨 Cargo Build Log ($COMMIT_SHA)" \
+               "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument" || true
+        elif [ -f gradle_build.log ] && [ -s gradle_build.log ]; then
+          curl -s -F chat_id="$TELEGRAM_CHAT_ID" \
+               -F document=@"gradle_build.log" \
+               -F caption="🚨 Gradle Build Log ($COMMIT_SHA)" \
+               "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument" || true
+        elif [ -f gradle_test.log ] && [ -s gradle_test.log ]; then
+          curl -s -F chat_id="$TELEGRAM_CHAT_ID" \
+               -F document=@"gradle_test.log" \
+               -F caption="🚨 Gradle Test Log ($COMMIT_SHA)" \
+               "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument" || true
+        else
           curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
             -d "chat_id=$TELEGRAM_CHAT_ID" \
-            --data-urlencode "text=$MSG" || true
+            -d "text=🚨 CI Workflow Failed on commit $COMMIT_SHA" || true
         fi

@@ -106,29 +106,35 @@ public final class AudioDeviceManager {
 
     private static void routeAuto(Context context, AudioManager am) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            routeAutoApi31(am);
+            routeAutoApi31(context, am);
         } else {
             // Android 8 - 11 legacy SCO activation
             if (isBluetoothConnected(context)) {
                 am.setMode(AudioManager.MODE_IN_COMMUNICATION);
-                am.startBluetoothSco();
-                am.setBluetoothScoOn(true);
+                try {
+                    am.startBluetoothSco();
+                    am.setBluetoothScoOn(true);
+                } catch (Throwable t) {
+                    Log.w(TAG, "Error activating Bluetooth SCO in routeAuto", t);
+                }
             }
         }
     }
 
     @TargetApi(Build.VERSION_CODES.S)
-    private static void routeAutoApi31(AudioManager am) {
+    private static void routeAutoApi31(Context context, AudioManager am) {
         try {
             am.setMode(AudioManager.MODE_IN_COMMUNICATION);
             List<AudioDeviceInfo> commDevices = am.getAvailableCommunicationDevices();
             AudioDeviceInfo target = null;
 
-            // 1. Check for Bluetooth Headset (SCO or BLE)
+            // 1. Check for Bluetooth Headset (SCO, BLE Headset, Hearing Aid, BLE Speaker)
             for (AudioDeviceInfo d : commDevices) {
                 int type = d.getType();
                 if (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                    type == AudioDeviceInfo.TYPE_BLE_HEADSET) {
+                    type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                    type == AudioDeviceInfo.TYPE_HEARING_AID ||
+                    type == AudioDeviceInfo.TYPE_BLE_SPEAKER) {
                     target = d;
                     break;
                 }
@@ -151,6 +157,12 @@ public final class AudioDeviceManager {
                 boolean set = am.setCommunicationDevice(target);
                 String name = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) ? String.valueOf(target.getProductName()) : "device";
                 Log.d(TAG, "Auto routed to communication device: " + name + " (success=" + set + ")");
+            } else if (isBluetoothConnected(context)) {
+                // Fallback for Bluetooth devices not yet in commDevices
+                try {
+                    am.startBluetoothSco();
+                    am.setBluetoothScoOn(true);
+                } catch (Throwable ignored) {}
             }
         } catch (Throwable t) {
             Log.e(TAG, "Error in routeAutoApi31", t);
@@ -158,27 +170,32 @@ public final class AudioDeviceManager {
     }
 
     private static void routeToBluetoothMic(Context context, AudioManager am) {
+        am.setMode(AudioManager.MODE_IN_COMMUNICATION);
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             routeToBluetoothMicApi31(am);
-        } else {
-            am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+        }
+        // Always attempt SCO as well for maximum headset compatibility
+        try {
             am.startBluetoothSco();
             am.setBluetoothScoOn(true);
+        } catch (Throwable t) {
+            Log.w(TAG, "Error starting Bluetooth SCO", t);
         }
     }
 
     @TargetApi(Build.VERSION_CODES.S)
     private static void routeToBluetoothMicApi31(AudioManager am) {
         try {
-            am.setMode(AudioManager.MODE_IN_COMMUNICATION);
             List<AudioDeviceInfo> commDevices = am.getAvailableCommunicationDevices();
             for (AudioDeviceInfo d : commDevices) {
                 int type = d.getType();
                 if (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                    type == AudioDeviceInfo.TYPE_BLE_HEADSET) {
-                    am.setCommunicationDevice(d);
+                    type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                    type == AudioDeviceInfo.TYPE_HEARING_AID ||
+                    type == AudioDeviceInfo.TYPE_BLE_SPEAKER) {
+                    boolean set = am.setCommunicationDevice(d);
                     String name = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) ? String.valueOf(d.getProductName()) : "bluetooth";
-                    Log.d(TAG, "Routed to Bluetooth device: " + name);
+                    Log.d(TAG, "Routed to Bluetooth device: " + name + " (success=" + set + ")");
                     return;
                 }
             }
@@ -219,7 +236,7 @@ public final class AudioDeviceManager {
     }
 
     /**
-     * Checks if any Bluetooth audio recording device is connected.
+     * Checks if any Bluetooth audio recording device (SCO, A2DP headset, BLE Audio) is connected.
      */
     public static boolean isBluetoothConnected(Context context) {
         if (context == null) return false;
@@ -231,15 +248,34 @@ public final class AudioDeviceManager {
         }
 
         try {
+            // Check BluetoothAdapter profile connection states
+            try {
+                android.bluetooth.BluetoothAdapter adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
+                if (adapter != null && adapter.isEnabled()) {
+                    if (adapter.getProfileConnectionState(android.bluetooth.BluetoothProfile.HEADSET) == android.bluetooth.BluetoothProfile.STATE_CONNECTED ||
+                        adapter.getProfileConnectionState(android.bluetooth.BluetoothProfile.A2DP) == android.bluetooth.BluetoothProfile.STATE_CONNECTED) {
+                        return true;
+                    }
+                }
+            } catch (Throwable ignored) {}
+
             AudioManager am = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
             if (am == null) return false;
 
-            AudioDeviceInfo[] devices = am.getDevices(AudioManager.GET_DEVICES_INPUTS);
+            if (am.isBluetoothA2dpOn() || am.isBluetoothScoOn()) {
+                return true;
+            }
+
+            AudioDeviceInfo[] devices = am.getDevices(AudioManager.GET_DEVICES_ALL);
             if (devices == null) return false;
             for (AudioDeviceInfo device : devices) {
                 int type = device.getType();
                 if (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == AudioDeviceInfo.TYPE_BLE_HEADSET)) {
+                    type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                        (type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                         type == AudioDeviceInfo.TYPE_HEARING_AID ||
+                         type == AudioDeviceInfo.TYPE_BLE_SPEAKER))) {
                     return true;
                 }
             }
@@ -250,7 +286,7 @@ public final class AudioDeviceManager {
     }
 
     /**
-     * Returns a human-friendly description of the currently connected input devices.
+     * Returns a human-friendly description of the currently connected input and audio devices.
      */
     public static List<String> getConnectedInputDevices(Context context) {
         List<String> result = new ArrayList<>();
@@ -259,10 +295,10 @@ public final class AudioDeviceManager {
             AudioManager am = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
             if (am == null) return result;
 
-            AudioDeviceInfo[] devices = am.getDevices(AudioManager.GET_DEVICES_INPUTS);
+            AudioDeviceInfo[] devices = am.getDevices(AudioManager.GET_DEVICES_ALL);
             if (devices == null) return result;
             for (AudioDeviceInfo d : devices) {
-                String label = "Audio Input";
+                String label = "Audio Device";
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                     try {
                         CharSequence name = d.getProductName();
@@ -273,15 +309,24 @@ public final class AudioDeviceManager {
                 }
                 int type = d.getType();
                 if (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && type == AudioDeviceInfo.TYPE_BLE_HEADSET)) {
-                    result.add("🎧 " + label + " (Bluetooth)");
+                    type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                        (type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                         type == AudioDeviceInfo.TYPE_HEARING_AID ||
+                         type == AudioDeviceInfo.TYPE_BLE_SPEAKER))) {
+                    String entry = "🎧 " + label + " (Bluetooth)";
+                    if (!result.contains(entry)) result.add(entry);
                 } else if (type == AudioDeviceInfo.TYPE_USB_HEADSET ||
                            type == AudioDeviceInfo.TYPE_USB_DEVICE) {
-                    result.add("🎙️ " + label + " (USB)");
-                } else if (type == AudioDeviceInfo.TYPE_WIRED_HEADSET) {
-                    result.add("🎧 " + label + " (Cable)");
+                    String entry = "🎙️ " + label + " (USB)";
+                    if (!result.contains(entry)) result.add(entry);
+                } else if (type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                           type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES) {
+                    String entry = "🎧 " + label + " (Cable)";
+                    if (!result.contains(entry)) result.add(entry);
                 } else if (type == AudioDeviceInfo.TYPE_BUILTIN_MIC) {
-                    result.add("📱 " + label + " (Interno)");
+                    String entry = "📱 " + label + " (Interno)";
+                    if (!result.contains(entry)) result.add(entry);
                 }
             }
         } catch (Throwable t) {

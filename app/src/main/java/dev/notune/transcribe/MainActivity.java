@@ -341,7 +341,6 @@ public class MainActivity extends AppCompatActivity {
 
     private void setupMicModeControls() {
         RadioGroup rgMic = findViewById(R.id.rg_mic_mode);
-        TextView txtConnected = findViewById(R.id.text_connected_mics);
         if (rgMic == null) return;
 
         SettingsManager sm = new SettingsManager(this);
@@ -358,24 +357,34 @@ public class MainActivity extends AppCompatActivity {
             String newMode;
             if (checkedId == R.id.rb_mic_bluetooth) {
                 newMode = AudioDeviceManager.MIC_MODE_BLUETOOTH_ONLY;
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                        checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                    requestPermissions(new String[]{android.Manifest.permission.BLUETOOTH_CONNECT}, PERM_REQ_CODE);
+                }
             } else if (checkedId == R.id.rb_mic_builtin) {
                 newMode = AudioDeviceManager.MIC_MODE_BUILTIN_ONLY;
             } else {
                 newMode = AudioDeviceManager.MIC_MODE_AUTO;
             }
             sm.setMicMode(newMode);
+            updateConnectedMicsList();
         });
 
-        if (txtConnected != null) {
-            List<String> connected = AudioDeviceManager.getConnectedInputDevices(this);
-            if (!connected.isEmpty()) {
-                StringBuilder sb = new StringBuilder(getString(R.string.desc_audio_input));
-                sb.append("\n\n").append(getString(R.string.mic_connected_label)).append(" ");
-                sb.append(TextUtils.join(", ", connected));
-                txtConnected.setText(sb.toString());
-            } else {
-                txtConnected.setText(R.string.desc_audio_input);
-            }
+        updateConnectedMicsList();
+    }
+
+    private void updateConnectedMicsList() {
+        TextView txtConnected = findViewById(R.id.text_connected_mics);
+        if (txtConnected == null) return;
+
+        List<String> connected = AudioDeviceManager.getConnectedInputDevices(this);
+        if (!connected.isEmpty()) {
+            StringBuilder sb = new StringBuilder(getString(R.string.desc_audio_input));
+            sb.append("\n\n").append(getString(R.string.mic_connected_label)).append(" ");
+            sb.append(TextUtils.join(", ", connected));
+            txtConnected.setText(sb.toString());
+        } else {
+            txtConnected.setText(R.string.desc_audio_input);
         }
     }
 
@@ -549,8 +558,17 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void checkAndRequestPermissions() {
+        List<String> needed = new ArrayList<>();
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, PERM_REQ_CODE);
+            needed.add(android.Manifest.permission.RECORD_AUDIO);
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            if (checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
+                needed.add(android.Manifest.permission.BLUETOOTH_CONNECT);
+            }
+        }
+        if (!needed.isEmpty()) {
+            requestPermissions(needed.toArray(new String[0]), PERM_REQ_CODE);
         }
     }
 
@@ -559,6 +577,7 @@ public class MainActivity extends AppCompatActivity {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults);
         if (requestCode == PERM_REQ_CODE) {
             updateVoiceInputStatus();
+            updateConnectedMicsList();
         } else if (requestCode == REQ_FLOATING_MIC) {
             if (pendingFloatingStart) {
                 pendingFloatingStart = false;

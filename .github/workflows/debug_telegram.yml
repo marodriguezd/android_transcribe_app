@@ -91,6 +91,7 @@ jobs:
 
     - name: Compile Rust native libraries (cargo-ndk)
       run: |
+        mkdir -p app/src/main/jniLibs/arm64-v8a
         export PATH="$HOME/.cargo/bin:$PATH"
         export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
         export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/28.0.13004108"
@@ -187,17 +188,17 @@ jobs:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
         MSG="🚨 CI Workflow Failed on commit $(git rev-parse --short HEAD):"$'\n'
-        if [ -f cargo_build.log ] && grep -qE "(error:|FAILED|Exception|FAILURE:)" cargo_build.log; then
-          ERR=$(grep -E "(error:|FAILED|Exception|FAILURE:)" cargo_build.log | tail -8)
+        if [ -f cargo_build.log ]; then
+          ERR=$(tail -n 25 cargo_build.log)
           MSG="${MSG}"$'\n'"[CARGO LOG]"$'\n'"${ERR}"
-        elif [ -f gradle_build.log ] && grep -qE "(FAILURE:|ERROR:|FAILED|Exception|error:|cannot find symbol)" gradle_build.log; then
-          ERR=$(grep -E "(FAILURE:|ERROR:|FAILED|Exception|error:|cannot find symbol)" gradle_build.log | tail -8)
+        elif [ -f gradle_build.log ]; then
+          ERR=$(tail -n 25 gradle_build.log)
           MSG="${MSG}"$'\n'"[BUILD LOG]"$'\n'"${ERR}"
-        elif [ -f gradle_lint.log ] && grep -qE "(FAILURE:|ERROR:|FAILED|Exception|error:)" gradle_lint.log; then
-          ERR=$(grep -E "(FAILURE:|ERROR:|FAILED|Exception|error:)" gradle_lint.log | tail -8)
+        elif [ -f gradle_lint.log ]; then
+          ERR=$(tail -n 25 gradle_lint.log)
           MSG="${MSG}"$'\n'"[LINT LOG]"$'\n'"${ERR}"
-        elif [ -f gradle_test.log ] && grep -qE "(FAILURE:|ERROR:|FAILED|Exception|error:)" gradle_test.log; then
-          ERR=$(grep -E "(FAILURE:|ERROR:|FAILED|Exception|error:)" gradle_test.log | tail -8)
+        elif [ -f gradle_test.log ]; then
+          ERR=$(tail -n 25 gradle_test.log)
           MSG="${MSG}"$'\n'"[TEST LOG]"$'\n'"${ERR}"
         fi
         if [ -n "$TELEGRAM_BOT_TOKEN" ] && [ -n "$TELEGRAM_CHAT_ID" ]; then

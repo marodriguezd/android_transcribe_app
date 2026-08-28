@@ -1,94 +1,60 @@
 <?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:aapt="http://schemas.android.com/aapt"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Deep Space Dark Background -->
-    <path
-        android:pathData="M0,0h108v108h-108z">
-        <aapt:attr name="android:fillColor">
-            <gradient
-                android:type="radial"
-                android:centerX="54"
-                android:centerY="54"
-                android:gradientRadius="54"
-                android:startColor="#1E1B4B"
-                android:centerColor="#0F172A"
-                android:endColor="#080B14" />
-        </aapt:attr>
-    </path>
-
-    <!-- Bioluminescent Aura Glow Outer -->
+    <!-- Outer Aura Ring -->
     <path
         android:pathData="M54,22 C71.67,22 86,36.33 86,54 C86,71.67 71.67,86 54,86 C36.33,86 22,71.67 22,54 C22,36.33 36.33,22 54,22 Z"
-        android:strokeWidth="3.5">
-        <aapt:attr name="android:strokeColor">
-            <gradient
-                android:type="linear"
-                android:startX="22"
-                android:startY="22"
-                android:endX="86"
-                android:endY="86"
-                android:startColor="#8B5CF6"
-                android:centerColor="#6366F1"
-                android:endColor="#06B6D4" />
-        </aapt:attr>
-    </path>
+        android:strokeColor="#FFFFFF"
+        android:strokeWidth="3.5" />
 
-    <!-- Subtle Acoustic Pulse Waveforms Left -->
+    <!-- Waveforms Left -->
     <path
         android:pathData="M31,48 C29.5,51.8 29.5,56.2 31,60"
-        android:strokeColor="#38BDF8"
+        android:strokeColor="#FFFFFF"
         android:strokeWidth="2.2"
         android:strokeLineCap="round" />
     <path
         android:pathData="M26,44 C23.5,50.2 23.5,57.8 26,64"
-        android:strokeColor="#818CF8"
+        android:strokeColor="#FFFFFF"
         android:strokeWidth="2.0"
         android:strokeLineCap="round" />
 
-    <!-- Subtle Acoustic Pulse Waveforms Right -->
+    <!-- Waveforms Right -->
     <path
         android:pathData="M77,48 C78.5,51.8 78.5,56.2 77,60"
-        android:strokeColor="#38BDF8"
+        android:strokeColor="#FFFFFF"
         android:strokeWidth="2.2"
         android:strokeLineCap="round" />
     <path
         android:pathData="M82,44 C84.5,50.2 84.5,57.8 82,64"
-        android:strokeColor="#A78BFA"
+        android:strokeColor="#FFFFFF"
         android:strokeWidth="2.0"
         android:strokeLineCap="round" />
 
-    <!-- Minimalist Floating Microphone Capsule -->
+    <!-- Microphone Capsule -->
     <path
         android:pathData="M54,34 C50.13,34 47,37.13 47,41 L47,53 C47,56.87 50.13,60 54,60 C57.87,60 61,56.87 61,53 L61,41 C61,37.13 57.87,34 54,34 Z"
         android:fillColor="#FFFFFF" />
 
-    <!-- Microphone Capsule Grille Accent Line -->
-    <path
-        android:pathData="M48.5,43 L59.5,43"
-        android:strokeColor="#CBD5E1"
-        android:strokeWidth="1.2"
-        android:strokeLineCap="round" />
-
-    <!-- Microphone Arc Support -->
+    <!-- Support Arc -->
     <path
         android:pathData="M42,50.5 C42,57.13 47.37,62.5 54,62.5 C60.63,62.5 66,57.13 66,50.5"
         android:strokeColor="#FFFFFF"
         android:strokeWidth="2.8"
         android:strokeLineCap="round" />
 
-    <!-- Microphone Stem -->
+    <!-- Stem -->
     <path
         android:pathData="M54,63 L54,71"
         android:strokeColor="#FFFFFF"
         android:strokeWidth="2.8"
         android:strokeLineCap="round" />
 
-    <!-- Microphone Base Plinth -->
+    <!-- Base -->
     <path
         android:pathData="M46.5,71 L61.5,71"
         android:strokeColor="#FFFFFF"

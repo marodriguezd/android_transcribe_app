@@ -43,4 +43,28 @@ public class AuraTranscribeBrandingTest {
         assertEquals("casual", SettingsManager.PRESET_CASUAL);
         assertEquals("verbatim", SettingsManager.PRESET_VERBATIM);
     }
+
+    @Test
+    public void testAdaptiveIconAndImeBranding() {
+        java.io.File bgFile = new java.io.File("src/main/res/drawable/ic_launcher_background.xml");
+        java.io.File fgFile = new java.io.File("src/main/res/drawable/ic_launcher_foreground.xml");
+        java.io.File monoFile = new java.io.File("src/main/res/drawable/ic_launcher_monochrome.xml");
+        java.io.File launcherFile = new java.io.File("src/main/res/mipmap-anydpi-v26/ic_launcher.xml");
+        java.io.File methodFile = new java.io.File("src/main/res/xml/method.xml");
+
+        // When running from project root or app submodule, verify existence
+        if (new java.io.File("app").exists()) {
+            bgFile = new java.io.File("app/" + bgFile.getPath());
+            fgFile = new java.io.File("app/" + fgFile.getPath());
+            monoFile = new java.io.File("app/" + monoFile.getPath());
+            launcherFile = new java.io.File("app/" + launcherFile.getPath());
+            methodFile = new java.io.File("app/" + methodFile.getPath());
+        }
+
+        assertTrue(bgFile.exists());
+        assertTrue(fgFile.exists());
+        assertTrue(monoFile.exists());
+        assertTrue(launcherFile.exists());
+        assertTrue(methodFile.exists());
+    }
 }

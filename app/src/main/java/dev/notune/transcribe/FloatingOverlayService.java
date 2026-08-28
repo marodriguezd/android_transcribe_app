@@ -102,6 +102,8 @@ public class FloatingOverlayService extends Service {
 
     private View mRecordContainer;
     private MicLevelView mMicLevelView;
+    private ImageView mBubbleIcon;
+    private ImageView mMicIcon;
     private Button mInsertButton;
     private TextView mHintText;
 
@@ -292,6 +294,8 @@ public class FloatingOverlayService extends Service {
         mRecordContainer = mOverlayView.findViewById(R.id.floating_record_container);
         mMicLevelView = mOverlayView.findViewById(R.id.floating_mic_level);
         mRecordCircle = mOverlayView.findViewById(R.id.floating_record_circle);
+        mBubbleIcon = mOverlayView.findViewById(R.id.floating_bubble_icon);
+        mMicIcon = mOverlayView.findViewById(R.id.floating_mic_icon);
         mInsertButton = mOverlayView.findViewById(R.id.floating_insert_button);
         mHintText = mOverlayView.findViewById(R.id.floating_hint);
 

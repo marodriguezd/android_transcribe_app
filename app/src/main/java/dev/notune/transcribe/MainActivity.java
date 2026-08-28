@@ -227,6 +227,7 @@ public class MainActivity extends AppCompatActivity {
         updateVoiceInputStatus();
         setupFloatingModeControls();
         setupMicModeControls();
+        setupMicDiagnostics();
 
         // Debug builds ship without the bundled model to keep the APK small;
         // download it from Hugging Face on first run. This is also called from
@@ -388,6 +389,93 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
+    private final AudioRecordBridge micTestBridge = new AudioRecordBridge();
+    private boolean isMicTesting = false;
+
+    private void setupMicDiagnostics() {
+        com.google.android.material.button.MaterialButton btnTest = findViewById(R.id.btn_mic_test);
+        TextView txtDevice = findViewById(R.id.text_active_mic_device);
+        if (btnTest == null) return;
+
+        if (txtDevice != null) {
+            String activeName = AudioDeviceManager.getActiveInputDeviceName(this);
+            txtDevice.setText(getString(R.string.mic_test_active_device, activeName));
+        }
+
+        btnTest.setOnClickListener(v -> {
+            if (isMicTesting) {
+                stopMicTest();
+            } else {
+                startMicTest();
+            }
+        });
+    }
+
+    private void startMicTest() {
+        if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, PERM_REQ_CODE);
+            return;
+        }
+
+        com.google.android.material.button.MaterialButton btnTest = findViewById(R.id.btn_mic_test);
+        MicLevelView levelView = findViewById(R.id.mic_test_level_view);
+        ImageView micIcon = findViewById(R.id.mic_test_icon);
+        TextView txtDevice = findViewById(R.id.text_active_mic_device);
+
+        SettingsManager sm = new SettingsManager(this);
+        String micMode = sm.getMicMode();
+        AudioDeviceManager.acquireMicrophone(this, micMode);
+
+        boolean started = micTestBridge.start(this, micMode, new AudioRecordBridge.Callback() {
+            @Override
+            public void onAudioChunk(java.nio.ByteBuffer directBuffer, int bytesRead) {}
+
+            @Override
+            public void onAudioLevel(float level) {
+                runOnUiThread(() -> {
+                    if (levelView != null && isMicTesting) {
+                        levelView.setLevel(level);
+                    }
+                });
+            }
+
+            @Override
+            public void onError(String message) {
+                runOnUiThread(() -> stopMicTest());
+            }
+        });
+
+        if (started) {
+            isMicTesting = true;
+            if (btnTest != null) btnTest.setText(R.string.mic_test_btn_stop);
+            if (txtDevice != null) {
+                String activeName = AudioDeviceManager.getActiveInputDeviceName(this);
+                txtDevice.setText(getString(R.string.mic_test_active_device, activeName));
+            }
+            if (micIcon != null) {
+                boolean isBt = AudioDeviceManager.isBluetoothConnected(this);
+                micIcon.setImageResource(isBt ? R.drawable.ic_headset : R.drawable.ic_mic);
+            }
+        } else {
+            AudioDeviceManager.releaseMicrophone(this);
+        }
+    }
+
+    private void stopMicTest() {
+        if (!isMicTesting) return;
+        isMicTesting = false;
+        micTestBridge.stop();
+        AudioDeviceManager.releaseMicrophone(this);
+
+        com.google.android.material.button.MaterialButton btnTest = findViewById(R.id.btn_mic_test);
+        MicLevelView levelView = findViewById(R.id.mic_test_level_view);
+        ImageView micIcon = findViewById(R.id.mic_test_icon);
+
+        if (btnTest != null) btnTest.setText(R.string.mic_test_btn_start);
+        if (levelView != null) levelView.setLevel(0f);
+        if (micIcon != null) micIcon.setImageResource(R.drawable.ic_mic);
+    }
+
     private void startFloatingService() {
         Intent serviceIntent = new Intent(this, FloatingOverlayService.class);
         ContextCompat.startForegroundService(this, serviceIntent);
@@ -408,6 +496,7 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onPause() {
         super.onPause();
+        stopMicTest();
         // Drop the foreground slot while we are not in the foreground. A
         // download finishing while no Activity is foregrounded will resolve
         // sActiveInstance to null and skip the UI update, leaving the next
@@ -417,6 +506,12 @@ public class MainActivity extends AppCompatActivity {
         if (sActiveInstance == this) {
             sActiveInstance = null;
         }
+    }
+
+    @Override
+    protected void onDestroy() {
+        stopMicTest();
+        super.onDestroy();
     }
 
     /**

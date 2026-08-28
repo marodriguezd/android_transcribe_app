@@ -161,6 +161,7 @@ public class RecognizeActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         currentSessionId++;
+        audioRecordBridge.stop();
         try { cancelRecording(); } catch (Throwable ignored) { }
         AudioDeviceManager.releaseMicrophone(this);
         super.onDestroy();
@@ -308,16 +309,6 @@ public class RecognizeActivity extends AppCompatActivity {
     /** Opt-in via the "Auto-stop after silence" setting (default off). */
     private boolean isAutoStopEnabled() {
         return new java.io.File(getFilesDir(), "auto_stop").exists();
-    }
-
-    @Override
-    protected void onDestroy() {
-        audioRecordBridge.stop();
-        try { cancelRecording(); } catch (Throwable ignored) { }
-        AudioDeviceManager.releaseMicrophone(this);
-        try { cleanupNative(); } catch (Throwable ignored) { }
-        PostProcessor.cancelAllFor(this);
-        super.onDestroy();
     }
 
     // Native methods

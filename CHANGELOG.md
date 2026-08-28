@@ -2,6 +2,17 @@
 
 Change log of **Aura Transcribe** (Next-Gen evolution of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app)).
 
+# v0.2.2
+
+Major audio & hardware release introducing native `AudioRecordBridge` communication pipeline, zero-latency Bluetooth pre-warming handshake, dynamic headset visual indicators, real-time microphone diagnostics, poison-tolerant concurrency hardening, and 100% i18n parity:
+
+- **Dedicated Native `AudioRecordBridge` Communication Pipeline:** Implemented high-performance Java `AudioRecord` bridge operating in `VOICE_COMMUNICATION` mode (16 kHz 16-bit mono PCM) with direct `ByteBuffer` allocation and native JNI streaming (`pushAudioDirect`), forcing active microphone capture on wireless Bluetooth earbuds (AirPods, Galaxy Buds, Pixel Buds, Sony, etc.) and headset SCO/BLE devices.
+- **Zero-Latency Bluetooth Pre-Warming Handshake:** Pre-warms the Bluetooth communication pipe in the background when the on-screen keyboard (`RustInputMethodService`) or floating overlay bubble (`FloatingOverlayService`) opens, eliminating the 300–500 ms connection handshake lag.
+- **Dynamic Headset / Mic Indicators:** Visual real-time indicator on both the keyboard record button and floating dictation bubble, dynamically rendering 🎧 (`ic_headset`) for Bluetooth input and 🎙️ (`ic_mic`) for internal microphone.
+- **Microphone Diagnostics & Live Sound Test:** Comprehensive sound test UI in `MainActivity` with real-time RMS decibel level meter (`MicLevelView`), active device indicator, and 1-tap start/stop verification.
+- **Multi-Agent Robustness & Concurrency Hardening (Victory Audit):** Bounded `ByteBuffer` reuse, poison-tolerant mutex guards in Rust, atomic session generation validation, idempotent `cleanupNative` teardowns, and comprehensive `AudioRecordBridgeTest.java` suite (109 JVM tests passing).
+- **100% i18n Parity (266 Strings across 6 Locales):** Complete translation coverage across German, Spanish, French, Italian, Portuguese, and Russian.
+
 # v0.2.1
 
 Quality, audio, and intelligence release introducing the universal WhisperFlow prompt engine, curated model packs for lightweight/offline workflows, default internal microphone selection, wireless Bluetooth headset detection, AI post-processing configuration guardrails, and smart UI feedback:

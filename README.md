@@ -113,6 +113,7 @@ adb shell appops set --user 0 dev.notune.transcribe PROJECT_MEDIA allow
 
 | Keyboard App | Compatibility Mode | Integration Details |
 | :--- | :--- | :--- |
+| **FUTO Keyboard** | IME Switcher & Native IME | Seamlessly switch to Aura Transcribe via globe/switch key for enhanced offline dictation with AI post-processing, Bluetooth mic routing, and floating overlays. |
 | **Microsoft SwiftKey** | Native Popup Panel | Opens the compact bottom panel directly. *(Turn off "Multi-modal voice typing" in SwiftKey Rich Input settings)* |
 | **AnySoftKeyboard** | Native Speech Intent | Mic key launches Aura Transcribe panel directly. |
 | **HeliBoard / FlorisBoard** | IME Switcher | Mic key switches to the Aura Transcribe voice keyboard instantly. |

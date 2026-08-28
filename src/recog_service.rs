@@ -88,10 +88,6 @@ static SESSION: Lazy<Mutex<Option<Session>>> = Lazy::new(|| Mutex::new(None));
 
 // --- JNI callbacks into VoiceRecognitionService -------------------------------
 
-fn call_void(env: &mut JNIEnv, obj: &JObject, method: &str) {
-    let _ = env.call_method(obj, method, "()V", &[]);
-}
-
 fn call_rms(env: &mut JNIEnv, obj: &JObject, rms_db: f32, session_id: i32) {
     let _ = env.call_method(
         obj,

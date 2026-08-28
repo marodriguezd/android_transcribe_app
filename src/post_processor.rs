@@ -5,11 +5,11 @@
 //! applying punctuation and tone steering) using a quantized Qwen-based GGUF.
 
 use once_cell::sync::Lazy;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::path::PathBuf;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use jni::objects::{JClass, JObject, JString};
+use jni::objects::{JClass, JString};
 use jni::sys::{jboolean, jint, jstring};
 use jni::JNIEnv;
 

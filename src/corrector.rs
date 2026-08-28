@@ -380,12 +380,17 @@ fn best_term(word_lower: &str, terms: &[Term]) -> Option<String> {
         // Fast necessity filter: |len(a) - len(b)| <= dist for Levenshtein,
         // so candidates whose key length cannot reach are skipped before the
         // edit distance calculation.
+        let max_dist = if key_len <= 4 || t.key.len() <= 4 {
+            1
+        } else {
+            MAX_PHONETIC_DISTANCE
+        };
         let len_diff = key_len.abs_diff(t.key.len());
-        if len_diff > MAX_PHONETIC_DISTANCE {
+        if len_diff > max_dist {
             continue;
         }
         let dist = strsim::levenshtein(&key, &t.key);
-        if dist > MAX_PHONETIC_DISTANCE {
+        if dist > max_dist {
             continue;
         }
 

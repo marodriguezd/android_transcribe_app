@@ -284,4 +284,15 @@
     <string name="mic_mode_bluetooth">Bluetooth-Headset-Mikrofon bevorzugen</string>
     <string name="mic_mode_builtin">Nur internes Telefonmikrofon</string>
     <string name="mic_connected_label">Verbundene Geräte:</string>
+
+    <!-- Microphone Diagnostics & Sound Test -->
+    <string name="mic_test_title">Mikrofon-Diagnose &amp; Soundtest</string>
+    <string name="mic_test_desc">Echtzeit-Mikrofoneingangspegel testen und aktives Aufnahmegerät überprüfen.</string>
+    <string name="mic_test_btn_start">Soundtest starten</string>
+    <string name="mic_test_btn_stop">Soundtest stoppen</string>
+    <string name="mic_test_active_device">Aktives Gerät: %1$s</string>
+    <string name="mic_active_bluetooth">Bluetooth-Headset</string>
+    <string name="mic_active_builtin">Internes Mikrofon</string>
+    <string name="mic_active_wired">Kabelgebundenes / USB-Mikrofon</string>
+    <string name="mic_bt_recording_indicator">Bluetooth-Headset aktiv</string>
 </resources>

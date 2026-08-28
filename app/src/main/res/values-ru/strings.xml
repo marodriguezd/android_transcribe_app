@@ -284,4 +284,15 @@
     <string name="mic_mode_bluetooth">Предпочитать Bluetooth-гарнитуру</string>
     <string name="mic_mode_builtin">Только встроенный микрофон телефона</string>
     <string name="mic_connected_label">Подключенные устройства:</string>
+
+    <!-- Microphone Diagnostics & Sound Test -->
+    <string name="mic_test_title">Диагностика и проверка микрофона</string>
+    <string name="mic_test_desc">Проверьте уровень входного сигнала микрофона в реальном времени и активное устройство записи.</string>
+    <string name="mic_test_btn_start">Начать проверку звука</string>
+    <string name="mic_test_btn_stop">Остановить проверку звука</string>
+    <string name="mic_test_active_device">Активное устройство: %1$s</string>
+    <string name="mic_active_bluetooth">Bluetooth-гарнитура</string>
+    <string name="mic_active_builtin">Встроенный микрофон</string>
+    <string name="mic_active_wired">Проводной / USB-микрофон</string>
+    <string name="mic_bt_recording_indicator">Bluetooth-гарнитура активна</string>
 </resources>

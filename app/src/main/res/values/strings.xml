@@ -305,4 +305,15 @@
     <string name="mic_mode_bluetooth">Prefer Bluetooth headset mic</string>
     <string name="mic_mode_builtin">Internal phone microphone only</string>
     <string name="mic_connected_label">Connected devices:</string>
+
+    <!-- Microphone Diagnostics & Sound Test -->
+    <string name="mic_test_title">Microphone Diagnostics &amp; Sound Test</string>
+    <string name="mic_test_desc">Test real-time microphone input levels and verify the active recording device.</string>
+    <string name="mic_test_btn_start">Start Sound Test</string>
+    <string name="mic_test_btn_stop">Stop Sound Test</string>
+    <string name="mic_test_active_device">Active device: %1$s</string>
+    <string name="mic_active_bluetooth">Bluetooth Headset</string>
+    <string name="mic_active_builtin">Internal Microphone</string>
+    <string name="mic_active_wired">Wired / USB Microphone</string>
+    <string name="mic_bt_recording_indicator">Bluetooth Headset Active</string>
 </resources>

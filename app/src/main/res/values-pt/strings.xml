@@ -284,4 +284,15 @@
     <string name="mic_mode_bluetooth">Preferir microfone Bluetooth</string>
     <string name="mic_mode_builtin">Apenas microfone interno do telefone</string>
     <string name="mic_connected_label">Dispositivos conectados:</string>
+
+    <!-- Microphone Diagnostics & Sound Test -->
+    <string name="mic_test_title">Diagnóstico e teste de microfone</string>
+    <string name="mic_test_desc">Teste os níveis de entrada do microfone em tempo real e verifique o dispositivo de gravação ativo.</string>
+    <string name="mic_test_btn_start">Iniciar teste de som</string>
+    <string name="mic_test_btn_stop">Parar teste de som</string>
+    <string name="mic_test_active_device">Dispositivo ativo: %1$s</string>
+    <string name="mic_active_bluetooth">Fone de ouvido Bluetooth</string>
+    <string name="mic_active_builtin">Microfone interno</string>
+    <string name="mic_active_wired">Microfone com fio / USB</string>
+    <string name="mic_bt_recording_indicator">Fone Bluetooth ativo</string>
 </resources>

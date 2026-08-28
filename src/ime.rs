@@ -59,3 +59,23 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_RustInputMethodService_
         voice_session::cancel_recording(env, state);
     }
 }
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_notune_transcribe_RustInputMethodService_pushAudioDirect(
+    mut env: JNIEnv,
+    _class: JClass,
+    buffer: JObject,
+    byte_count: jni::sys::jint,
+    session_id: jni::sys::jint,
+) {
+    let mut guard = IME_STATE.lock().unwrap();
+    if let Some(state) = guard.as_mut() {
+        voice_session::push_audio_direct(
+            &mut env,
+            state,
+            &buffer,
+            byte_count as i32,
+            session_id as i32,
+        );
+    }
+}

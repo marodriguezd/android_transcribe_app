@@ -73,3 +73,24 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_FloatingOverlayService_
         }
     });
 }
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_notune_transcribe_FloatingOverlayService_pushAudioDirect(
+    mut env: JNIEnv,
+    _class: JClass,
+    buffer: JObject,
+    byte_count: jni::sys::jint,
+    session_id: jni::sys::jint,
+) {
+    with_floating_state(|state| {
+        if let Some(state) = state.as_mut() {
+            voice_session::push_audio_direct(
+                &mut env,
+                state,
+                &buffer,
+                byte_count as i32,
+                session_id as i32,
+            );
+        }
+    });
+}

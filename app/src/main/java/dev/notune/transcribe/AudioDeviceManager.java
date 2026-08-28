@@ -5,7 +5,10 @@ import android.annotation.TargetApi;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.media.AudioDeviceInfo;
+import android.media.AudioFormat;
 import android.media.AudioManager;
+import android.media.AudioRecord;
+import android.media.MediaRecorder;
 import android.os.Build;
 import android.util.Log;
 
@@ -19,8 +22,7 @@ import java.util.List;
  *
  * <p>Handles seamless switching between Bluetooth SCO headsets, Bluetooth LE Audio,
  * USB external microphones, wired headsets, and built-in microphones.
- * Ensures proper communication mode acquisition before speech recording starts
- * and clean teardown/release when recording terminates.</p>
+ * Provides pre-warming handshake for zero-latency capture and dedicated AudioRecord creation.</p>
  */
 @SuppressLint({"MissingPermission", "NewApi", "InlinedApi"})
 public final class AudioDeviceManager {
@@ -30,7 +32,12 @@ public final class AudioDeviceManager {
     public static final String MIC_MODE_BLUETOOTH_ONLY = "bluetooth";
     public static final String MIC_MODE_BUILTIN_ONLY = "builtin";
 
+    public static final int SAMPLE_RATE = 16000;
+    public static final int CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO;
+    public static final int AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT;
+
     private static volatile boolean isRoutingActive = false;
+    private static volatile boolean isPrewarmed = false;
 
     private AudioDeviceManager() {
         // Utility class
@@ -41,6 +48,64 @@ public final class AudioDeviceManager {
      */
     public static boolean isRoutingActive() {
         return isRoutingActive;
+    }
+
+    /**
+     * Returns true if the communication channel is currently pre-warmed.
+     */
+    public static boolean isPrewarmed() {
+        return isPrewarmed;
+    }
+
+    /**
+     * Pre-warms the Bluetooth communication channel in the background when the
+     * keyboard window or floating bubble appears, so tapping "Record" begins
+     * capturing immediately (0 ms latency) without clipping the speaker's first syllables.
+     */
+    public static synchronized void prewarmMicrophone(Context context, String micPreference) {
+        if (context == null || isRoutingActive || isPrewarmed) return;
+        AudioManager am = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+        if (am == null) return;
+
+        try {
+            if (MIC_MODE_BUILTIN_ONLY.equals(micPreference)) {
+                // Builtin does not require pre-warming
+                return;
+            }
+
+            if (isBluetoothConnected(context)) {
+                am.setMode(AudioManager.MODE_IN_COMMUNICATION);
+                try {
+                    am.setSpeakerphoneOn(false);
+                } catch (Throwable ignored) {}
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    AudioDeviceInfo target = findTargetDevice(context, micPreference);
+                    if (target != null) {
+                        am.setCommunicationDevice(target);
+                    }
+                }
+
+                try {
+                    am.startBluetoothSco();
+                    am.setBluetoothScoOn(true);
+                } catch (Throwable ignored) {}
+
+                isPrewarmed = true;
+                Log.d(TAG, "Bluetooth communication channel pre-warmed successfully");
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Error pre-warming microphone routing", t);
+        }
+    }
+
+    /**
+     * Cancels any pending pre-warmed communication channel if recording was not started.
+     */
+    public static synchronized void cancelPrewarm(Context context) {
+        if (isPrewarmed && !isRoutingActive) {
+            releaseMicrophone(context);
+        }
     }
 
     /**
@@ -62,6 +127,7 @@ public final class AudioDeviceManager {
                 routeAuto(context, am);
             }
             isRoutingActive = true;
+            isPrewarmed = false;
         } catch (Throwable t) {
             Log.e(TAG, "Error acquiring microphone routing", t);
         }
@@ -95,7 +161,144 @@ public final class AudioDeviceManager {
             Log.e(TAG, "Error releasing microphone routing", t);
         } finally {
             isRoutingActive = false;
+            isPrewarmed = false;
         }
+    }
+
+    /**
+     * Resolves the target AudioDeviceInfo according to user preference and hardware connectivity.
+     */
+    public static AudioDeviceInfo findTargetDevice(Context context, String micPreference) {
+        if (context == null || MIC_MODE_BUILTIN_ONLY.equals(micPreference)) {
+            return null;
+        }
+        try {
+            AudioManager am = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
+            if (am == null) return null;
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                List<AudioDeviceInfo> commDevices = am.getAvailableCommunicationDevices();
+                // 1. Bluetooth headsets
+                for (AudioDeviceInfo d : commDevices) {
+                    int type = d.getType();
+                    if (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                        type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                        type == AudioDeviceInfo.TYPE_HEARING_AID ||
+                        type == AudioDeviceInfo.TYPE_BLE_SPEAKER) {
+                        return d;
+                    }
+                }
+                // 2. USB / Wired if in AUTO mode
+                if (MIC_MODE_AUTO.equals(micPreference)) {
+                    for (AudioDeviceInfo d : commDevices) {
+                        int type = d.getType();
+                        if (type == AudioDeviceInfo.TYPE_USB_HEADSET ||
+                            type == AudioDeviceInfo.TYPE_USB_DEVICE ||
+                            type == AudioDeviceInfo.TYPE_WIRED_HEADSET) {
+                            return d;
+                        }
+                    }
+                }
+            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                AudioDeviceInfo[] devices = am.getDevices(AudioManager.GET_DEVICES_INPUTS);
+                if (devices != null) {
+                    for (AudioDeviceInfo d : devices) {
+                        int type = d.getType();
+                        if (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                            type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                            type == AudioDeviceInfo.TYPE_HEARING_AID ||
+                            type == AudioDeviceInfo.TYPE_BLE_SPEAKER) {
+                            return d;
+                        }
+                    }
+                    if (MIC_MODE_AUTO.equals(micPreference)) {
+                        for (AudioDeviceInfo d : devices) {
+                            int type = d.getType();
+                            if (type == AudioDeviceInfo.TYPE_USB_HEADSET ||
+                                type == AudioDeviceInfo.TYPE_USB_DEVICE ||
+                                type == AudioDeviceInfo.TYPE_WIRED_HEADSET) {
+                                return d;
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (Throwable t) {
+            Log.w(TAG, "Error finding target audio device", t);
+        }
+        return null;
+    }
+
+    /**
+     * Creates and configures a dedicated Android AudioRecord instance with
+     * MediaRecorder.AudioSource.VOICE_COMMUNICATION, 16000 Hz, mono PCM 16-bit,
+     * bound directly to target AudioDeviceInfo via setPreferredDevice().
+     */
+    public static AudioRecord createAudioRecord(Context context, String micPreference) {
+        int minBuf = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT);
+        if (minBuf <= 0) {
+            minBuf = 3200 * 2;
+        }
+        int bufferSize = Math.max(minBuf, 3200 * 2);
+
+        AudioRecord record = null;
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                AudioRecord.Builder builder = new AudioRecord.Builder()
+                    .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
+                    .setAudioFormat(new AudioFormat.Builder()
+                        .setEncoding(AUDIO_FORMAT)
+                        .setSampleRate(SAMPLE_RATE)
+                        .setChannelMask(CHANNEL_CONFIG)
+                        .build())
+                    .setBufferSizeInBytes(bufferSize);
+                record = builder.build();
+
+                AudioDeviceInfo target = findTargetDevice(context, micPreference);
+                if (target != null && record != null) {
+                    record.setPreferredDevice(target);
+                }
+            } else {
+                record = new AudioRecord(
+                    MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                    SAMPLE_RATE,
+                    CHANNEL_CONFIG,
+                    AUDIO_FORMAT,
+                    bufferSize
+                );
+            }
+        } catch (Throwable t) {
+            Log.e(TAG, "Error creating AudioRecord", t);
+        }
+        return record;
+    }
+
+    /**
+     * Returns true if audio is actively being captured (or pre-warmed) from a Bluetooth headset.
+     */
+    public static boolean isBluetoothCapturing(Context context) {
+        if (!isRoutingActive && !isPrewarmed) return false;
+        return isBluetoothConnected(context);
+    }
+
+    /**
+     * Returns a human-friendly name of the active input device for diagnostics.
+     */
+    public static String getActiveInputDeviceName(Context context) {
+        if (context == null) return "Unknown";
+        try {
+            List<String> connected = getConnectedInputDevices(context);
+            if (!connected.isEmpty()) {
+                // If bluetooth connected and routing active, return bluetooth device
+                for (String dev : connected) {
+                    if (dev.contains("Bluetooth")) {
+                        return dev;
+                    }
+                }
+                return connected.get(0);
+            }
+        } catch (Throwable ignored) {}
+        return "📱 " + context.getString(R.string.mic_active_builtin);
     }
 
     @TargetApi(Build.VERSION_CODES.S)

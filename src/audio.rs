@@ -102,7 +102,7 @@ pub fn fast_rms(samples: &[f32]) -> f32 {
     if sum <= 0.0 || !sum.is_finite() {
         return 0.0;
     }
-    (sum / samples.len() as f32).sqrt().clamp(0.0, 1.0)
+    (sum / samples.len() as f32).sqrt()
 }
 
 /// Centre of the quietest 100 ms window in `samples[from..to]`; used to pick a

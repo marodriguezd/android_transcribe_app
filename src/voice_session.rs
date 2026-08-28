@@ -34,7 +34,7 @@ unsafe impl Sync for SendStream {}
 /// Speech/silence tracking shared between the audio callback and the
 /// auto-stop monitor thread. Fully lock-free atomic structures to avoid
 /// lock contention and priority inversion on the real-time CPAL thread.
-struct Endpointing {
+pub struct Endpointing {
     started_at: Instant,
     last_voice_ms: AtomicU64,
     noise_floor_bits: AtomicU32,
@@ -65,6 +65,7 @@ pub struct VoiceSessionState {
     /// Serializes the stop-vs-pump-start decision so exactly one path
     /// (streaming pump or whole-buffer) delivers the transcription.
     pub stream_lock: Arc<Mutex<()>>,
+    pub endpoint: Arc<Mutex<Option<Arc<Endpointing>>>>,
 }
 
 use crate::jni_util::{
@@ -93,6 +94,7 @@ pub fn init_session(env: JNIEnv, target: JObject) -> VoiceSessionState {
         stream_cmd_tx: Mutex::new(None),
         streaming_active: Arc::new(AtomicBool::new(false)),
         stream_lock: Arc::new(Mutex::new(())),
+        endpoint: Arc::new(Mutex::new(None)),
     };
 
     // Load engine in background
@@ -116,27 +118,6 @@ pub fn start_recording(
     auto_stop: bool,
     session_id: i32,
 ) {
-    state.session_id = session_id;
-    let host = cpal::default_host();
-    let device = match host.default_input_device() {
-        Some(d) => d,
-        None => {
-            notify_status_with_session(
-                &mut env,
-                state.target_ref.as_obj(),
-                "Error: no microphone available. Check permissions.",
-                state.session_id,
-            );
-            return;
-        }
-    };
-
-    let config = cpal::StreamConfig {
-        channels: 1,
-        sample_rate: cpal::SampleRate(16000),
-        buffer_size: cpal::BufferSize::Default,
-    };
-
     // End any previous recording before replacing its per-recording state.
     // The cancellation command is essential: session_active alone cannot wake
     // a pump already blocked inside the native streaming loop.
@@ -175,6 +156,7 @@ pub fn start_recording(
     } else {
         None
     };
+    *state.endpoint.lock().unwrap() = endpoint.clone();
 
     let jvm = state.jvm.clone();
     let target_ref = state.target_ref.clone();
@@ -182,183 +164,239 @@ pub fn start_recording(
     let endpoint_cb = endpoint.clone();
     let session_start = Instant::now();
 
-    let stream = device.build_input_stream(
-        &config,
-        move |data: &[f32], _: &_| {
-            buffer_clone
-                .lock()
-                .unwrap_or_else(|p| p.into_inner())
-                .extend_from_slice(data);
+    // Streaming pump (Nemotron-family models): drains the audio
+    // buffer into a cache-aware transcribe.cpp stream and reports
+    // partial hypotheses live.
+    let (cmd_tx, cmd_rx) = crossbeam_channel::unbounded::<crate::engine::StreamCmd>();
+    *state.stream_cmd_tx.lock().unwrap() = Some(cmd_tx.clone());
+    state.streaming_active.store(false, Ordering::SeqCst);
+    let jvm_pump = state.jvm.clone();
+    let target_ref_pump = state.target_ref.clone();
+    let buffer_pump = state.audio_buffer.clone();
+    let session_active_pump = session_active.clone();
+    let session_cancelled_pump = session_cancelled.clone();
+    let session_id_pump = state.session_id;
+    let session_active_monitor = session_active.clone();
+    let streaming_active = state.streaming_active.clone();
+    let stream_lock = state.stream_lock.clone();
+    std::thread::spawn(move || {
+        streaming_pump(
+            jvm_pump,
+            target_ref_pump,
+            buffer_pump,
+            cmd_tx,
+            cmd_rx,
+            session_active_pump,
+            session_cancelled_pump,
+            session_id_pump,
+            streaming_active,
+            stream_lock,
+        )
+    });
 
-            // Vectorized RMS via SIMD/NEON
-            let rms = crate::audio::fast_rms(data);
-            let level = (rms * 6.0).clamp(0.0, 1.0);
-
-            if let Some(ep) = &endpoint_cb {
-                let floor = f32::from_bits(ep.noise_floor_bits.load(Ordering::Relaxed));
-                let is_speech = level > MIN_SPEECH_LEVEL && level > floor + SPEECH_MARGIN;
-                if is_speech {
-                    let elapsed_ms = ep.started_at.elapsed().as_millis() as u64;
-                    if ep.speech_started.load(Ordering::SeqCst) {
-                        // Once speech has been confirmed, every speech frame
-                        // refreshes the trailing-silence clock (lock-free).
-                        ep.last_voice_ms.store(elapsed_ms, Ordering::Relaxed);
-                    } else {
-                        // Do not arm trailing-silence endpointing for a single
-                        // microphone pop or an initial noise spike. Require a
-                        // continuous 100 ms speech run first.
-                        let run = ep
-                            .speech_run_samples
-                            .fetch_add(data.len(), Ordering::SeqCst)
-                            + data.len();
-                        if run >= MIN_SPEECH_SAMPLES
-                            && ep.speech_started.swap(true, Ordering::SeqCst) == false
-                        {
-                            ep.last_voice_ms.store(elapsed_ms, Ordering::Relaxed);
-                        }
-                    }
-                } else {
-                    if !ep.speech_started.load(Ordering::SeqCst) {
-                        // The candidate speech run must be continuous.
-                        ep.speech_run_samples.store(0, Ordering::SeqCst);
-                    }
-                    // Slowly adapt the noise floor while no speech is present (lock-free CAS).
-                    let mut current_bits = ep.noise_floor_bits.load(Ordering::Relaxed);
-                    loop {
-                        let current_val = f32::from_bits(current_bits);
-                        let new_val = (current_val * 0.95 + level * 0.05).clamp(0.0, 1.0);
-                        match ep.noise_floor_bits.compare_exchange_weak(
-                            current_bits,
-                            new_val.to_bits(),
-                            Ordering::Relaxed,
-                            Ordering::Relaxed,
-                        ) {
-                            Ok(_) => break,
-                            Err(b) => current_bits = b,
-                        }
+    // Always arm a session monitor (V3): with auto_stop the silence
+    // heuristics run; without it only the hard session cap applies.
+    {
+        let jvm_mon = state.jvm.clone();
+        let target_ref_mon = state.target_ref.clone();
+        let ep_monitor = endpoint;
+        let started_at = Instant::now();
+        std::thread::spawn(move || loop {
+            std::thread::sleep(Duration::from_millis(100));
+            if !session_active_monitor.load(Ordering::SeqCst) {
+                return;
+            }
+            let mut done = started_at.elapsed() >= Duration::from_millis(MAX_SESSION_MS);
+            if let Some(ep) = &ep_monitor {
+                let speech = ep.speech_started.load(Ordering::SeqCst);
+                let elapsed_ms = ep.started_at.elapsed().as_millis() as u64;
+                let last_voice_ms = ep.last_voice_ms.load(Ordering::Relaxed);
+                let silence_ms = elapsed_ms.saturating_sub(last_voice_ms);
+                done = done
+                    || (speech && silence_ms >= AUTO_STOP_SILENCE_MS)
+                    || (!speech && elapsed_ms >= AUTO_STOP_NO_SPEECH_MS);
+            }
+            if done {
+                if session_active_monitor.swap(false, Ordering::SeqCst) {
+                    if let Ok(mut env) = jvm_mon.attach_current_thread_permanently() {
+                        crate::jni_util::notify_auto_stop_with_session(
+                            &mut env,
+                            target_ref_mon.as_obj(),
+                            session_id,
+                        );
                     }
                 }
+                return;
             }
+        });
+    }
 
-            // throttle updates (lock-free)
-            let now_ms = session_start.elapsed().as_millis() as u64;
-            let last = last_sent.load(Ordering::Relaxed);
-            if now_ms >= last + 50 {
-                last_sent.store(now_ms, Ordering::Relaxed);
-
-                // Permanently attach the audio thread once instead of
-                // attach/detach churn ~20 times per second (O1). The cpal
-                // callback thread lives for the whole stream, so the daemon
-                // attachment is reused by every subsequent block.
-                if let Ok(mut env) = jvm.attach_current_thread_permanently() {
-                    let obj = target_ref.as_obj();
-                    notify_level_with_session(&mut env, obj, level, session_id);
-                }
-            }
-        },
-        |e| log::error!("Stream err: {}", e),
-        None,
+    notify_status_with_session(
+        &mut env,
+        state.target_ref.as_obj(),
+        "Listening...",
+        state.session_id,
     );
 
-    match stream {
-        Ok(s) => {
-            s.play().ok();
-            state.stream = Some(SendStream(s));
-            notify_status_with_session(
-                &mut env,
-                state.target_ref.as_obj(),
-                "Listening...",
-                state.session_id,
-            );
+    // Optional CPAL fallback capture
+    let host = cpal::default_host();
+    if let Some(device) = host.default_input_device() {
+        let config = cpal::StreamConfig {
+            channels: 1,
+            sample_rate: cpal::SampleRate(16000),
+            buffer_size: cpal::BufferSize::Default,
+        };
 
-            // Streaming pump (Nemotron-family models): drains the audio
-            // buffer into a cache-aware transcribe.cpp stream and reports
-            // partial hypotheses live. For models without native streaming
-            // the pump exits without touching anything and stop_recording
-            // transcribes the whole buffer as before.
-            let (cmd_tx, cmd_rx) = crossbeam_channel::unbounded::<crate::engine::StreamCmd>();
-            *state.stream_cmd_tx.lock().unwrap() = Some(cmd_tx.clone());
-            state.streaming_active.store(false, Ordering::SeqCst);
-            let jvm = state.jvm.clone();
-            let target_ref = state.target_ref.clone();
-            let buffer = state.audio_buffer.clone();
-            let session_active = state.session_active.clone();
-            let session_cancelled = state.session_cancelled.clone();
-            let session_id = state.session_id;
-            // The auto-stop monitor below also needs the flag; clone before
-            // the pump closure moves the original.
-            let session_active_monitor = session_active.clone();
-            let streaming_active = state.streaming_active.clone();
-            let stream_lock = state.stream_lock.clone();
-            std::thread::spawn(move || {
-                streaming_pump(
-                    jvm,
-                    target_ref,
-                    buffer,
-                    cmd_tx,
-                    cmd_rx,
-                    session_active,
-                    session_cancelled,
-                    session_id,
-                    streaming_active,
-                    stream_lock,
-                )
-            });
+        if let Ok(s) = device.build_input_stream(
+            &config,
+            move |data: &[f32], _: &_| {
+                buffer_clone
+                    .lock()
+                    .unwrap_or_else(|p| p.into_inner())
+                    .extend_from_slice(data);
 
-            // Always arm a session monitor (V3): with auto_stop the silence
-            // heuristics run; without it only the hard session cap applies,
-            // bounding the audio buffer (see MAX_SESSION_MS). Claiming via
-            // session_active_monitor.swap keeps it racing-safe with a manual
-            // stop, and the same onAutoStop path commits the captured audio.
-            {
-                let jvm = state.jvm.clone();
-                let target_ref = state.target_ref.clone();
-                let ep_monitor = endpoint;
-                let started_at = Instant::now();
-                std::thread::spawn(move || loop {
-                    std::thread::sleep(Duration::from_millis(100));
-                    if !session_active_monitor.load(Ordering::SeqCst) {
-                        return;
-                    }
-                    let mut done = started_at.elapsed() >= Duration::from_millis(MAX_SESSION_MS);
-                    if let Some(ep) = &ep_monitor {
-                        let speech = ep.speech_started.load(Ordering::SeqCst);
+                let rms = crate::audio::fast_rms(data);
+                let level = (rms * 6.0).clamp(0.0, 1.0);
+
+                if let Some(ep) = &endpoint_cb {
+                    let floor = f32::from_bits(ep.noise_floor_bits.load(Ordering::Relaxed));
+                    let is_speech = level > MIN_SPEECH_LEVEL && level > floor + SPEECH_MARGIN;
+                    if is_speech {
                         let elapsed_ms = ep.started_at.elapsed().as_millis() as u64;
-                        let last_voice_ms = ep.last_voice_ms.load(Ordering::Relaxed);
-                        let silence_ms = elapsed_ms.saturating_sub(last_voice_ms);
-                        done = done
-                            || (speech && silence_ms >= AUTO_STOP_SILENCE_MS)
-                            || (!speech && elapsed_ms >= AUTO_STOP_NO_SPEECH_MS);
-                    }
-                    if done {
-                        // Claim the session so a simultaneous manual stop and
-                        // this monitor can't both fire.
-                        if session_active_monitor.swap(false, Ordering::SeqCst) {
-                            // Permanently attach the monitor thread (lives for
-                            // the whole recording) instead of attach/detach
-                            // churn every 100 ms, consistent with O1 on the
-                            // audio callback thread.
-                            if let Ok(mut env) = jvm.attach_current_thread_permanently() {
-                                crate::jni_util::notify_auto_stop_with_session(
-                                    &mut env,
-                                    target_ref.as_obj(),
-                                    session_id,
-                                );
+                        if ep.speech_started.load(Ordering::SeqCst) {
+                            ep.last_voice_ms.store(elapsed_ms, Ordering::Relaxed);
+                        } else {
+                            let run = ep
+                                .speech_run_samples
+                                .fetch_add(data.len(), Ordering::SeqCst)
+                                + data.len();
+                            if run >= MIN_SPEECH_SAMPLES
+                                && ep.speech_started.swap(true, Ordering::SeqCst) == false
+                            {
+                                ep.last_voice_ms.store(elapsed_ms, Ordering::Relaxed);
                             }
                         }
-                        return;
+                    } else {
+                        if !ep.speech_started.load(Ordering::SeqCst) {
+                            ep.speech_run_samples.store(0, Ordering::SeqCst);
+                        }
+                        let mut current_bits = ep.noise_floor_bits.load(Ordering::Relaxed);
+                        loop {
+                            let current_val = f32::from_bits(current_bits);
+                            let new_val = (current_val * 0.95 + level * 0.05).clamp(0.0, 1.0);
+                            match ep.noise_floor_bits.compare_exchange_weak(
+                                current_bits,
+                                new_val.to_bits(),
+                                Ordering::Relaxed,
+                                Ordering::Relaxed,
+                            ) {
+                                Ok(_) => break,
+                                Err(b) => current_bits = b,
+                            }
+                        }
                     }
-                });
+                }
+
+                let now_ms = session_start.elapsed().as_millis() as u64;
+                let last = last_sent.load(Ordering::Relaxed);
+                if now_ms >= last + 50 {
+                    last_sent.store(now_ms, Ordering::Relaxed);
+                    if let Ok(mut env) = jvm.attach_current_thread_permanently() {
+                        let obj = target_ref.as_obj();
+                        notify_level_with_session(&mut env, obj, level, session_id);
+                    }
+                }
+            },
+            |e| log::error!("Stream err: {}", e),
+            None,
+        ) {
+            s.play().ok();
+            state.stream = Some(SendStream(s));
+        }
+    }
+}
+
+/// Ingests raw audio PCM buffer directly from Java AudioRecord.
+pub fn push_audio_direct(
+    env: &mut JNIEnv,
+    state: &mut VoiceSessionState,
+    direct_buf: &JObject,
+    byte_count: i32,
+    session_id: i32,
+) {
+    if !state.session_active.load(Ordering::SeqCst)
+        || state.session_id != session_id
+        || byte_count <= 0
+    {
+        return;
+    }
+    let addr = match env.get_direct_buffer_address(direct_buf.into()) {
+        Ok(ptr) => ptr,
+        Err(_) => return,
+    };
+    if addr.is_null() {
+        return;
+    }
+    let samples_count = (byte_count as usize) / 2;
+    let i16_slice = unsafe { std::slice::from_raw_parts(addr as *const i16, samples_count) };
+    let f32_samples: Vec<f32> = i16_slice.iter().map(|&s| s as f32 / 32768.0).collect();
+
+    state
+        .audio_buffer
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .extend_from_slice(&f32_samples);
+
+    let rms = crate::audio::fast_rms(&f32_samples);
+    let level = (rms * 6.0).clamp(0.0, 1.0);
+
+    let ep_guard = state.endpoint.lock().unwrap();
+    if let Some(ep) = ep_guard.as_ref() {
+        let floor = f32::from_bits(ep.noise_floor_bits.load(Ordering::Relaxed));
+        let is_speech = level > MIN_SPEECH_LEVEL && level > floor + SPEECH_MARGIN;
+        if is_speech {
+            let elapsed_ms = ep.started_at.elapsed().as_millis() as u64;
+            if ep.speech_started.load(Ordering::SeqCst) {
+                ep.last_voice_ms.store(elapsed_ms, Ordering::Relaxed);
+            } else {
+                let run = ep
+                    .speech_run_samples
+                    .fetch_add(f32_samples.len(), Ordering::SeqCst)
+                    + f32_samples.len();
+                if run >= MIN_SPEECH_SAMPLES
+                    && ep.speech_started.swap(true, Ordering::SeqCst) == false
+                {
+                    ep.last_voice_ms.store(elapsed_ms, Ordering::Relaxed);
+                }
+            }
+        } else {
+            if !ep.speech_started.load(Ordering::SeqCst) {
+                ep.speech_run_samples.store(0, Ordering::SeqCst);
+            }
+            let mut current_bits = ep.noise_floor_bits.load(Ordering::Relaxed);
+            loop {
+                let current_val = f32::from_bits(current_bits);
+                let new_val = (current_val * 0.95 + level * 0.05).clamp(0.0, 1.0);
+                match ep.noise_floor_bits.compare_exchange_weak(
+                    current_bits,
+                    new_val.to_bits(),
+                    Ordering::Relaxed,
+                    Ordering::Relaxed,
+                ) {
+                    Ok(_) => break,
+                    Err(b) => current_bits = b,
+                }
             }
         }
-        Err(e) => {
-            notify_status_with_session(
-                &mut env,
-                state.target_ref.as_obj(),
-                &format!("Error: failed to open microphone: {}", e),
-                state.session_id,
-            );
-        }
+    }
+    drop(ep_guard);
+
+    let now_ms = Instant::now().elapsed().as_millis() as u64;
+    let last = state.last_level_sent_ms.load(Ordering::Relaxed);
+    if now_ms >= last + 50 {
+        state.last_level_sent_ms.store(now_ms, Ordering::Relaxed);
+        let obj = state.target_ref.as_obj();
+        notify_level_with_session(env, obj, level, session_id);
     }
 }
 

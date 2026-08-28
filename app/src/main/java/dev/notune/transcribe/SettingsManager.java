@@ -256,11 +256,11 @@ public class SettingsManager implements PostProcessor.PostProcessorSettings {
 
     public String getMicMode() {
         String val = readMarker(MIC_MODE_FILE);
-        return val != null && !val.trim().isEmpty() ? val.trim() : AudioDeviceManager.MIC_MODE_AUTO;
+        return val != null && !val.trim().isEmpty() ? val.trim() : AudioDeviceManager.MIC_MODE_BUILTIN_ONLY;
     }
 
     public void setMicMode(String mode) {
-        writeMarker(MIC_MODE_FILE, mode != null ? mode : AudioDeviceManager.MIC_MODE_AUTO);
+        writeMarker(MIC_MODE_FILE, mode != null ? mode : AudioDeviceManager.MIC_MODE_BUILTIN_ONLY);
     }
 
     // ----------------------------------------------------------------------

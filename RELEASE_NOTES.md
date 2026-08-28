@@ -1,9 +1,10 @@
-# ✨ Aura Transcribe v0.2.1 — Bluetooth Headset Routing & AI Fix Guardrails
+# ✨ Aura Transcribe v0.2.1 — Built-in Mic Default, Bluetooth Routing & AI Fix Guardrails
 
-`versionCode 40` — Quality, Audio & Stability Release: Comprehensive wireless Bluetooth headset detection and routing, AI post-processing configuration guardrails, and smart keyboard feedback.
+`versionCode 40` — Quality, Audio & Stability Release: Built-in phone microphone selected by default for 100% out-of-the-box capture reliability, optional wireless Bluetooth headset dynamic routing, AI post-processing configuration guardrails, and smart keyboard feedback.
 
 ### 🌟 Key Changes in v0.2.1
 
+- **Built-in Internal Microphone by Default:** Default microphone mode is now strictly configured to the phone's internal microphone (`MIC_MODE_BUILTIN_ONLY`), guaranteeing immediate, flawless audio capture out of the box without interference from non-mic Bluetooth accessories. Users can easily opt into "Automático" or "Solo Bluetooth" from the Settings menu whenever they want to record via wireless earbuds or external headsets.
 - **Wireless Bluetooth Headset Detection & Routing:** Overhauled `AudioDeviceManager` to seamlessly detect, connect, and route audio from Bluetooth wireless earbuds (AirPods, Galaxy Buds, Pixel Buds, Sony, etc.), Bluetooth SCO/A2DP headsets, Bluetooth LE Audio, Hearing Aids, USB microphones, and wired headsets. Added runtime `BLUETOOTH_CONNECT` permission checks on Android 12–15+.
 - **AI Fix Configuration Guardrails:** `SettingsManager.isPostProcessEnabled()` now strictly validates `isPostProcessConfigured()`. If no functional API key (Cloud providers) or local S1-mini model (Local provider) is present, post-processing safely evaluates to `false` and bypasses gracefully without false timeouts or broken states.
 - **Smart Toggle Feedback on Keyboard & Bubble:** Tapping the "AI Fix" switch on the on-screen keyboard (`RustInputMethodService`) or floating overlay (`FloatingOverlayService`) without a configured provider automatically snaps the toggle back to OFF and displays an informative prompt (`pp_not_configured_prompt`).

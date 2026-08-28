@@ -49,23 +49,23 @@ public class AudioDeviceManagerTest {
     }
 
     @Test
-    public void testMicModeDefaultToAutoWhenMissing() {
-        String mode = MarkerFileHelper.readStringFromFile(tempDirectory, "mic_mode", AudioDeviceManager.MIC_MODE_AUTO);
-        assertEquals(AudioDeviceManager.MIC_MODE_AUTO, mode);
+    public void testMicModeDefaultToBuiltinWhenMissing() {
+        String mode = MarkerFileHelper.readStringFromFile(tempDirectory, "mic_mode", AudioDeviceManager.MIC_MODE_BUILTIN_ONLY);
+        assertEquals(AudioDeviceManager.MIC_MODE_BUILTIN_ONLY, mode);
     }
 
     @Test
     public void testMicModePersistenceRoundTrip() {
         MarkerFileHelper.writeStringToFile(tempDirectory, "mic_mode", AudioDeviceManager.MIC_MODE_BLUETOOTH_ONLY);
-        String mode = MarkerFileHelper.readStringFromFile(tempDirectory, "mic_mode", AudioDeviceManager.MIC_MODE_AUTO);
+        String mode = MarkerFileHelper.readStringFromFile(tempDirectory, "mic_mode", AudioDeviceManager.MIC_MODE_BUILTIN_ONLY);
         assertEquals(AudioDeviceManager.MIC_MODE_BLUETOOTH_ONLY, mode);
 
         MarkerFileHelper.writeStringToFile(tempDirectory, "mic_mode", AudioDeviceManager.MIC_MODE_BUILTIN_ONLY);
-        mode = MarkerFileHelper.readStringFromFile(tempDirectory, "mic_mode", AudioDeviceManager.MIC_MODE_AUTO);
+        mode = MarkerFileHelper.readStringFromFile(tempDirectory, "mic_mode", AudioDeviceManager.MIC_MODE_BUILTIN_ONLY);
         assertEquals(AudioDeviceManager.MIC_MODE_BUILTIN_ONLY, mode);
 
         MarkerFileHelper.writeStringToFile(tempDirectory, "mic_mode", AudioDeviceManager.MIC_MODE_AUTO);
-        mode = MarkerFileHelper.readStringFromFile(tempDirectory, "mic_mode", AudioDeviceManager.MIC_MODE_AUTO);
+        mode = MarkerFileHelper.readStringFromFile(tempDirectory, "mic_mode", AudioDeviceManager.MIC_MODE_BUILTIN_ONLY);
         assertEquals(AudioDeviceManager.MIC_MODE_AUTO, mode);
     }
 
@@ -95,8 +95,8 @@ public class AudioDeviceManagerTest {
     @Test
     public void testMicModeFallbackOnEmptyOrCorruptString() {
         MarkerFileHelper.writeStringToFile(tempDirectory, "mic_mode", "   ");
-        String mode = MarkerFileHelper.readStringFromFile(tempDirectory, "mic_mode", AudioDeviceManager.MIC_MODE_AUTO);
-        // Trims to empty string; callers (like sm.getMicMode()) normalize to AUTO
-        assertTrue(mode.isEmpty() || AudioDeviceManager.MIC_MODE_AUTO.equals(mode));
+        String mode = MarkerFileHelper.readStringFromFile(tempDirectory, "mic_mode", AudioDeviceManager.MIC_MODE_BUILTIN_ONLY);
+        // Trims to empty string; callers (like sm.getMicMode()) normalize to BUILTIN_ONLY
+        assertTrue(mode.isEmpty() || AudioDeviceManager.MIC_MODE_BUILTIN_ONLY.equals(mode));
     }
 }

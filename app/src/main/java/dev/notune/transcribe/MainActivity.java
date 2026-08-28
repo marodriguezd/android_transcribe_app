@@ -347,10 +347,10 @@ public class MainActivity extends AppCompatActivity {
         String currentMode = sm.getMicMode();
         if (AudioDeviceManager.MIC_MODE_BLUETOOTH_ONLY.equals(currentMode)) {
             rgMic.check(R.id.rb_mic_bluetooth);
-        } else if (AudioDeviceManager.MIC_MODE_BUILTIN_ONLY.equals(currentMode)) {
-            rgMic.check(R.id.rb_mic_builtin);
-        } else {
+        } else if (AudioDeviceManager.MIC_MODE_AUTO.equals(currentMode)) {
             rgMic.check(R.id.rb_mic_auto);
+        } else {
+            rgMic.check(R.id.rb_mic_builtin);
         }
 
         rgMic.setOnCheckedChangeListener((group, checkedId) -> {

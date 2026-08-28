@@ -1,0 +1,145 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="512"
+    android:viewportHeight="512">
+
+    <!-- Background Base Container -->
+    <path
+        android:pathData="M128,0 L384,0 A128,128 0 0,1 512,128 L512,384 A128,128 0 0,1 384,512 L128,512 A128,128 0 0,1 0,384 L0,128 A128,128 0 0,1 128,0 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="256"
+                android:centerY="256"
+                android:gradientRadius="358"
+                android:type="radial">
+                <item android:offset="0.0" android:color="#FF1E1B4B" />
+                <item android:offset="0.6" android:color="#FF0F172A" />
+                <item android:offset="1.0" android:color="#FF030712" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Outer Ambient Aura Ring -->
+    <path
+        android:strokeWidth="6"
+        android:strokeAlpha="0.5"
+        android:pathData="M256,61 A195,195 0 1,1 255.9,61 Z">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="512"
+                android:startY="0"
+                android:endX="0"
+                android:endY="512"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FF00FFCC" />
+                <item android:offset="0.5" android:color="#FF7928CA" />
+                <item android:offset="1.0" android:color="#FFFF0080" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Primary Vibrant Aura Ring -->
+    <path
+        android:strokeWidth="12"
+        android:strokeLineCap="round"
+        android:pathData="M256,76 A180,180 0 1,1 255.9,76 Z">
+        <aapt:attr name="android:strokeColor">
+            <gradient
+                android:startX="0"
+                android:startY="0"
+                android:endX="512"
+                android:endY="512"
+                android:type="linear">
+                <item android:offset="0.0" android:color="#FF00F2FE" />
+                <item android:offset="0.35" android:color="#FF4FACFE" />
+                <item android:offset="0.7" android:color="#FF8A2387" />
+                <item android:offset="1.0" android:color="#FFFF007F" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!-- Left Sound Waves -->
+    <path
+        android:strokeWidth="8"
+        android:strokeLineCap="round"
+        android:strokeColor="#FF00F2FE"
+        android:pathData="M125,256 Q105,210 125,160" />
+    <path
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:strokeColor="#FF00FFCC"
+        android:strokeAlpha="0.7"
+        android:pathData="M95,256 Q70,200 95,140" />
+
+    <!-- Right Sound Waves -->
+    <path
+        android:strokeWidth="8"
+        android:strokeLineCap="round"
+        android:strokeColor="#FFFF007F"
+        android:pathData="M387,256 Q407,302 387,352" />
+    <path
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:strokeColor="#FF7928CA"
+        android:strokeAlpha="0.7"
+        android:pathData="M417,256 Q442,312 417,372" />
+
+    <!-- Center Glowing Microphone Capsule -->
+    <path
+        android:pathData="M256,148 L256,148 A40,40 0 0,1 296,188 L296,260 A40,40 0 0,1 256,300 L256,300 A40,40 0 0,1 216,260 L216,188 A40,40 0 0,1 256,148 Z"
+        android:fillColor="#FFFFFFFF" />
+
+    <!-- Inner Sound Lines Inside Mic Body -->
+    <path
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeColor="#FF6366F1"
+        android:pathData="M240,200 L272,200" />
+    <path
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeColor="#FF8B5CF6"
+        android:pathData="M232,218 L280,218" />
+    <path
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeColor="#FFEC4899"
+        android:pathData="M240,236 L272,236" />
+    <path
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeColor="#FF3B82F6"
+        android:pathData="M248,254 L264,254" />
+
+    <!-- Outer Pickup Arc Bracket -->
+    <path
+        android:strokeWidth="14"
+        android:strokeLineCap="round"
+        android:strokeColor="#FFFFFFFF"
+        android:pathData="M180,236 C180,326 332,326 332,236" />
+
+    <!-- Microphone Base Stem & Stand -->
+    <path
+        android:strokeWidth="14"
+        android:strokeLineCap="round"
+        android:strokeColor="#FFFFFFFF"
+        android:pathData="M256,318 L256,376" />
+    <path
+        android:strokeWidth="14"
+        android:strokeLineCap="round"
+        android:strokeColor="#FFFFFFFF"
+        android:pathData="M206,376 L306,376" />
+
+    <!-- Top Right Sparkle Star -->
+    <path
+        android:fillColor="#FF00F2FE"
+        android:pathData="M360,130 Q372,142 384,142 Q372,142 360,154 Q348,142 336,142 Q348,142 360,130 Z" />
+
+    <!-- Bottom Left Sparkle Star -->
+    <path
+        android:fillColor="#FFFF007F"
+        android:pathData="M152,350 Q160,358 168,358 Q160,358 152,366 Q144,358 136,358 Q144,358 152,350 Z" />
+
+</vector>

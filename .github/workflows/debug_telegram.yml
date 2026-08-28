@@ -103,7 +103,7 @@ jobs:
         export CMAKE_TOOLCHAIN_FILE_aarch64-linux-android="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
         export RUSTFLAGS="-C target-feature=+neon,+fp16,+dotprod"
         export TRANSCRIBE_CMAKE_ARGS="-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=26 -DANDROID_STL=c++_shared -DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16 -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS_RELEASE=-O3 -DCMAKE_CXX_FLAGS_RELEASE=-O3 -DGGML_NATIVE=OFF -DGGML_BUILD_TESTS=OFF -DGGML_BUILD_EXAMPLES=OFF"
-        cargo ndk -t arm64-v8a -o app/src/main/jniLibs --verbose build --release 2>&1 | tee cargo_build.log
+        cargo ndk -t arm64-v8a -o app/src/main/jniLibs build --release 2>&1 | tee cargo_build.log
 
     - name: Copy NDK libc++_shared.so
       run: |

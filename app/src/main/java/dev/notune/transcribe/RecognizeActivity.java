@@ -6,6 +6,7 @@ import android.os.Bundle;
 import android.speech.RecognizerIntent;
 import android.util.Log;
 import android.view.WindowManager;
+import android.widget.ImageView;
 import dev.notune.transcribe.BuildConfig;
 import android.widget.Button;
 import android.widget.LinearLayout;

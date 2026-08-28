@@ -327,7 +327,6 @@ val cargoNdkBuild by tasks.registering(Exec::class) {
     commandLine(
         "cargo", "ndk",
         "-t", "arm64-v8a",
-        "-p", "26",
         "-o", jniLibsDir.absolutePath,
         "build", "--release"
     )

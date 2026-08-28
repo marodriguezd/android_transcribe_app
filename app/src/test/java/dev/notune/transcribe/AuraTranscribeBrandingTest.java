@@ -14,9 +14,9 @@ public class AuraTranscribeBrandingTest {
 
     @Test
     public void testAudioInputModesConstants() {
-        assertEquals("auto", SettingsManager.MIC_MODE_AUTO);
-        assertEquals("bluetooth_only", SettingsManager.MIC_MODE_BT_ONLY);
-        assertEquals("builtin_only", SettingsManager.MIC_MODE_BUILTIN_ONLY);
+        assertEquals("auto", AudioDeviceManager.MIC_MODE_AUTO);
+        assertEquals("bluetooth", AudioDeviceManager.MIC_MODE_BLUETOOTH_ONLY);
+        assertEquals("builtin", AudioDeviceManager.MIC_MODE_BUILTIN_ONLY);
     }
 
     @Test
@@ -31,7 +31,7 @@ public class AuraTranscribeBrandingTest {
         assertEquals("s1-mini-q4_k_m.gguf", localS1.defaultModel);
 
         // Verify Groq provider preset
-        SettingsManager.Provider groq = SettingsManager.providerById(SettingsManager.PROVIDER_GROQ);
+        SettingsManager.Provider groq = SettingsManager.providerById("groq");
         assertNotNull(groq);
         assertEquals("https://api.groq.com/openai/v1", groq.baseUrl);
     }

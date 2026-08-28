@@ -79,7 +79,7 @@ impl S1Manager {
 /// Constructs the exact prompt template and control line for S1-mini.
 pub fn build_s1_prompt(raw_text: &str, preset: &str, custom_prompt: Option<&str>) -> String {
     let control_line = if let Some(custom) = custom_prompt {
-        if !custom.trim().isEmpty() {
+        if !custom.trim().is_empty() {
             custom.trim().to_string()
         } else {
             get_control_line_for_preset(preset)

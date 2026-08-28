@@ -89,6 +89,25 @@ jobs:
     - name: Run performance & latency benchmarks (optimization gate)
       run: python3 scripts/bench_performance.py
 
+    - name: Compile Rust native libraries (cargo-ndk)
+      run: |
+        export PATH="$HOME/.cargo/bin:$PATH"
+        export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
+        export ANDROID_NDK_ROOT="$ANDROID_HOME/ndk/28.0.13004108"
+        export NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
+        export CARGO_NDK_PLATFORM="26"
+        cargo ndk -t arm64-v8a -o app/src/main/jniLibs build --release
+
+    - name: Copy NDK libc++_shared.so
+      run: |
+        NDK_LIBCPP=$(find "$ANDROID_HOME/ndk/28.0.13004108" -name "libc++_shared.so" | grep -E "(aarch64|arm64-v8a)" | head -1)
+        mkdir -p app/src/main/jniLibs/arm64-v8a
+        if [ -n "$NDK_LIBCPP" ] && [ -f "$NDK_LIBCPP" ]; then
+          cp "$NDK_LIBCPP" app/src/main/jniLibs/arm64-v8a/libc++_shared.so
+          echo "Copied libc++_shared.so from: $NDK_LIBCPP"
+        fi
+        ls -la app/src/main/jniLibs/arm64-v8a/
+
     - name: Build Debug APK
       run: |
         export PATH="$HOME/.cargo/bin:$PATH"

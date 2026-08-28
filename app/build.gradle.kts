@@ -324,6 +324,11 @@ val cargoNdkBuild by tasks.registering(Exec::class) {
 
     val jniLibsDir = project.file("src/main/jniLibs")
 
+    onlyIf {
+        val soFile = File(jniLibsDir, "arm64-v8a/libandroid_transcribe_app.so")
+        !soFile.exists()
+    }
+
     commandLine(
         "cargo", "ndk",
         "-t", "arm64-v8a",

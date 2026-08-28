@@ -97,10 +97,21 @@ jobs:
     - name: Compile Rust native libraries (cargo-ndk)
       run: |
         mkdir -p app/src/main/jniLibs/arm64-v8a
-        export CARGO_NDK_PLATFORM="26"
+        TOOLCHAIN="$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64"
+        export CC_aarch64_unknown_linux_android="$TOOLCHAIN/bin/aarch64-linux-android26-clang"
+        export CXX_aarch64_unknown_linux_android="$TOOLCHAIN/bin/aarch64-linux-android26-clang++"
+        export AR_aarch64_unknown_linux_android="$TOOLCHAIN/bin/llvm-ar"
+        export CC_aarch64_linux_android="$TOOLCHAIN/bin/aarch64-linux-android26-clang"
+        export CXX_aarch64_linux_android="$TOOLCHAIN/bin/aarch64-linux-android26-clang++"
+        export AR_aarch64_linux_android="$TOOLCHAIN/bin/llvm-ar"
+        export CC="$TOOLCHAIN/bin/aarch64-linux-android26-clang"
+        export CXX="$TOOLCHAIN/bin/aarch64-linux-android26-clang++"
+        export AR="$TOOLCHAIN/bin/llvm-ar"
+        export RANLIB="$TOOLCHAIN/bin/llvm-ranlib"
         export CMAKE_TOOLCHAIN_FILE="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
         export CMAKE_TOOLCHAIN_FILE_aarch64_linux_android="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
-        export CMAKE_TOOLCHAIN_FILE_aarch64-linux-android="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
+        export CMAKE_TOOLCHAIN_FILE_aarch64_unknown_linux_android="$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake"
+        export CARGO_NDK_PLATFORM="26"
         export RUSTFLAGS="-C target-feature=+neon,+fp16,+dotprod"
         export TRANSCRIBE_CMAKE_ARGS="-DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=26 -DANDROID_STL=c++_shared -DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16 -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS_RELEASE=-O3 -DCMAKE_CXX_FLAGS_RELEASE=-O3 -DGGML_NATIVE=OFF -DGGML_BUILD_TESTS=OFF -DGGML_BUILD_EXAMPLES=OFF"
         cargo ndk -t arm64-v8a -o app/src/main/jniLibs build --release 2>&1 | tee cargo_build.log
@@ -186,23 +197,31 @@ jobs:
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
         COMMIT_SHA=$(git rev-parse --short HEAD)
-        if [ -f cargo_build.log ] && [ -s cargo_build.log ]; then
-          curl -s -F chat_id="$TELEGRAM_CHAT_ID" \
-               -F document=@"cargo_build.log" \
-               -F caption="🚨 Cargo Build Log ($COMMIT_SHA)" \
-               "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument" || true
-        elif [ -f gradle_build.log ] && [ -s gradle_build.log ]; then
-          curl -s -F chat_id="$TELEGRAM_CHAT_ID" \
-               -F document=@"gradle_build.log" \
-               -F caption="🚨 Gradle Build Log ($COMMIT_SHA)" \
-               "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument" || true
-        elif [ -f gradle_test.log ] && [ -s gradle_test.log ]; then
-          curl -s -F chat_id="$TELEGRAM_CHAT_ID" \
-               -F document=@"gradle_test.log" \
-               -F caption="🚨 Gradle Test Log ($COMMIT_SHA)" \
-               "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendDocument" || true
-        else
-          curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
-            -d "chat_id=$TELEGRAM_CHAT_ID" \
-            -d "text=🚨 CI Workflow Failed on commit $COMMIT_SHA" || true
-        fi
+        python3 -c "
+        import os, urllib.request, urllib.parse
+        token = os.environ.get('TELEGRAM_BOT_TOKEN')
+        chat_id = os.environ.get('TELEGRAM_CHAT_ID')
+        sha = os.environ.get('COMMIT_SHA', '$(git rev-parse --short HEAD)')
+        if not token or not chat_id:
+            exit(0)
+        
+        log_files = ['cargo_build.log', 'gradle_build.log', 'gradle_lint.log', 'gradle_test.log']
+        found_errs = []
+        for lf in log_files:
+            if os.path.exists(lf) and os.path.getsize(lf) > 0:
+                with open(lf, 'r', errors='ignore') as f:
+                    lines = f.readlines()
+                errs = [l.strip() for l in lines if any(k in l for k in ['error[E', 'error:', 'CMake Error', 'FAILED:', 'undefined reference', 'cannot find', 'BUILD FAILED'])]
+                if not errs:
+                    errs = [l.strip() for l in lines[-12:] if l.strip()]
+                if errs:
+                    found_errs.append(f'[{lf}]\n' + '\n'.join(errs[-8:]))
+        
+        msg_text = f'🚨 CI Workflow Failed ({sha}):\n\n' + ('\n\n'.join(found_errs) if found_errs else 'No error log recorded')
+        data = urllib.parse.urlencode({'chat_id': chat_id, 'text': msg_text[:3800]}).encode('utf-8')
+        try:
+            req = urllib.request.Request(f'https://api.telegram.org/bot{token}/sendMessage', data=data)
+            urllib.request.urlopen(req, timeout=10)
+        except Exception as e:
+            print(f'Telegram send error: {e}')
+        "

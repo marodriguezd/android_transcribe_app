@@ -1,6 +1,18 @@
 # Changelog
 
-Change log of **android_transcribe_app** (fork of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app)).
+Change log of **Aura Transcribe** (Next-Gen evolution of [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app)).
+
+# v0.2.0
+
+Major Milestone Release: Official rebranding to **Aura Transcribe** (`com.auratranscribe.app`), Adaptive Icon architecture, Bluetooth audio routing, and AI post-processing layer:
+
+- **Official Rebranding:** Redesigned application namespace and manifest to `com.auratranscribe.app` ("Aura Transcribe") with unified IME and speech recognition service labeling.
+- **Adaptive Icon Architecture:** Implemented vector-layered Adaptive Icons (`ic_launcher_background`, `ic_launcher_foreground`, `ic_launcher_monochrome`) with bioluminescent aura gradient, minimalist microphone, and Material You dynamic theming (Android 8.0–15+). Purged legacy 1MB raster bitmap.
+- **FUTO-Style Dynamic Audio Routing:** Added `AudioDeviceManager` supporting seamless switching between Bluetooth SCO headsets, BLE Audio, USB external microphones, and internal phone microphones.
+- **AI Post-Processing Layer:** Integrated SuperWhisper S1-mini and OpenAI-compatible API providers (Groq, Cerebras, OpenRouter, OpenAI, Mistral, Together, Ollama) with 4 formatting presets (*Clean*, *Formal*, *Casual*, *Verbatim*).
+- **Floating Overlay Dictation:** Built lightweight overlay bubble (`SYSTEM_ALERT_WINDOW`) and Accessibility auto-paste service.
+- **Pure-JVM Test Harness & Benchmarks:** Expanded unit test coverage to 14 suites (100% JVM decoupled pass rate) and automated SIMD latency benchmarks.
+- **Hardened CI/CD Pipeline:** Fully automated multi-gate GitHub Actions build workflows with direct Telegram APK delivery and automated error extraction.
 
 # v0.1.36
 

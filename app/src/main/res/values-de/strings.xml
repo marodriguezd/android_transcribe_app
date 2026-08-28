@@ -154,6 +154,7 @@
     <string name="pp_downloading_s1">S1-mini GGUF wird heruntergeladen…</string>
     <string name="pp_download_s1_done">S1-mini GGUF erfolgreich heruntergeladen</string>
     <string name="pp_download_s1_error">Download fehlgeschlagen: %1$s</string>
+    <string name="pp_not_configured_prompt">KI-Nachbearbeitung ist nicht konfiguriert. Bitte fügen Sie einen API-Schlüssel hinzu oder installieren Sie das lokale S1-Modell in den Einstellungen.</string>
 
     <!-- Benutzerwörterbuch (Fork-Zusatz): phonetische Nachbearbeitung -->
     <string name="cw_card_title">Eigene Wörter</string>

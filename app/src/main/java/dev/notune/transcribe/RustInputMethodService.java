@@ -213,6 +213,13 @@ public class RustInputMethodService extends InputMethodService {
                 ppToggle.setChecked(SettingsManager.isPostProcessEnabled(this));
                 ppToggle.setOnCheckedChangeListener((buttonView, isChecked) -> {
                     SettingsManager settingsManager = new SettingsManager(RustInputMethodService.this);
+                    if (isChecked && !settingsManager.isPostProcessConfigured()) {
+                        buttonView.setChecked(false);
+                        settingsManager.setPostProcessEnabled(false);
+                        Toast.makeText(RustInputMethodService.this,
+                                R.string.pp_not_configured_prompt, Toast.LENGTH_LONG).show();
+                        return;
+                    }
                     settingsManager.setPostProcessEnabled(isChecked);
                     if (!isChecked) {
                         if (!isRecording && statusView != null

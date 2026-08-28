@@ -163,6 +163,15 @@ public class PostProcessor {
         default boolean isLocalS1ModelInstalled() {
             return false;
         }
+
+        default boolean isPostProcessConfigured() {
+            String provider = getProviderId();
+            if (PROVIDER_LOCAL_S1.equals(provider)) {
+                return isLocalS1ModelInstalled();
+            }
+            String key = getApiKey();
+            return key != null && !key.trim().isEmpty();
+        }
     }
 
     private static OkHttpClient getSharedClient() {
@@ -274,9 +283,9 @@ public class PostProcessor {
             return;
         }
 
-        // Re-check the marker here, not only at each caller, because the toggle
+        // Re-check the marker and configuration here, not only at each caller, because the toggle
         // can change between receiving the ASR result and creating this call.
-        if (!forceRequest && !settings.isPostProcessEnabled()) {
+        if (!forceRequest && (!settings.isPostProcessEnabled() || !settings.isPostProcessConfigured())) {
             dispatchToUi(() -> callback.onSuccess(rawText));
             return;
         }

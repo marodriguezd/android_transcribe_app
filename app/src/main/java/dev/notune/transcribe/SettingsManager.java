@@ -121,15 +121,36 @@ public class SettingsManager implements PostProcessor.PostProcessorSettings {
     // ----------------------------------------------------------------------
 
     public boolean isPostProcessEnabled() {
+        return MarkerFileHelper.exists(appContext, PP_ENABLED_FILE) && isPostProcessConfigured();
+    }
+
+    public boolean isPostProcessMarkerSet() {
         return MarkerFileHelper.exists(appContext, PP_ENABLED_FILE);
     }
 
+    public boolean isPostProcessConfigured() {
+        String provider = getProviderId();
+        if (PROVIDER_LOCAL_S1.equals(provider)) {
+            return isLocalS1ModelInstalled();
+        }
+        String key = getApiKey();
+        return key != null && !key.trim().isEmpty();
+    }
+
     public void setPostProcessEnabled(boolean enabled) {
+        if (enabled && !isPostProcessConfigured()) {
+            MarkerFileHelper.setExists(appContext, PP_ENABLED_FILE, false);
+            return;
+        }
         MarkerFileHelper.setExists(appContext, PP_ENABLED_FILE, enabled);
     }
 
     public static boolean isPostProcessEnabled(Context context) {
-        return MarkerFileHelper.exists(context, PP_ENABLED_FILE);
+        if (!MarkerFileHelper.exists(context, PP_ENABLED_FILE)) {
+            return false;
+        }
+        SettingsManager sm = new SettingsManager(context);
+        return sm.isPostProcessConfigured();
     }
 
     // ----------------------------------------------------------------------

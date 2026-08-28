@@ -154,6 +154,7 @@
     <string name="pp_downloading_s1">Téléchargement de S1-mini GGUF…</string>
     <string name="pp_download_s1_done">S1-mini GGUF téléchargé avec succès</string>
     <string name="pp_download_s1_error">Échec du téléchargement : %1$s</string>
+    <string name="pp_not_configured_prompt">Le post-traitement IA n\'est pas configuré. Veuillez ajouter une clé API ou installer le modèle S1 local dans les paramètres.</string>
 
     <!-- Dictionnaire de mots personnalisés (ajout du fork) : correction phonétique -->
     <string name="cw_card_title">Mots personnalisés</string>

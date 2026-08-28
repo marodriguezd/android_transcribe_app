@@ -161,6 +161,20 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
         btnDownloadS1.setOnClickListener(v -> downloadS1Model());
 
         switchEnabled.setChecked(settings.isPostProcessEnabled());
+        switchEnabled.setOnCheckedChangeListener((buttonView, isChecked) -> {
+            if (isChecked) {
+                boolean isLocalMode = SettingsManager.PROVIDER_LOCAL_S1.equals(selectedProviderId);
+                String currentKey = editApiKey.getText().toString().trim();
+                if (isLocalMode && !settings.isLocalS1ModelInstalled()) {
+                    buttonView.setChecked(false);
+                    Toast.makeText(this, R.string.pp_local_model_not_installed, Toast.LENGTH_LONG).show();
+                } else if (!isLocalMode && currentKey.isEmpty()) {
+                    layoutApiKey.setError(getString(R.string.pp_api_key_required));
+                }
+            } else {
+                layoutApiKey.setError(null);
+            }
+        });
         editApiUrl.setText(settings.getApiUrl());
         editApiKey.setText(settings.getApiKey());
         editModel.setText(settings.getModelName());
@@ -360,15 +374,30 @@ public class PostProcessSettingsActivity extends AppCompatActivity {
     private void save(boolean closeAfter) {
         boolean wasEnabled = settings.isPostProcessEnabled();
         boolean nowEnabled = switchEnabled.isChecked();
-        settings.setPostProcessEnabled(nowEnabled);
+        boolean isLocal = SettingsManager.PROVIDER_LOCAL_S1.equals(selectedProviderId);
+        String apiKey = editApiKey.getText().toString().trim();
+
+        if (nowEnabled) {
+            if (isLocal && !settings.isLocalS1ModelInstalled()) {
+                nowEnabled = false;
+                switchEnabled.setChecked(false);
+                Toast.makeText(this, R.string.pp_local_model_not_installed, Toast.LENGTH_LONG).show();
+            } else if (!isLocal && apiKey.isEmpty()) {
+                nowEnabled = false;
+                switchEnabled.setChecked(false);
+                layoutApiKey.setError(getString(R.string.pp_api_key_required));
+                Toast.makeText(this, R.string.pp_api_key_required, Toast.LENGTH_SHORT).show();
+            }
+        }
+
         settings.setProviderId(selectedProviderId);
         if (selectedPreset != null) {
             settings.setPostProcessPreset(selectedPreset);
         }
         settings.setApiUrl(editApiUrl.getText().toString().trim());
-        String apiKey = editApiKey.getText().toString().trim();
         settings.setApiKey(apiKey);
-        boolean isLocal = SettingsManager.PROVIDER_LOCAL_S1.equals(selectedProviderId);
+        settings.setPostProcessEnabled(nowEnabled);
+
         layoutApiKey.setError(apiKey.isEmpty() && nowEnabled && !isLocal
                 ? getString(R.string.pp_api_key_required) : null);
         settings.setModelName(editModel.getText().toString().trim());

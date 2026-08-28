@@ -154,6 +154,7 @@
     <string name="pp_downloading_s1">Загрузка S1-mini GGUF…</string>
     <string name="pp_download_s1_done">S1-mini GGUF успешно загружен</string>
     <string name="pp_download_s1_error">Ошибка загрузки: %1$s</string>
+    <string name="pp_not_configured_prompt">Постобработка ИИ не настроена. Добавьте ключ API или установите локальную модель S1 в настройках.</string>
 
     <!-- Словарь пользовательских слов (добавление форка): фонетическая коррекция -->
     <string name="cw_card_title">Свои слова</string>

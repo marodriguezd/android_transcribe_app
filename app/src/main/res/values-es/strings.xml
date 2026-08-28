@@ -154,6 +154,7 @@
     <string name="pp_downloading_s1">Descargando S1-mini GGUF…</string>
     <string name="pp_download_s1_done">S1-mini GGUF descargado correctamente</string>
     <string name="pp_download_s1_error">Error al descargar: %1$s</string>
+    <string name="pp_not_configured_prompt">El postprocesado IA no está configurado. Añade una clave API o instala el modelo local S1 en ajustes.</string>
 
     <!-- Diccionario de palabras personalizadas (añadido del fork): corrección fonética -->
     <string name="cw_card_title">Palabras personalizadas</string>

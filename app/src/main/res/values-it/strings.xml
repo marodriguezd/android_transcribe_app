@@ -154,6 +154,7 @@
     <string name="pp_downloading_s1">Download di S1-mini GGUF in corso…</string>
     <string name="pp_download_s1_done">S1-mini GGUF scaricato con successo</string>
     <string name="pp_download_s1_error">Download non riuscito: %1$s</string>
+    <string name="pp_not_configured_prompt">La post-elaborazione IA non è configurata. Aggiungi una chiave API o installa il modello S1 locale nelle impostazioni.</string>
 
     <!-- Dizionario di parole personalizzate (aggiunta del fork): correzione fonetica -->
     <string name="cw_card_title">Parole personalizzate</string>

@@ -570,7 +570,7 @@ public class RustInputMethodService extends InputMethodService {
                     MaterialColors.getColor(recordCircle, circleAttr)));
         }
         if (micIcon != null) {
-            boolean isBt = AudioDeviceManager.isBluetoothConnected(this);
+            boolean isBt = AudioDeviceManager.shouldShowHeadsetIcon(this);
             micIcon.setImageResource(isBt ? R.drawable.ic_headset : R.drawable.ic_mic);
             micIcon.setColorFilter(MaterialColors.getColor(micIcon, iconAttr));
         }

@@ -55,7 +55,7 @@ public class RecognizeActivity extends AppCompatActivity {
         status = findViewById(R.id.txt_status);
 
         ImageView micIcon = findViewById(R.id.mic_icon);
-        boolean isBt = AudioDeviceManager.isBluetoothConnected(this);
+        boolean isBt = AudioDeviceManager.shouldShowHeadsetIcon(this);
         if (micIcon != null) {
             micIcon.setImageResource(isBt ? R.drawable.ic_headset : R.drawable.ic_mic);
         }

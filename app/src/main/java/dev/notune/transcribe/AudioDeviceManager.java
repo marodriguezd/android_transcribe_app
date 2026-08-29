@@ -483,7 +483,7 @@ public final class AudioDeviceManager {
     }
 
     /**
-     * Checks if any Bluetooth audio recording device (SCO, A2DP headset, BLE Audio) is connected.
+     * Checks if any Bluetooth microphone input device (SCO, BLE Headset microphone) is connected.
      */
     public static boolean isBluetoothConnected(Context context) {
         if (context == null) return false;
@@ -495,12 +495,11 @@ public final class AudioDeviceManager {
         }
 
         try {
-            // Check BluetoothAdapter profile connection states
+            // Check BluetoothAdapter HEADSET profile (microphone capable)
             try {
                 android.bluetooth.BluetoothAdapter adapter = android.bluetooth.BluetoothAdapter.getDefaultAdapter();
                 if (adapter != null && adapter.isEnabled()) {
-                    if (adapter.getProfileConnectionState(android.bluetooth.BluetoothProfile.HEADSET) == android.bluetooth.BluetoothProfile.STATE_CONNECTED ||
-                        adapter.getProfileConnectionState(android.bluetooth.BluetoothProfile.A2DP) == android.bluetooth.BluetoothProfile.STATE_CONNECTED) {
+                    if (adapter.getProfileConnectionState(android.bluetooth.BluetoothProfile.HEADSET) == android.bluetooth.BluetoothProfile.STATE_CONNECTED) {
                         return true;
                     }
                 }
@@ -509,27 +508,53 @@ public final class AudioDeviceManager {
             AudioManager am = (AudioManager) context.getSystemService(Context.AUDIO_SERVICE);
             if (am == null) return false;
 
-            if (am.isBluetoothA2dpOn() || am.isBluetoothScoOn()) {
+            if (am.isBluetoothScoOn()) {
                 return true;
             }
 
-            AudioDeviceInfo[] devices = am.getDevices(AudioManager.GET_DEVICES_ALL);
-            if (devices == null) return false;
-            for (AudioDeviceInfo device : devices) {
-                int type = device.getType();
-                if (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
-                    type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
-                    (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-                        (type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
-                         type == AudioDeviceInfo.TYPE_HEARING_AID ||
-                         type == AudioDeviceInfo.TYPE_BLE_SPEAKER))) {
-                    return true;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                List<AudioDeviceInfo> commDevices = am.getAvailableCommunicationDevices();
+                for (AudioDeviceInfo device : commDevices) {
+                    int type = device.getType();
+                    if (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                        type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                        type == AudioDeviceInfo.TYPE_HEARING_AID ||
+                        type == AudioDeviceInfo.TYPE_BLE_SPEAKER) {
+                        return true;
+                    }
+                }
+            }
+
+            AudioDeviceInfo[] inputDevices = am.getDevices(AudioManager.GET_DEVICES_INPUTS);
+            if (inputDevices != null) {
+                for (AudioDeviceInfo device : inputDevices) {
+                    int type = device.getType();
+                    if (type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                        (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                            (type == AudioDeviceInfo.TYPE_BLE_HEADSET ||
+                             type == AudioDeviceInfo.TYPE_HEARING_AID ||
+                             type == AudioDeviceInfo.TYPE_BLE_SPEAKER))) {
+                        return true;
+                    }
                 }
             }
         } catch (Throwable t) {
-            Log.w(TAG, "Error checking bluetooth connected state", t);
+            Log.w(TAG, "Error checking bluetooth microphone state", t);
         }
         return false;
+    }
+
+    /**
+     * Determines whether the recording icon should display as headset (🎧) or microphone (🎙️).
+     * Returns false if the user has selected "Solo micrófono interno" or if no Bluetooth mic is present.
+     */
+    public static boolean shouldShowHeadsetIcon(Context context) {
+        if (context == null) return false;
+        String micPreference = SettingsManager.getMicrophoneMode(context);
+        if (MIC_MODE_BUILTIN_ONLY.equals(micPreference)) {
+            return false;
+        }
+        return isBluetoothConnected(context);
     }
 
     /**

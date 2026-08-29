@@ -747,7 +747,7 @@ public class FloatingOverlayService extends Service {
             cancelCurrentTranscription();
             return;
         }
-        boolean isBt = AudioDeviceManager.isBluetoothConnected(this);
+        boolean isBt = AudioDeviceManager.shouldShowHeadsetIcon(this);
         if (mBubbleIcon != null) mBubbleIcon.setImageResource(isBt ? R.drawable.ic_headset : R.drawable.ic_mic);
         if (mMicIcon != null) mMicIcon.setImageResource(isBt ? R.drawable.ic_headset : R.drawable.ic_mic);
     }

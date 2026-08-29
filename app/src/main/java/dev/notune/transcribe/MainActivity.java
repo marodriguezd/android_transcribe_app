@@ -453,7 +453,7 @@ public class MainActivity extends AppCompatActivity {
                 txtDevice.setText(getString(R.string.mic_test_active_device, activeName));
             }
             if (micIcon != null) {
-                boolean isBt = AudioDeviceManager.isBluetoothConnected(this);
+                boolean isBt = AudioDeviceManager.shouldShowHeadsetIcon(this);
                 micIcon.setImageResource(isBt ? R.drawable.ic_headset : R.drawable.ic_mic);
             }
         } else {

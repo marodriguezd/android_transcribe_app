@@ -550,7 +550,7 @@ public final class AudioDeviceManager {
      */
     public static boolean shouldShowHeadsetIcon(Context context) {
         if (context == null) return false;
-        String micPreference = SettingsManager.getInstance(context).getMicMode();
+        String micPreference = new SettingsManager(context).getMicMode();
         if (MIC_MODE_BUILTIN_ONLY.equals(micPreference)) {
             return false;
         }

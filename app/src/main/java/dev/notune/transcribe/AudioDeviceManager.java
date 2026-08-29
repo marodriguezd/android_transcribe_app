@@ -240,11 +240,16 @@ public final class AudioDeviceManager {
         }
         int bufferSize = Math.max(minBuf, 3200 * 2);
 
+        boolean useVoiceComm = !MIC_MODE_BUILTIN_ONLY.equals(micPreference) && isBluetoothConnected(context);
+        int primarySource = useVoiceComm ? MediaRecorder.AudioSource.VOICE_COMMUNICATION : MediaRecorder.AudioSource.MIC;
+        int fallbackSource = useVoiceComm ? MediaRecorder.AudioSource.MIC : MediaRecorder.AudioSource.VOICE_COMMUNICATION;
+
+        AudioDeviceInfo target = findTargetDevice(context, micPreference);
         AudioRecord record = null;
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                 AudioRecord.Builder builder = new AudioRecord.Builder()
-                    .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
+                    .setAudioSource(primarySource)
                     .setAudioFormat(new AudioFormat.Builder()
                         .setEncoding(AUDIO_FORMAT)
                         .setSampleRate(SAMPLE_RATE)
@@ -252,25 +257,24 @@ public final class AudioDeviceManager {
                         .build())
                     .setBufferSizeInBytes(bufferSize);
                 record = builder.build();
-
-                AudioDeviceInfo target = findTargetDevice(context, micPreference);
                 if (target != null && record != null) {
                     record.setPreferredDevice(target);
                 }
             } else {
                 record = new AudioRecord(
-                    MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+                    primarySource,
                     SAMPLE_RATE,
                     CHANNEL_CONFIG,
                     AUDIO_FORMAT,
                     bufferSize
                 );
             }
+            Log.i("BluetoothSCO", "AudioRecord initialized with source=" + (primarySource == MediaRecorder.AudioSource.VOICE_COMMUNICATION ? "VOICE_COMMUNICATION" : "MIC") + " target=" + (target != null ? target.getId() : "default"));
         } catch (Throwable t) {
-            Log.e(TAG, "Error creating AudioRecord with VOICE_COMMUNICATION", t);
+            Log.e(TAG, "Error creating AudioRecord with primary source " + primarySource, t);
         }
 
-        // Fallback to standard MIC audio source if VOICE_COMMUNICATION failed to initialize
+        // Fallback to alternate audio source if primary failed to initialize
         if (record == null || record.getState() != AudioRecord.STATE_INITIALIZED) {
             if (record != null) {
                 try { record.release(); } catch (Throwable ignored) {}
@@ -278,7 +282,7 @@ public final class AudioDeviceManager {
             try {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
                     AudioRecord.Builder builder = new AudioRecord.Builder()
-                        .setAudioSource(MediaRecorder.AudioSource.MIC)
+                        .setAudioSource(fallbackSource)
                         .setAudioFormat(new AudioFormat.Builder()
                             .setEncoding(AUDIO_FORMAT)
                             .setSampleRate(SAMPLE_RATE)
@@ -286,17 +290,21 @@ public final class AudioDeviceManager {
                             .build())
                         .setBufferSizeInBytes(bufferSize);
                     record = builder.build();
+                    if (target != null && record != null) {
+                        record.setPreferredDevice(target);
+                    }
                 } else {
                     record = new AudioRecord(
-                        MediaRecorder.AudioSource.MIC,
+                        fallbackSource,
                         SAMPLE_RATE,
                         CHANNEL_CONFIG,
                         AUDIO_FORMAT,
                         bufferSize
                     );
                 }
+                Log.i("BluetoothSCO", "AudioRecord fallback initialized with source=" + (fallbackSource == MediaRecorder.AudioSource.VOICE_COMMUNICATION ? "VOICE_COMMUNICATION" : "MIC"));
             } catch (Throwable t) {
-                Log.e(TAG, "Error creating AudioRecord fallback with MIC source", t);
+                Log.e(TAG, "Error creating AudioRecord fallback with source " + fallbackSource, t);
             }
         }
 

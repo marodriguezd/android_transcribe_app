@@ -399,7 +399,10 @@ pub fn push_audio_direct(
     drop(ep_guard);
     drop(audio_buf);
 
-    let now_ms = Instant::now().elapsed().as_millis() as u64;
+    let now_ms = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64;
     let last = state.last_level_sent_ms.load(Ordering::Relaxed);
     if now_ms >= last + 50 {
         state.last_level_sent_ms.store(now_ms, Ordering::Relaxed);

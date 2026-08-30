@@ -241,8 +241,8 @@ public final class AudioDeviceManager {
         int bufferSize = Math.max(minBuf, 32000);
 
         boolean useVoiceComm = !MIC_MODE_BUILTIN_ONLY.equals(micPreference) && isBluetoothConnected(context);
-        int primarySource = useVoiceComm ? MediaRecorder.AudioSource.VOICE_COMMUNICATION : MediaRecorder.AudioSource.MIC;
-        int fallbackSource = useVoiceComm ? MediaRecorder.AudioSource.MIC : MediaRecorder.AudioSource.VOICE_COMMUNICATION;
+        int primarySource = useVoiceComm ? MediaRecorder.AudioSource.VOICE_COMMUNICATION : MediaRecorder.AudioSource.VOICE_RECOGNITION;
+        int fallbackSource = useVoiceComm ? MediaRecorder.AudioSource.VOICE_RECOGNITION : MediaRecorder.AudioSource.MIC;
 
         AudioDeviceInfo target = findTargetDevice(context, micPreference);
         AudioRecord record = null;
@@ -269,7 +269,7 @@ public final class AudioDeviceManager {
                     bufferSize
                 );
             }
-            Log.i("BluetoothSCO", "AudioRecord initialized with source=" + (primarySource == MediaRecorder.AudioSource.VOICE_COMMUNICATION ? "VOICE_COMMUNICATION" : "MIC") + " target=" + (target != null ? target.getId() : "default"));
+            Log.i("BluetoothSCO", "AudioRecord initialized with source=" + (primarySource == MediaRecorder.AudioSource.VOICE_COMMUNICATION ? "VOICE_COMMUNICATION" : (primarySource == MediaRecorder.AudioSource.VOICE_RECOGNITION ? "VOICE_RECOGNITION" : "MIC")) + " target=" + (target != null ? target.getId() : "default"));
         } catch (Throwable t) {
             Log.e(TAG, "Error creating AudioRecord with primary source " + primarySource, t);
         }
@@ -302,7 +302,7 @@ public final class AudioDeviceManager {
                         bufferSize
                     );
                 }
-                Log.i("BluetoothSCO", "AudioRecord fallback initialized with source=" + (fallbackSource == MediaRecorder.AudioSource.VOICE_COMMUNICATION ? "VOICE_COMMUNICATION" : "MIC"));
+                Log.i("BluetoothSCO", "AudioRecord fallback initialized with source=" + (fallbackSource == MediaRecorder.AudioSource.VOICE_COMMUNICATION ? "VOICE_COMMUNICATION" : (fallbackSource == MediaRecorder.AudioSource.VOICE_RECOGNITION ? "VOICE_RECOGNITION" : "MIC")));
             } catch (Throwable t) {
                 Log.e(TAG, "Error creating AudioRecord fallback with source " + fallbackSource, t);
             }
@@ -349,11 +349,11 @@ public final class AudioDeviceManager {
     }
 
     private static void routeAuto(Context context, AudioManager am) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            routeAutoApi31(context, am);
-        } else {
-            // Android 8 - 11 legacy SCO activation
-            if (isBluetoothConnected(context)) {
+        if (isBluetoothConnected(context)) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                routeAutoApi31(context, am);
+            } else {
+                // Android 8 - 11 legacy SCO activation
                 am.setMode(AudioManager.MODE_IN_COMMUNICATION);
                 try {
                     am.startBluetoothSco();
@@ -362,13 +362,14 @@ public final class AudioDeviceManager {
                     Log.w(TAG, "Error activating Bluetooth SCO in routeAuto", t);
                 }
             }
+        } else {
+            routeToBuiltinMic(am);
         }
     }
 
     @TargetApi(Build.VERSION_CODES.S)
     private static void routeAutoApi31(Context context, AudioManager am) {
         try {
-            am.setMode(AudioManager.MODE_IN_COMMUNICATION);
             List<AudioDeviceInfo> commDevices = am.getAvailableCommunicationDevices();
             AudioDeviceInfo target = null;
 
@@ -398,18 +399,16 @@ public final class AudioDeviceManager {
             }
 
             if (target != null) {
+                am.setMode(AudioManager.MODE_IN_COMMUNICATION);
                 boolean set = am.setCommunicationDevice(target);
                 String name = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) ? String.valueOf(target.getProductName()) : "device";
                 Log.d(TAG, "Auto routed to communication device: " + name + " (success=" + set + ")");
-            } else if (isBluetoothConnected(context)) {
-                // Fallback for Bluetooth devices not yet in commDevices
-                try {
-                    am.startBluetoothSco();
-                    am.setBluetoothScoOn(true);
-                } catch (Throwable ignored) {}
+            } else {
+                routeToBuiltinMic(am);
             }
         } catch (Throwable t) {
             Log.e(TAG, "Error in routeAutoApi31", t);
+            routeToBuiltinMic(am);
         }
     }
 
@@ -452,33 +451,23 @@ public final class AudioDeviceManager {
     }
 
     private static void routeToBuiltinMic(AudioManager am) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            routeToBuiltinMicApi31(am);
-        } else {
+        if (am == null) return;
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                clearCommunicationDeviceApi31(am);
+            }
             try {
                 am.stopBluetoothSco();
             } catch (Throwable ignored) {}
             try {
                 am.setBluetoothScoOn(false);
             } catch (Throwable ignored) {}
+            try {
+                am.setSpeakerphoneOn(false);
+            } catch (Throwable ignored) {}
             am.setMode(AudioManager.MODE_NORMAL);
-        }
-    }
-
-    @TargetApi(Build.VERSION_CODES.S)
-    private static void routeToBuiltinMicApi31(AudioManager am) {
-        try {
-            am.setMode(AudioManager.MODE_IN_COMMUNICATION);
-            List<AudioDeviceInfo> commDevices = am.getAvailableCommunicationDevices();
-            for (AudioDeviceInfo d : commDevices) {
-                if (d.getType() == AudioDeviceInfo.TYPE_BUILTIN_MIC) {
-                    am.setCommunicationDevice(d);
-                    return;
-                }
-            }
-            am.clearCommunicationDevice();
         } catch (Throwable t) {
-            Log.e(TAG, "Error in routeToBuiltinMicApi31", t);
+            Log.w(TAG, "Error routing to built-in mic", t);
         }
     }
 

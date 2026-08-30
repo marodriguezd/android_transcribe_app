@@ -29,6 +29,7 @@ import androidx.core.view.WindowInsetsCompat;
 
 import dev.notune.transcribe.BuildConfig;
 
+import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
@@ -289,27 +290,44 @@ public class TranscribeFileActivity extends AppCompatActivity {
      */
     private float[] decodeAudioToSamples(Uri uri) throws IOException {
         MediaExtractor extractor = new MediaExtractor();
-        AssetFileDescriptor afd = null;
+        File tempAudioFile = null;
         try {
-            if ("file".equalsIgnoreCase(uri.getScheme()) && uri.getPath() != null) {
-                extractor.setDataSource(uri.getPath());
-            } else {
-                try {
-                    afd = getContentResolver().openAssetFileDescriptor(uri, "r");
-                    if (afd != null) {
-                        extractor.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
-                    } else {
-                        extractor.setDataSource(this, uri, null);
-                    }
-                } catch (Exception fallback) {
-                    extractor.setDataSource(this, uri, null);
+            boolean dataSourceSet = false;
+            // 1. Try opening via ContentResolver asset file descriptor
+            try (AssetFileDescriptor afd = getContentResolver().openAssetFileDescriptor(uri, "r")) {
+                if (afd != null) {
+                    extractor.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+                    dataSourceSet = true;
                 }
+            } catch (Throwable ignored) {}
+
+            // 2. If direct FD failed (e.g. raw file:// URI or restricted cross-app stream), copy to local app cache
+            if (!dataSourceSet) {
+                try (java.io.InputStream in = getContentResolver().openInputStream(uri)) {
+                    if (in != null) {
+                        tempAudioFile = File.createTempFile("audio_decode_", ".tmp", getCacheDir());
+                        try (java.io.FileOutputStream out = new java.io.FileOutputStream(tempAudioFile)) {
+                            byte[] buf = new byte[65536];
+                            int read;
+                            while ((read = in.read(buf)) != -1) {
+                                out.write(buf, 0, read);
+                            }
+                        }
+                        extractor.setDataSource(tempAudioFile.getAbsolutePath());
+                        dataSourceSet = true;
+                    }
+                } catch (Throwable ignored) {}
+            }
+
+            // 3. Fallback to standard framework URI resolution
+            if (!dataSourceSet) {
+                extractor.setDataSource(this, uri, null);
             }
         } catch (IOException | RuntimeException e) {
-            if (afd != null) {
-                try { afd.close(); } catch (IOException ignored) {}
-            }
             extractor.release();
+            if (tempAudioFile != null) {
+                tempAudioFile.delete();
+            }
             throw e;
         }
 
@@ -442,8 +460,8 @@ public class TranscribeFileActivity extends AppCompatActivity {
             try { codec.stop(); } catch (Exception ignored) { }
             codec.release();
             extractor.release();
-            if (afd != null) {
-                try { afd.close(); } catch (IOException ignored) {}
+            if (tempAudioFile != null) {
+                tempAudioFile.delete();
             }
         }
 

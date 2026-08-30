@@ -1,12 +1,12 @@
 # ✨ Aura Transcribe (Android)
 
 [![Build & Deliver](https://img.shields.io/badge/CI%2FCD-100%25%20Passing-brightgreen?style=flat-square&logo=githubactions)](https://github.com/marodriguezd/android_transcribe_app/actions)
-[![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B%20(API%2026--34)-blue?style=flat-square&logo=android)](https://github.com/marodriguezd/android_transcribe_app)
-[![Architecture](https://img.shields.io/badge/Architecture-ARM64%20(aarch64)-orange?style=flat-square&logo=arm)](https://github.com/marodriguezd/android_transcribe_app)
-[![Rust Core](https://img.shields.io/badge/Core-Rust%202021%20%2B%20transcribe.cpp-red?style=flat-square&logo=rust)](https://github.com/marodriguezd/android_transcribe_app)
+[![Platform](https://img.shields.io/badge/Platform-Android%208.0%2B%20(API%2026--35%2B)-blue?style=flat-square&logo=android)](https://github.com/marodriguezd/android_transcribe_app)
+[![Architecture](https://img.shields.io/badge/Architecture-ARM64%20(aarch64)%20%2B%2016KB%20Pages-orange?style=flat-square&logo=arm)](https://github.com/marodriguezd/android_transcribe_app)
+[![Rust Core](https://img.shields.io/badge/Core-Rust%202021%20%2B%20ARM%20NEON%20SIMD-red?style=flat-square&logo=rust)](https://github.com/marodriguezd/android_transcribe_app)
 [![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
-**Aura Transcribe** is a next-generation, privacy-first offline speech recognition, live dictation, and AI post-processing system for Android. Powered by safe Rust and native ARM64 GGML inference kernels, Aura Transcribe delivers studio-grade speech-to-text directly on your device — zero telemetry, zero audio leakage, and zero mandatory network connection.
+**Aura Transcribe** is a next-generation, privacy-first offline speech recognition, live dictation, and AI post-processing system for Android. Powered by safe Rust, ARM NEON SIMD acceleration, and native ARM64 GGML inference kernels, Aura Transcribe delivers studio-grade speech-to-text directly on your device — zero telemetry, zero audio leakage, and zero mandatory network connection.
 
 [<img src="https://i.ibb.co/q0mdc4Z/get-it-on-github.png" alt="Get it on GitHub" height="80">](https://github.com/marodriguezd/android_transcribe_app/releases/latest)
 
@@ -14,21 +14,22 @@
 
 ## 🧬 Heritage & Project Evolution
 
-Aura Transcribe originated from the pioneering work in [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app) (*Offline Voice Input v0.1.18*). While proudly maintaining this lineage and core offline philosophy, Aura Transcribe has completely evolved into an independent, advanced speech-to-text powerhouse featuring dynamic multi-device audio routing, on-device and cloud AI post-processing, floating dictation overlays, and a hardened multi-gate CI/CD infrastructure.
+Aura Transcribe originated from the pioneering work in [notune/android_transcribe_app](https://github.com/notune/android_transcribe_app) (*Offline Voice Input v0.1.18*). While proudly maintaining this lineage, robust core foundation, and offline-first philosophy, Aura Transcribe has completely evolved into an independent, advanced speech-to-text powerhouse featuring dynamic multi-device audio routing, on-device and cloud AI post-processing, floating dictation overlays, pure Rust crates, and a hardened multi-gate CI/CD infrastructure.
 
 ### 📊 Evolution Matrix: v0.1.18 vs Aura Transcribe
 
-| Feature / Dimension | Original Roots (`v0.1.18`) | ✨ Aura Transcribe (`v0.1.36+`) |
+| Feature / Dimension | Original Roots (`v0.1.18`) | ✨ Aura Transcribe (`v0.2.2+`) |
 | :--- | :--- | :--- |
 | **Application Identity** | Offline Voice Input (`dev.notune.transcribe`) | **Aura Transcribe (`com.auratranscribe.app`)** |
-| **Visual Architecture** | Legacy static raster bitmap | **Adaptive Bioluminescent Vector Icons (Android 8–15+) + Material You Themed** |
-| **Audio Input Management** | Internal microphone only | **FUTO-Style 3-Way Dynamic Routing (Auto, Bluetooth SCO/BLE, Internal Mic)** |
+| **Android Architecture** | Android 8–14 legacy (API 34) | **Android 17 Ready (API 35+), Edge-to-Edge, 16KB Page Size Alignment** |
+| **Visual Architecture** | Legacy static raster bitmap | **Adaptive Bioluminescent Vector Icons + Material You Themed** |
+| **Audio Capture & Routing** | Internal mic only, scalar loops | **Native CPAL + ARM NEON SIMD RMS, Bluetooth SCO/BLE + Built-in Mode Switching** |
 | **AI Post-Processing** | None | **On-Device SuperWhisper S1-mini + Cloud LLMs (Groq, OpenAI, Cerebras, OpenRouter)** |
+| **Modular Core** | Monolithic Rust cdylib | **Decoupled `crates/aura-core` Crate + Metaphone ES/EN + Fast Levenshtein DP** |
 | **Stylistic Formatting** | Raw transcription output | **4 One-Touch Styles (Clean, Formal, Casual, Verbatim) + Custom Prompts** |
 | **Dictation Overlay** | Activity popup only | **Floating Bubble Overlay (`SYSTEM_ALERT_WINDOW`) + Accessibility Auto-Paste** |
 | **Live Subtitles** | Basic window | **Real-Time Subtitles + ADB AppOps Zero-Dialog Consent Bypass** |
-| **Phonetic Corrections** | Basic dictionary matching | **Banded Levenshtein DP + Cosine N-Gram Alignment + Custom Dictionary** |
-| **Continuous Integration** | Manual local builds | **100% Automated Multi-Gate GitHub Actions Pipeline + Direct Telegram APK Delivery** |
+| **Continuous Integration** | Manual local builds | **Fastlane Automation + Multi-Gate GitHub Actions + Telegram APK Delivery** |
 
 ---
 
@@ -167,21 +168,26 @@ android_transcribe_app/
 │   │   ├── res/
 │   │   │   ├── drawable/                # Bioluminescent vector & adaptive icon drawables
 │   │   │   ├── mipmap-anydpi-v26/       # Android 8.0–15+ adaptive icon manifests
-│   │   │   ├── values/ (and values-*/)  # 247 strings across 6 localized languages
+│   │   │   ├── values/ (and values-*/)  # 266 strings across 6 localized languages
 │   │   │   └── xml/                     # IME method descriptor & accessibility configs
 │   │   └── jniLibs/arm64-v8a/           # libandroid_transcribe_app.so & libc++_shared.so
-│   └── build.gradle.kts                 # Android Gradle Plugin configuration
-├── src/                                 # Rust inference backend & JNI engine (cdylib)
-│   ├── engine.rs                        # transcribe.cpp GGML inference binding & memory pool
-│   ├── audio.rs                         # Ring buffer, audio resampling, RMS & VAD
-│   ├── post_processor.rs                # AI Post-processor & prompt templates
+│   └── build.gradle.kts                 # Android Gradle Plugin configuration (AGP 8.7.3)
+├── crates/
+│   └── aura-core/                       # Pure Rust modular crate (Phonetics, Levenshtein, Bigrams)
+├── src/                                 # Rust native engine & JNI bridge (cdylib)
+│   ├── engine.rs                        # transcribe.cpp GGML inference binding & streaming pump
+│   ├── audio.rs                         # ARM NEON SIMD RMS, sum squares & quietest split
+│   ├── post_processor.rs                # AI Post-processor & WhisperFlow templates
 │   └── lib.rs                           # JNI bridge entry points
+├── fastlane/                            # Automated deployment & metadata publishing
 ├── scripts/
-│   ├── check_translations.py            # Automated i18n parity quality gate
-│   └── bench_performance.py             # Latency, RMS SIMD & Levenshtein DP benchmark
+│   ├── check_translations.py            # Automated i18n parity quality gate (266 strings)
+│   ├── bench_performance.py             # Latency, RMS SIMD & Levenshtein DP benchmark
+│   └── live_audio_diagnostics.sh        # Real-time ADB mic & RMS audio monitor
 ├── .github/workflows/
+│   ├── android_release.yml              # Official signed release pipeline on tag v*
 │   └── debug_telegram.yml               # Automated CI/CD pipeline with Telegram delivery
-└── Cargo.toml                           # Rust crate manifest & release profile
+└── Cargo.toml                           # Rust workspace manifest & release profile
 ```
 
 ---

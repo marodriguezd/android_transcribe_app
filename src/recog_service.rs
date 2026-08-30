@@ -45,6 +45,7 @@ const MAX_SESSION_MS: u64 = 60000;
 const LEVEL_UPDATE_MS: u64 = 100;
 
 // Mirror of android.speech.SpeechRecognizer error codes we report.
+#[allow(dead_code)]
 const ERROR_AUDIO: i32 = 3;
 const ERROR_SERVER: i32 = 4;
 const ERROR_NO_MATCH: i32 = 7;
@@ -225,50 +226,24 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
         );
     }
 
-    // Open the microphone (16 kHz mono, matching the model + voice_session).
+    // Optional CPAL fallback capture (primary capture handled via AudioRecordBridge)
     let host = cpal::default_host();
-    let device = match host.default_input_device() {
-        Some(d) => d,
-        None => {
-            let mut env2 = jvm.attach_current_thread().unwrap();
-            call_error(
-                &mut env2,
-                shared.target.as_obj(),
-                ERROR_AUDIO,
-                shared.session_id,
-            );
-            return;
-        }
-    };
-    let config = cpal::StreamConfig {
-        channels: 1,
-        sample_rate: cpal::SampleRate(16000),
-        buffer_size: cpal::BufferSize::Default,
-    };
+    if let Some(device) = host.default_input_device() {
+        let config = cpal::StreamConfig {
+            channels: 1,
+            sample_rate: cpal::SampleRate(16000),
+            buffer_size: cpal::BufferSize::Default,
+        };
 
-    let cb_shared = shared.clone();
-    let stream = device.build_input_stream(
-        &config,
-        move |data: &[f32], _: &_| audio_callback(&cb_shared, data),
-        |e| log::error!("RecognitionService stream error: {}", e),
-        None,
-    );
-
-    match stream {
-        Ok(s) => {
+        let cb_shared = shared.clone();
+        if let Ok(s) = device.build_input_stream(
+            &config,
+            move |data: &[f32], _: &_| audio_callback(&cb_shared, data),
+            |e| log::error!("RecognitionService stream error: {}", e),
+            None,
+        ) {
             s.play().ok();
             *stream_holder.lock().unwrap_or_else(|p| p.into_inner()) = Some(SendStream(s));
-        }
-        Err(e) => {
-            log::error!("Failed to open microphone: {}", e);
-            let mut env2 = jvm.attach_current_thread().unwrap();
-            call_error(
-                &mut env2,
-                shared.target.as_obj(),
-                ERROR_AUDIO,
-                shared.session_id,
-            );
-            return;
         }
     }
 

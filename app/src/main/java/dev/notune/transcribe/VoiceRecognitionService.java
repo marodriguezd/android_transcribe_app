@@ -45,7 +45,6 @@ public class VoiceRecognitionService extends RecognitionService {
     }
 
     private final Handler mainHandler = new Handler(Looper.getMainLooper());
-    private final AudioRecordBridge audioRecordBridge = new AudioRecordBridge();
     private Callback mCallback;
     // Incremented whenever a recognition session starts, is cancelled, or the
     // service is destroyed. Late post-processing callbacks compare against the
@@ -78,22 +77,8 @@ public class VoiceRecognitionService extends RecognitionService {
             SettingsManager sm = new SettingsManager(this);
             AudioDeviceManager.acquireMicrophone(this, sm.getMicMode());
             startListening(this, currentSessionId);
-            int sid = currentSessionId;
-            audioRecordBridge.start(this, sm.getMicMode(), new AudioRecordBridge.Callback() {
-                @Override
-                public void onAudioChunk(java.nio.ByteBuffer directBuffer, int bytesRead) {
-                    pushAudioDirect(directBuffer, bytesRead, sid);
-                }
-                @Override
-                public void onAudioLevel(float level) {}
-                @Override
-                public void onError(String message) {
-                    Log.e(TAG, "AudioRecord error: " + message);
-                }
-            });
         } catch (Throwable t) {
             Log.e(TAG, "startListening failed", t);
-            audioRecordBridge.stop();
             AudioDeviceManager.releaseMicrophone(this);
             safeError(SpeechRecognizer.ERROR_CLIENT);
         }
@@ -101,7 +86,6 @@ public class VoiceRecognitionService extends RecognitionService {
 
     @Override
     protected void onStopListening(Callback callback) {
-        audioRecordBridge.stop();
         AudioDeviceManager.releaseMicrophone(this);
         try {
             stopListening();
@@ -114,7 +98,6 @@ public class VoiceRecognitionService extends RecognitionService {
     protected void onCancel(Callback callback) {
         // Cancel this service's in-flight post-processing call when the
         // recognition session is cancelled — never another surface's (P0.1).
-        audioRecordBridge.stop();
         AudioDeviceManager.releaseMicrophone(this);
         PostProcessor.cancelAllFor(this);
         // Invalidate any post-processor callback that is still pending for
@@ -131,7 +114,6 @@ public class VoiceRecognitionService extends RecognitionService {
     public void onDestroy() {
         // Cancel this service's in-flight post-processing call when the
         // recognition service is destroyed (owner-scoped, P0.1).
-        audioRecordBridge.stop();
         AudioDeviceManager.releaseMicrophone(this);
         PostProcessor.cancelAllFor(this);
         // Invalidate any post-processor callback that is still pending so it
@@ -288,5 +270,4 @@ public class VoiceRecognitionService extends RecognitionService {
     private native void stopListening();
     private native void cancelNative();
     private native void destroyNative();
-    private native void pushAudioDirect(java.nio.ByteBuffer buffer, int byteCount, int sessionId);
 }

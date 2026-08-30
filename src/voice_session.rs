@@ -65,7 +65,6 @@ pub struct VoiceSessionState {
     /// Serializes the stop-vs-pump-start decision so exactly one path
     /// (streaming pump or whole-buffer) delivers the transcription.
     pub stream_lock: Arc<Mutex<()>>,
-    pub endpoint: Arc<Mutex<Option<Arc<Endpointing>>>>,
 }
 
 use crate::jni_util::{
@@ -94,7 +93,6 @@ pub fn init_session(env: JNIEnv, target: JObject) -> VoiceSessionState {
         stream_cmd_tx: Mutex::new(None),
         streaming_active: Arc::new(AtomicBool::new(false)),
         stream_lock: Arc::new(Mutex::new(())),
-        endpoint: Arc::new(Mutex::new(None)),
     };
 
     // Load engine in background
@@ -162,7 +160,6 @@ pub fn start_recording(
     } else {
         None
     };
-    *state.endpoint.lock().unwrap_or_else(|p| p.into_inner()) = endpoint.clone();
 
     let jvm = state.jvm.clone();
     let target_ref = state.target_ref.clone();
@@ -247,167 +244,103 @@ pub fn start_recording(
         state.session_id,
     );
 
-    // Optional CPAL fallback capture
     let host = cpal::default_host();
-    if let Some(device) = host.default_input_device() {
-        let config = cpal::StreamConfig {
-            channels: 1,
-            sample_rate: cpal::SampleRate(16000),
-            buffer_size: cpal::BufferSize::Default,
-        };
+    let device = match host.default_input_device() {
+        Some(d) => d,
+        None => {
+            notify_status_with_session(
+                &mut env,
+                state.target_ref.as_obj(),
+                "Error: no microphone available. Check permissions.",
+                state.session_id,
+            );
+            return;
+        }
+    };
 
-        if let Ok(s) = device.build_input_stream(
-            &config,
-            move |data: &[f32], _: &_| {
-                buffer_clone
-                    .lock()
-                    .unwrap_or_else(|p| p.into_inner())
-                    .extend_from_slice(data);
+    let config = cpal::StreamConfig {
+        channels: 1,
+        sample_rate: cpal::SampleRate(16000),
+        buffer_size: cpal::BufferSize::Default,
+    };
 
-                let rms = crate::audio::fast_rms(data);
-                let level = (rms * 6.0).clamp(0.0, 1.0);
+    let stream = device.build_input_stream(
+        &config,
+        move |data: &[f32], _: &_| {
+            buffer_clone
+                .lock()
+                .unwrap_or_else(|p| p.into_inner())
+                .extend_from_slice(data);
 
-                if let Some(ep) = &endpoint_cb {
-                    let floor = f32::from_bits(ep.noise_floor_bits.load(Ordering::Relaxed));
-                    let is_speech = level > MIN_SPEECH_LEVEL && level > floor + SPEECH_MARGIN;
-                    if is_speech {
-                        let elapsed_ms = ep.started_at.elapsed().as_millis() as u64;
-                        if ep.speech_started.load(Ordering::SeqCst) {
-                            ep.last_voice_ms.store(elapsed_ms, Ordering::Relaxed);
-                        } else {
-                            let run = ep
-                                .speech_run_samples
-                                .fetch_add(data.len(), Ordering::SeqCst)
-                                + data.len();
-                            if run >= MIN_SPEECH_SAMPLES
-                                && ep.speech_started.swap(true, Ordering::SeqCst) == false
-                            {
-                                ep.last_voice_ms.store(elapsed_ms, Ordering::Relaxed);
-                            }
-                        }
+            let rms = crate::audio::fast_rms(data);
+            let level = (rms * 6.0).clamp(0.0, 1.0);
+
+            if let Some(ep) = &endpoint_cb {
+                let floor = f32::from_bits(ep.noise_floor_bits.load(Ordering::Relaxed));
+                let is_speech = level > MIN_SPEECH_LEVEL && level > floor + SPEECH_MARGIN;
+                if is_speech {
+                    let elapsed_ms = ep.started_at.elapsed().as_millis() as u64;
+                    if ep.speech_started.load(Ordering::SeqCst) {
+                        ep.last_voice_ms.store(elapsed_ms, Ordering::Relaxed);
                     } else {
-                        if !ep.speech_started.load(Ordering::SeqCst) {
-                            ep.speech_run_samples.store(0, Ordering::SeqCst);
+                        let run = ep
+                            .speech_run_samples
+                            .fetch_add(data.len(), Ordering::SeqCst)
+                            + data.len();
+                        if run >= MIN_SPEECH_SAMPLES
+                            && ep.speech_started.swap(true, Ordering::SeqCst) == false
+                        {
+                            ep.last_voice_ms.store(elapsed_ms, Ordering::Relaxed);
                         }
-                        let mut current_bits = ep.noise_floor_bits.load(Ordering::Relaxed);
-                        loop {
-                            let current_val = f32::from_bits(current_bits);
-                            let new_val = (current_val * 0.95 + level * 0.05).clamp(0.0, 1.0);
-                            match ep.noise_floor_bits.compare_exchange_weak(
-                                current_bits,
-                                new_val.to_bits(),
-                                Ordering::Relaxed,
-                                Ordering::Relaxed,
-                            ) {
-                                Ok(_) => break,
-                                Err(b) => current_bits = b,
-                            }
+                    }
+                } else {
+                    if !ep.speech_started.load(Ordering::SeqCst) {
+                        ep.speech_run_samples.store(0, Ordering::SeqCst);
+                    }
+                    let mut current_bits = ep.noise_floor_bits.load(Ordering::Relaxed);
+                    loop {
+                        let current_val = f32::from_bits(current_bits);
+                        let new_val = (current_val * 0.95 + level * 0.05).clamp(0.0, 1.0);
+                        match ep.noise_floor_bits.compare_exchange_weak(
+                            current_bits,
+                            new_val.to_bits(),
+                            Ordering::Relaxed,
+                            Ordering::Relaxed,
+                        ) {
+                            Ok(_) => break,
+                            Err(b) => current_bits = b,
                         }
                     }
                 }
+            }
 
-                let now_ms = session_start.elapsed().as_millis() as u64;
-                let last = last_sent.load(Ordering::Relaxed);
-                if now_ms >= last + 50 {
-                    last_sent.store(now_ms, Ordering::Relaxed);
-                    if let Ok(mut env) = jvm.attach_current_thread_permanently() {
-                        let obj = target_ref.as_obj();
-                        notify_level_with_session(&mut env, obj, level, session_id);
-                    }
+            let now_ms = session_start.elapsed().as_millis() as u64;
+            let last = last_sent.load(Ordering::Relaxed);
+            if now_ms >= last + 50 {
+                last_sent.store(now_ms, Ordering::Relaxed);
+                if let Ok(mut env) = jvm.attach_current_thread_permanently() {
+                    let obj = target_ref.as_obj();
+                    notify_level_with_session(&mut env, obj, level, session_id);
                 }
-            },
-            |e| log::error!("Stream err: {}", e),
-            None,
-        ) {
+            }
+        },
+        |e| log::error!("Stream err: {}", e),
+        None,
+    );
+
+    match stream {
+        Ok(s) => {
             s.play().ok();
             state.stream = Some(SendStream(s));
         }
-    }
-}
-
-/// Ingests raw audio PCM buffer directly from Java AudioRecord.
-pub fn push_audio_direct(
-    env: &mut JNIEnv,
-    state: &mut VoiceSessionState,
-    direct_buf: &JObject,
-    byte_count: i32,
-    session_id: i32,
-) {
-    if !state.session_active.load(Ordering::SeqCst)
-        || state.session_id != session_id
-        || byte_count <= 0
-    {
-        return;
-    }
-    let addr = match env.get_direct_buffer_address(direct_buf.into()) {
-        Ok(ptr) => ptr,
-        Err(_) => return,
-    };
-    if addr.is_null() {
-        return;
-    }
-    let samples_count = (byte_count as usize) / 2;
-    let i16_slice = unsafe { std::slice::from_raw_parts(addr as *const i16, samples_count) };
-
-    let mut audio_buf = state.audio_buffer.lock().unwrap_or_else(|p| p.into_inner());
-    let prev_len = audio_buf.len();
-    crate::audio::pcm_i16_to_f32_neon(i16_slice, &mut audio_buf);
-    let chunk_f32 = &audio_buf[prev_len..];
-
-    let rms = crate::audio::fast_rms(chunk_f32);
-    let level = (rms * 6.0).clamp(0.0, 1.0);
-
-    let ep_guard = state.endpoint.lock().unwrap_or_else(|p| p.into_inner());
-    if let Some(ep) = ep_guard.as_ref() {
-        let floor = f32::from_bits(ep.noise_floor_bits.load(Ordering::Relaxed));
-        let is_speech = level > MIN_SPEECH_LEVEL && level > floor + SPEECH_MARGIN;
-        if is_speech {
-            let elapsed_ms = ep.started_at.elapsed().as_millis() as u64;
-            if ep.speech_started.load(Ordering::SeqCst) {
-                ep.last_voice_ms.store(elapsed_ms, Ordering::Relaxed);
-            } else {
-                let run = ep
-                    .speech_run_samples
-                    .fetch_add(samples_count, Ordering::SeqCst)
-                    + samples_count;
-                if run >= MIN_SPEECH_SAMPLES
-                    && ep.speech_started.swap(true, Ordering::SeqCst) == false
-                {
-                    ep.last_voice_ms.store(elapsed_ms, Ordering::Relaxed);
-                }
-            }
-        } else {
-            if !ep.speech_started.load(Ordering::SeqCst) {
-                ep.speech_run_samples.store(0, Ordering::SeqCst);
-            }
-            let mut current_bits = ep.noise_floor_bits.load(Ordering::Relaxed);
-            loop {
-                let current_val = f32::from_bits(current_bits);
-                let new_val = (current_val * 0.95 + level * 0.05).clamp(0.0, 1.0);
-                match ep.noise_floor_bits.compare_exchange_weak(
-                    current_bits,
-                    new_val.to_bits(),
-                    Ordering::Relaxed,
-                    Ordering::Relaxed,
-                ) {
-                    Ok(_) => break,
-                    Err(b) => current_bits = b,
-                }
-            }
+        Err(e) => {
+            notify_status_with_session(
+                &mut env,
+                state.target_ref.as_obj(),
+                &format!("Error: failed to open microphone: {}", e),
+                state.session_id,
+            );
         }
-    }
-    drop(ep_guard);
-    drop(audio_buf);
-
-    let now_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as u64;
-    let last = state.last_level_sent_ms.load(Ordering::Relaxed);
-    if now_ms >= last + 50 {
-        state.last_level_sent_ms.store(now_ms, Ordering::Relaxed);
-        let obj = state.target_ref.as_obj();
-        notify_level_with_session(env, obj, level, session_id);
     }
 }
 

@@ -45,7 +45,6 @@ public class RecognizeActivity extends AppCompatActivity {
     private MicLevelView micLevel;
     private final AudioFocusPauser audioPauser = new AudioFocusPauser();
     private boolean pauseAudioActive = false;
-    private final AudioRecordBridge audioRecordBridge = new AudioRecordBridge();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -100,30 +99,12 @@ public class RecognizeActivity extends AppCompatActivity {
         SettingsManager sm = new SettingsManager(this);
         AudioDeviceManager.acquireMicrophone(this, sm.getMicMode());
         startRecording(isAutoStopEnabled(), ++currentSessionId);
-        int sid = currentSessionId;
-        boolean started = audioRecordBridge.start(this, sm.getMicMode(), new AudioRecordBridge.Callback() {
-            @Override
-            public void onAudioChunk(java.nio.ByteBuffer directBuffer, int bytesRead) {
-                pushAudioDirect(directBuffer, bytesRead, sid);
-            }
-            @Override
-            public void onAudioLevel(float level) {}
-            @Override
-            public void onError(String message) {
-                Log.e(TAG, "AudioRecord error: " + message);
-            }
-        });
-        if (!started) {
-            cancelAndClose();
-            return;
-        }
     }
 
     /** Discards recording, transcription, or post-processing without delivering text. */
     private void cancelAndClose() {
         isRecording = false;
         currentSessionId++;
-        audioRecordBridge.stop();
         try { cancelRecording(); } catch (Throwable ignored) { }
         AudioDeviceManager.releaseMicrophone(this);
         PostProcessor.cancelAllFor(this);
@@ -140,7 +121,6 @@ public class RecognizeActivity extends AppCompatActivity {
         if (!isRecording) return;
         isRecording = false;
         status.setText(getString(R.string.rec_processing));
-        audioRecordBridge.stop();
         AudioDeviceManager.releaseMicrophone(this);
         stopRecording();
         if (pauseAudioActive) {
@@ -168,7 +148,6 @@ public class RecognizeActivity extends AppCompatActivity {
         if (isRecording && !isFinishing()) {
             isRecording = false;
             currentSessionId++;
-            audioRecordBridge.stop();
             try { cancelRecording(); } catch (Throwable t) { /* ignore */ }
             AudioDeviceManager.releaseMicrophone(this);
             if (pauseAudioActive) {
@@ -183,7 +162,6 @@ public class RecognizeActivity extends AppCompatActivity {
     @Override
     protected void onDestroy() {
         currentSessionId++;
-        audioRecordBridge.stop();
         try { cancelRecording(); } catch (Throwable ignored) { }
         AudioDeviceManager.releaseMicrophone(this);
         super.onDestroy();
@@ -339,5 +317,4 @@ public class RecognizeActivity extends AppCompatActivity {
     private native void startRecording(boolean autoStop, int sessionId);
     private native void stopRecording();
     private native void cancelRecording();
-    private native void pushAudioDirect(java.nio.ByteBuffer buffer, int byteCount, int sessionId);
 }

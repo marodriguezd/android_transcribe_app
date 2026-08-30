@@ -107,7 +107,6 @@ public class RustInputMethodService extends InputMethodService {
     // process audio. Flushed from onStartInputView once a field is focused
     // again so the text is never lost.
     private String pendingCommitText = null;
-    private final AudioRecordBridge audioRecordBridge = new AudioRecordBridge();
 
     // Set to true in onDestroy() so late post-processing callbacks can drop
     // their work instead of touching detached/destroyed views.
@@ -350,7 +349,6 @@ public class RustInputMethodService extends InputMethodService {
                 }
 
                 if (isRecording) {
-                    audioRecordBridge.stop();
                     AudioDeviceManager.releaseMicrophone(this);
                     stopRecording();
                     if (pauseAudioActive) {
@@ -371,23 +369,6 @@ public class RustInputMethodService extends InputMethodService {
                     SettingsManager sm = new SettingsManager(this);
                     AudioDeviceManager.acquireMicrophone(this, sm.getMicMode());
                     startRecording(isAutoStopEnabled(), ++currentSessionId);
-                    int sid = currentSessionId;
-                    boolean started = audioRecordBridge.start(this, sm.getMicMode(), new AudioRecordBridge.Callback() {
-                        @Override
-                        public void onAudioChunk(java.nio.ByteBuffer directBuffer, int bytesRead) {
-                            pushAudioDirect(directBuffer, bytesRead, sid);
-                        }
-                        @Override
-                        public void onAudioLevel(float level) {}
-                        @Override
-                        public void onError(String message) {
-                            Log.e(TAG, "AudioRecord error: " + message);
-                        }
-                    });
-                    if (!started) {
-                        cancelCurrentTranscription();
-                        return;
-                    }
                     updateRecordButtonUI(true);
                 }
             });
@@ -432,23 +413,6 @@ public class RustInputMethodService extends InputMethodService {
                 }
                 AudioDeviceManager.acquireMicrophone(this, sm.getMicMode());
                 startRecording(isAutoStopEnabled(), ++currentSessionId);
-                int sid = currentSessionId;
-                boolean started = audioRecordBridge.start(this, sm.getMicMode(), new AudioRecordBridge.Callback() {
-                    @Override
-                    public void onAudioChunk(java.nio.ByteBuffer directBuffer, int bytesRead) {
-                        pushAudioDirect(directBuffer, bytesRead, sid);
-                    }
-                    @Override
-                    public void onAudioLevel(float level) {}
-                    @Override
-                    public void onError(String message) {
-                        Log.e(TAG, "AudioRecord error: " + message);
-                    }
-                });
-                if (!started) {
-                    cancelCurrentTranscription();
-                    return;
-                }
                 updateRecordButtonUI(true);
             }
         }
@@ -461,7 +425,6 @@ public class RustInputMethodService extends InputMethodService {
         if (isRecording) {
             if (isStopOnHideEnabled()) {
                 // Opt-in behavior: discard the recording when the keyboard hides.
-                audioRecordBridge.stop();
                 try {
                     currentSessionId++;
                     cancelRecording();
@@ -590,7 +553,6 @@ public class RustInputMethodService extends InputMethodService {
     @Override
     public void onDestroy() {
         currentSessionId++;
-        audioRecordBridge.stop();
         try { cancelRecording(); } catch (Throwable ignored) { }
         AudioDeviceManager.releaseMicrophone(this);
         super.onDestroy();
@@ -617,14 +579,12 @@ public class RustInputMethodService extends InputMethodService {
     private native void startRecording(boolean autoStop, int sessionId);
     private native void stopRecording();
     private native void cancelRecording();
-    private native void pushAudioDirect(java.nio.ByteBuffer buffer, int byteCount, int sessionId);
 
     // Called from Rust (monitor thread) when trailing silence is detected.
     public void onAutoStop(int sessionId) {
         mainHandler.post(() -> {
             if (sessionId != currentSessionId) return;
             if (isRecording) {
-                audioRecordBridge.stop();
                 AudioDeviceManager.releaseMicrophone(RustInputMethodService.this);
                 stopRecording();
                 if (pauseAudioActive) {
@@ -729,7 +689,7 @@ public class RustInputMethodService extends InputMethodService {
         mainHandler.post(() -> {
             if (sessionId != currentSessionId) return;
             if (isRecording && partialTextView != null && partialScroll != null
-                    && text != null && !text.trim().isEmpty()) {
+                && text != null && !text.trim().isEmpty()) {
                 // Show the live hypothesis and scroll the window to the
                 // bottom so the newest words stay visible as it grows.
                 partialTextView.setText(text);
@@ -753,7 +713,6 @@ public class RustInputMethodService extends InputMethodService {
         lastStatus = "Canceled";
         resultPending = false;
         lastRawTranscript = null;
-        audioRecordBridge.stop();
         try { cancelRecording(); } catch (Throwable ignored) { }
         AudioDeviceManager.releaseMicrophone(this);
         PostProcessor.cancelAllFor(this);

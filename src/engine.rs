@@ -448,6 +448,14 @@ impl Engine {
             // Handle control commands: Stop finalizes, Cancel abandons.
             match rx.try_recv() {
                 Ok(StreamCmd::Stop) => {
+                    chunk.clear();
+                    drain(&mut chunk);
+                    if !chunk.is_empty() {
+                        total_fed += chunk.len();
+                        stream
+                            .feed(&chunk)
+                            .map_err(|e| format!("stream feed: {}", e))?;
+                    }
                     stream
                         .finalize()
                         .map_err(|e| format!("stream finalize: {}", e))?;

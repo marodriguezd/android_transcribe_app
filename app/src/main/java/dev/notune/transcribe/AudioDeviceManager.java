@@ -236,9 +236,9 @@ public final class AudioDeviceManager {
     public static AudioRecord createAudioRecord(Context context, String micPreference) {
         int minBuf = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT);
         if (minBuf <= 0) {
-            minBuf = 32000;
+            minBuf = 4096;
         }
-        int bufferSize = Math.max(minBuf, 32000);
+        int bufferSize = Math.max(minBuf * 4, 8192);
 
         boolean useVoiceComm = !MIC_MODE_BUILTIN_ONLY.equals(micPreference) && isBluetoothConnected(context);
         int primarySource = useVoiceComm ? MediaRecorder.AudioSource.VOICE_COMMUNICATION : MediaRecorder.AudioSource.VOICE_RECOGNITION;

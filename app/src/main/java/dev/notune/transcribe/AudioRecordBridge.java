@@ -12,10 +12,11 @@ import java.nio.ByteOrder;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * Dedicated Android AudioRecord bridge for Bluetooth/communication routing.
+ * Robust Android AudioRecord bridge following FUTO Keyboard & AOSP best practices.
  *
- * <p>Configures MediaRecorder.AudioSource.VOICE_COMMUNICATION at 16000 Hz mono 16-bit PCM,
- * binds directly to preferred Bluetooth SCO/BLE devices, and delivers zero-copy direct ByteBuffers.</p>
+ * <p>Captures 16000 Hz mono 16-bit PCM via standard short[] arrays to avoid HAL driver
+ * direct-buffer discrepancies, computes real-time RMS audio levels, and delivers
+ * direct ByteBuffers to native JNI engine.</p>
  */
 @SuppressLint("MissingPermission")
 public class AudioRecordBridge {
@@ -24,7 +25,8 @@ public class AudioRecordBridge {
     public static final int SAMPLE_RATE = 16000;
     public static final int CHANNEL_CONFIG = AudioFormat.CHANNEL_IN_MONO;
     public static final int AUDIO_FORMAT = AudioFormat.ENCODING_PCM_16BIT;
-    public static final int CHUNK_SIZE_BYTES = 3200; // 100ms at 16kHz 16-bit mono
+    public static final int SAMPLES_PER_CHUNK = 1600; // 100ms at 16kHz
+    public static final int CHUNK_SIZE_BYTES = SAMPLES_PER_CHUNK * 2; // 3200 bytes
 
     public interface Callback {
         void onAudioChunk(ByteBuffer directBuffer, int bytesRead);
@@ -63,30 +65,33 @@ public class AudioRecordBridge {
             }
             isRecording.set(true);
 
-            final ByteBuffer captureBuffer = directBuffer;
+            final ByteBuffer nativeBuffer = directBuffer;
             captureThread = new Thread(() -> {
                 Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO);
+                final short[] pcmBuffer = new short[SAMPLES_PER_CHUNK];
                 try {
                     while (isRecording.get() && !Thread.currentThread().isInterrupted()) {
                         AudioRecord record = audioRecord;
                         if (record == null || record.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) {
                             break;
                         }
-                        captureBuffer.clear();
-                        int read = record.read(captureBuffer, CHUNK_SIZE_BYTES);
-                        if (read > 0) {
-                            captureBuffer.position(0);
-                            captureBuffer.limit(read);
+                        int samplesRead = record.read(pcmBuffer, 0, pcmBuffer.length);
+                        if (samplesRead > 0) {
+                            int bytesRead = samplesRead * 2;
+                            nativeBuffer.clear();
+                            nativeBuffer.asShortBuffer().put(pcmBuffer, 0, samplesRead);
+                            nativeBuffer.position(0);
+                            nativeBuffer.limit(bytesRead);
 
-                            float rms = calculateRms(captureBuffer, read);
+                            float rms = calculateRms(pcmBuffer, samplesRead);
                             if (callback != null && isRecording.get()) {
                                 callback.onAudioLevel(rms);
-                                callback.onAudioChunk(captureBuffer, read);
+                                callback.onAudioChunk(nativeBuffer, bytesRead);
                             }
-                        } else if (read < 0) {
-                            Log.w(TAG, "AudioRecord read error: " + read);
+                        } else if (samplesRead < 0) {
+                            Log.w(TAG, "AudioRecord read error: " + samplesRead);
                             if (callback != null && isRecording.get()) {
-                                callback.onError("AudioRecord read error: " + read);
+                                callback.onError("AudioRecord read error: " + samplesRead);
                             }
                             break;
                         }
@@ -140,6 +145,18 @@ public class AudioRecordBridge {
 
     public boolean isRecording() {
         return isRecording.get();
+    }
+
+    public static float calculateRms(short[] buffer, int samplesRead) {
+        if (buffer == null || samplesRead <= 0) return 0f;
+        double sum = 0.0;
+        for (int i = 0; i < samplesRead; i++) {
+            double norm = buffer[i] / 32768.0;
+            sum += norm * norm;
+        }
+        double mean = sum / samplesRead;
+        double rms = Math.sqrt(mean);
+        return (float) Math.min(1.0, rms * 5.0);
     }
 
     public static float calculateRms(ByteBuffer buffer, int bytesRead) {

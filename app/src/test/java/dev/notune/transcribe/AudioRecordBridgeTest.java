@@ -34,8 +34,9 @@ public class AudioRecordBridgeTest {
 
     @Test
     public void testCalculateRmsNullAndEmpty() {
-        assertEquals(0f, AudioRecordBridge.calculateRms(null, 0), 0.0001f);
-        assertEquals(0f, AudioRecordBridge.calculateRms(null, 3200), 0.0001f);
+        assertEquals(0f, AudioRecordBridge.calculateRms((ByteBuffer) null, 0), 0.0001f);
+        assertEquals(0f, AudioRecordBridge.calculateRms((ByteBuffer) null, 3200), 0.0001f);
+        assertEquals(0f, AudioRecordBridge.calculateRms((short[]) null, 0), 0.0001f);
 
         ByteBuffer buf = ByteBuffer.allocate(3200).order(ByteOrder.nativeOrder());
         assertEquals(0f, AudioRecordBridge.calculateRms(buf, 0), 0.0001f);

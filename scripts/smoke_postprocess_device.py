@@ -32,9 +32,9 @@ from pathlib import Path
 from typing import Iterable, Optional
 
 
-PACKAGE = "dev.notune.transcribe"
-MAIN_ACTIVITY = f"{PACKAGE}/.MainActivity"
-TRANSCRIBE_ACTIVITY = f"{PACKAGE}/.TranscribeFileActivity"
+PACKAGE = "com.auratranscribe.app"
+MAIN_ACTIVITY = f"{PACKAGE}/dev.notune.transcribe.MainActivity"
+TRANSCRIBE_ACTIVITY = f"{PACKAGE}/dev.notune.transcribe.TranscribeFileActivity"
 REMOTE_AUDIO = f"/sdcard/Android/data/{PACKAGE}/files/freebuff-qa-bench.wav"
 QA_PROMPT = (
     "Return only the corrected transcript. Preserve meaning and punctuation. "

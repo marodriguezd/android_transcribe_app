@@ -1,6 +1,7 @@
 package dev.notune.transcribe;
 
 import android.app.Activity;
+import android.content.res.AssetFileDescriptor;
 import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Intent;
@@ -11,6 +12,7 @@ import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.ParcelFileDescriptor;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -287,9 +289,26 @@ public class TranscribeFileActivity extends AppCompatActivity {
      */
     private float[] decodeAudioToSamples(Uri uri) throws IOException {
         MediaExtractor extractor = new MediaExtractor();
+        AssetFileDescriptor afd = null;
         try {
-            extractor.setDataSource(this, uri, null);
+            if ("file".equalsIgnoreCase(uri.getScheme()) && uri.getPath() != null) {
+                extractor.setDataSource(uri.getPath());
+            } else {
+                try {
+                    afd = getContentResolver().openAssetFileDescriptor(uri, "r");
+                    if (afd != null) {
+                        extractor.setDataSource(afd.getFileDescriptor(), afd.getStartOffset(), afd.getLength());
+                    } else {
+                        extractor.setDataSource(this, uri, null);
+                    }
+                } catch (Exception fallback) {
+                    extractor.setDataSource(this, uri, null);
+                }
+            }
         } catch (IOException | RuntimeException e) {
+            if (afd != null) {
+                try { afd.close(); } catch (IOException ignored) {}
+            }
             extractor.release();
             throw e;
         }
@@ -423,6 +442,9 @@ public class TranscribeFileActivity extends AppCompatActivity {
             try { codec.stop(); } catch (Exception ignored) { }
             codec.release();
             extractor.release();
+            if (afd != null) {
+                try { afd.close(); } catch (IOException ignored) {}
+            }
         }
 
         // Resample to 16kHz if needed

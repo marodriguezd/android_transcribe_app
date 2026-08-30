@@ -194,9 +194,14 @@ public class FloatingDictationAccessibilityService extends AccessibilityService 
                         return true;
                     }
 
-                    // Priority 2: ACTION_SET_TEXT
+                    // Priority 2: ACTION_SET_TEXT (preserving existing content if present)
+                    CharSequence existing = targetNode.getText();
+                    CharSequence combined = text;
+                    if (existing != null && existing.length() > 0) {
+                        combined = existing + " " + text;
+                    }
                     Bundle args = new Bundle();
-                    args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
+                    args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, combined);
                     if (targetNode.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
                         Log.i(TAG, "Successfully set text via ACTION_SET_TEXT");
                         return true;

@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.speech.RecognizerIntent;
 import android.util.Log;
+import android.view.View;
 import android.view.WindowManager;
 import android.widget.ImageView;
 import dev.notune.transcribe.BuildConfig;
@@ -15,7 +16,11 @@ import android.content.pm.PackageManager;
 import android.os.Handler;
 import android.os.Looper;
 
+import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import java.util.ArrayList;
 
@@ -44,8 +49,20 @@ public class RecognizeActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        EdgeToEdge.enable(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.recognize_activity);
+
+        View rootView = findViewById(R.id.root);
+        if (rootView != null) {
+            ViewCompat.setOnApplyWindowInsetsListener(rootView, (v, windowInsets) -> {
+                Insets insets = windowInsets.getInsets(
+                        WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
+                );
+                v.setPadding(insets.left, insets.top, insets.right, insets.bottom);
+                return windowInsets;
+            });
+        }
 
         // Keep the screen awake for the lifetime of this recording screen so it
         // never sleeps mid-capture and cuts the recording short.

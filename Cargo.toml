@@ -1,3 +1,9 @@
+[workspace]
+members = [
+    ".",
+    "crates/aura-core",
+]
+
 [package]
 name = "android_transcribe_app"
 version = "0.1.0"
@@ -7,6 +13,7 @@ edition = "2021"
 crate-type = ["cdylib"]
 
 [dependencies]
+aura-core = { path = "crates/aura-core" }
 cpal = "0.15"
 log = "0.4"
 android_logger = "0.13"

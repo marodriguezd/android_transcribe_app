@@ -63,25 +63,25 @@ public class AudioRecordBridge {
             }
             isRecording.set(true);
 
+            final ByteBuffer captureBuffer = directBuffer;
             captureThread = new Thread(() -> {
                 Process.setThreadPriority(Process.THREAD_PRIORITY_AUDIO);
                 try {
-                    while (isRecording.get()) {
+                    while (isRecording.get() && !Thread.currentThread().isInterrupted()) {
                         AudioRecord record = audioRecord;
-                        ByteBuffer buf = directBuffer;
-                        if (record == null || buf == null) {
+                        if (record == null || record.getRecordingState() != AudioRecord.RECORDSTATE_RECORDING) {
                             break;
                         }
-                        buf.clear();
-                        int read = record.read(buf, CHUNK_SIZE_BYTES);
+                        captureBuffer.clear();
+                        int read = record.read(captureBuffer, CHUNK_SIZE_BYTES);
                         if (read > 0) {
-                            buf.position(0);
-                            buf.limit(read);
+                            captureBuffer.position(0);
+                            captureBuffer.limit(read);
 
-                            float rms = calculateRms(buf, read);
+                            float rms = calculateRms(captureBuffer, read);
                             if (callback != null && isRecording.get()) {
                                 callback.onAudioLevel(rms);
-                                callback.onAudioChunk(buf, read);
+                                callback.onAudioChunk(captureBuffer, read);
                             }
                         } else if (read < 0) {
                             Log.w(TAG, "AudioRecord read error: " + read);
@@ -113,6 +113,9 @@ public class AudioRecordBridge {
 
     public synchronized void stop() {
         isRecording.set(false);
+        if (captureThread != null) {
+            captureThread.interrupt();
+        }
         if (audioRecord != null) {
             try {
                 if (audioRecord.getRecordingState() == AudioRecord.RECORDSTATE_RECORDING) {

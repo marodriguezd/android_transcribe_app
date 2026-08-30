@@ -348,16 +348,13 @@ pub fn push_audio_direct(
     }
     let samples_count = (byte_count as usize) / 2;
     let i16_slice = unsafe { std::slice::from_raw_parts(addr as *const i16, samples_count) };
-    const INV_SCALE: f32 = 1.0 / 32768.0;
-    let f32_samples: Vec<f32> = i16_slice.iter().map(|&s| s as f32 * INV_SCALE).collect();
 
-    state
-        .audio_buffer
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .extend_from_slice(&f32_samples);
+    let mut audio_buf = state.audio_buffer.lock().unwrap_or_else(|p| p.into_inner());
+    let prev_len = audio_buf.len();
+    crate::audio::pcm_i16_to_f32_neon(i16_slice, &mut audio_buf);
+    let chunk_f32 = &audio_buf[prev_len..];
 
-    let rms = crate::audio::fast_rms(&f32_samples);
+    let rms = crate::audio::fast_rms(chunk_f32);
     let level = (rms * 6.0).clamp(0.0, 1.0);
 
     let ep_guard = state.endpoint.lock().unwrap_or_else(|p| p.into_inner());
@@ -371,8 +368,8 @@ pub fn push_audio_direct(
             } else {
                 let run = ep
                     .speech_run_samples
-                    .fetch_add(f32_samples.len(), Ordering::SeqCst)
-                    + f32_samples.len();
+                    .fetch_add(samples_count, Ordering::SeqCst)
+                    + samples_count;
                 if run >= MIN_SPEECH_SAMPLES
                     && ep.speech_started.swap(true, Ordering::SeqCst) == false
                 {
@@ -400,6 +397,7 @@ pub fn push_audio_direct(
         }
     }
     drop(ep_guard);
+    drop(audio_buf);
 
     let now_ms = Instant::now().elapsed().as_millis() as u64;
     let last = state.last_level_sent_ms.load(Ordering::Relaxed);

@@ -10,6 +10,7 @@ import android.app.Service;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.pm.ServiceInfo;
 import android.graphics.PixelFormat;
 import android.graphics.Point;
 import android.os.Build;
@@ -126,6 +127,12 @@ public class FloatingOverlayService extends Service {
     private ValueAnimator mSnapAnimator;
     private ValueAnimator mDockAnimator;
     private boolean mIsDocked = false;
+    private static volatile boolean sIsRunning = false;
+
+    public static boolean isRunning() {
+        return sIsRunning;
+    }
+
     private final Runnable mInactivityRunnable = this::enterDockedState;
     private int mLastScreenWidth = 0;
 
@@ -181,7 +188,11 @@ public class FloatingOverlayService extends Service {
 
         try {
             createNotificationChannel();
-            startForeground(NOTIFICATION_ID, buildNotification());
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE);
+            } else {
+                startForeground(NOTIFICATION_ID, buildNotification());
+            }
         } catch (Throwable t) {
             // SecurityException (FGS type enforcement), MissingForegroundServiceTypeException,
             // or any other unexpected failure must never crash the process into a restart loop.
@@ -195,6 +206,7 @@ public class FloatingOverlayService extends Service {
             setupOverlayView();
             SettingsManager sm = new SettingsManager(this);
             AudioDeviceManager.prewarmMicrophone(this, sm.getMicMode());
+            sIsRunning = true;
         } catch (Throwable t) {
             // WindowManager.addView() failing (e.g. permission revoked between the check and
             // the add) is a setup failure, not a crash.
@@ -995,6 +1007,7 @@ public class FloatingOverlayService extends Service {
 
     @Override
     public void onDestroy() {
+        sIsRunning = false;
         mIsDestroyed = true;
         mCurrentSessionId++;
         cancelInactivityTimer();

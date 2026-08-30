@@ -19,7 +19,11 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.EdgeToEdge;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import dev.notune.transcribe.BuildConfig;
 
@@ -75,8 +79,20 @@ public class TranscribeFileActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        EdgeToEdge.enable(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.transcribe_file_activity);
+
+        View rootView = findViewById(R.id.root);
+        if (rootView != null) {
+            ViewCompat.setOnApplyWindowInsetsListener(rootView, (v, windowInsets) -> {
+                Insets insets = windowInsets.getInsets(
+                        WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
+                );
+                v.setPadding(insets.left, insets.top, insets.right, insets.bottom);
+                return windowInsets;
+            });
+        }
 
         statusText = findViewById(R.id.txt_status);
         progressBar = findViewById(R.id.progress_bar);

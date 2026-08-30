@@ -169,7 +169,10 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_LiveSubtitleService_ini
         let mut gap_pending = false;
 
         let deliver = |env: &mut jni::JNIEnv, text: &str, is_final: bool| {
-            crate::jni_util::notify_subtitle(env, service_obj, text, is_final);
+            let _ = env.with_local_frame(16, |local_env| {
+                crate::jni_util::notify_subtitle(local_env, service_obj, text, is_final);
+                Ok::<(), jni::errors::Error>(())
+            });
         };
 
         while let Ok(job) = rx.recv() {

@@ -482,7 +482,7 @@ def main() -> int:
     try:
         print("[1/7] Installing debug APK")
         if installed_before and args.clean_install:
-            adb.uninstall(require_success=True)
+            uninstall(adb, require_success=True)
         adb.run("install", "-r", str(args.apk), timeout=120)
         print("[2/7] Waiting for the speech engine")
         wait_for_model_ready(adb, args.model_timeout)

@@ -13,16 +13,11 @@ use jni::objects::{JClass, JString};
 use jni::sys::{jboolean, jint, jstring};
 use jni::JNIEnv;
 
+pub use aura_core::normalizer::*;
+
 /// Inactivity duration before the loaded S1 model is automatically unloaded
 /// from RAM to preserve mobile system memory (60 seconds).
 const INACTIVITY_UNLOAD_SECS: u64 = 60;
-
-/// Default S1-mini GGUF file name stored in `filesDir/models/`.
-pub const DEFAULT_S1_MODEL_FILE: &str = "s1-mini-q4_k_m.gguf";
-
-/// System instruction expected by SuperWhisper S1-mini.
-const S1_SYSTEM_PROMPT: &str =
-    "You are a text normalizer for speech-to-text transcripts. The input begins with a control line specifying the styling, structure, and context settings; clean the transcript to match those settings and output only the cleaned text.";
 
 /// Global state holding the active S1 model context and timestamp.
 static S1_STATE: Lazy<Mutex<S1Manager>> = Lazy::new(|| Mutex::new(S1Manager::new()));
@@ -73,37 +68,6 @@ impl S1Manager {
                 self.unload();
             }
         }
-    }
-}
-
-/// Constructs the exact prompt template and control line for S1-mini.
-pub fn build_s1_prompt(raw_text: &str, preset: &str, custom_prompt: Option<&str>) -> String {
-    let control_line = if let Some(custom) = custom_prompt {
-        if !custom.trim().is_empty() {
-            custom.trim().to_string()
-        } else {
-            get_control_line_for_preset(preset)
-        }
-    } else {
-        get_control_line_for_preset(preset)
-    };
-
-    format!(
-        "<|im_start|>system\n{}<|im_end|>\n<|im_start|>user\n{}\n{}<|im_end|>\n<|im_start|>assistant\n<think>\n</think>\n",
-        S1_SYSTEM_PROMPT,
-        control_line,
-        raw_text.trim()
-    )
-}
-
-/// Maps high-level presets to S1-mini steerable control axes.
-fn get_control_line_for_preset(preset: &str) -> String {
-    match preset.to_lowercase().as_str() {
-        "formal" => "[Styling: formal] [Structure: prose] [Context: general]".to_string(),
-        "casual" => "[Styling: casual] [Structure: prose] [Context: general]".to_string(),
-        "email" => "[Styling: semi-formal] [Structure: prose] [Context: email]".to_string(),
-        "lists" => "[Styling: semi-formal] [Structure: lists] [Context: general]".to_string(),
-        _ => "[Styling: semi-formal] [Structure: prose] [Context: general]".to_string(), // "clean" / default
     }
 }
 

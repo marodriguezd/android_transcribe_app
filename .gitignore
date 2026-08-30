@@ -23,7 +23,8 @@ local.properties
 release.keystore
 
 # Rust build output
-/target/
+target/
+**/target/
 
 # Native libs (built by cargo-ndk at build time)
 app/src/main/jniLibs/

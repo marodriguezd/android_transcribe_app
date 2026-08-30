@@ -1,0 +1,8 @@
+[package]
+name = "aura-core"
+version = "0.1.0"
+edition = "2021"
+description = "Pure Rust text normalization, phonetic encoding, bigram similarity, and custom dictionary correction engine"
+
+[dependencies]
+strsim = "0.11"

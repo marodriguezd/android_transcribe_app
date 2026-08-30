@@ -26,9 +26,16 @@ import android.widget.RadioGroup;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.EdgeToEdge;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.appcompat.app.AppCompatDelegate;
+import androidx.core.app.NotificationCompat;
 import androidx.core.content.ContextCompat;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 import androidx.core.widget.ImageViewCompat;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
@@ -45,7 +52,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 import okhttp3.OkHttpClient;
@@ -54,18 +60,62 @@ import okhttp3.Response;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
-    private static final int PERM_REQ_CODE = 101;
-    private static final int REQ_VOICE_TEST = 202;
     private static final int REQ_DOWNLOAD_NOTIFICATIONS = 303;
-    // Floating bubble needs RECORD_AUDIO too (the FGS type is "microphone", so
-    // startForeground() throws without it). Request it before starting the
-    // service and resume the start once granted.
-    private static final int REQ_FLOATING_MIC = 505;
     private boolean pendingFloatingStart = false;
+    private boolean pendingDebugModelDownload = false;
     private static final String ACTION_CANCEL_DEBUG_DOWNLOAD =
             "dev.notune.transcribe.CANCEL_DEBUG_DOWNLOAD";
     private static final String DEBUG_DOWNLOAD_CHANNEL_ID = "DebugModelDownload";
     private static final int DEBUG_DOWNLOAD_NOTIFICATION_ID = 30303;
+
+    private final ActivityResultLauncher<Intent> voiceTestLauncher =
+            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+                if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                    ArrayList<String> results =
+                            result.getData().getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
+                    String heard = (results != null && !results.isEmpty()) ? results.get(0) : null;
+                    snackbar(heard != null && !heard.trim().isEmpty()
+                            ? getString(R.string.voice_test_ok, heard)
+                            : getString(R.string.voice_test_empty));
+                }
+                updateVoiceInputStatus();
+            });
+
+    private final ActivityResultLauncher<String[]> permissionsLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), result -> {
+                updateVoiceInputStatus();
+                updateConnectedMicsList();
+            });
+
+    private final ActivityResultLauncher<String[]> floatingMicPermissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), result -> {
+                if (pendingFloatingStart) {
+                    pendingFloatingStart = false;
+                    Boolean granted = result.get(android.Manifest.permission.RECORD_AUDIO);
+                    if (Boolean.TRUE.equals(granted)) {
+                        MaterialSwitch switchFloating = findViewById(R.id.switch_floating_mode);
+                        if (switchFloating != null) {
+                            switchFloating.setChecked(true);
+                        } else {
+                            startFloatingService();
+                        }
+                    } else {
+                        snackbar(getString(R.string.floating_need_mic_body));
+                    }
+                }
+            });
+
+    private final ActivityResultLauncher<String[]> downloadNotificationPermissionLauncher =
+            registerForActivityResult(new ActivityResultContracts.RequestMultiplePermissions(), result -> {
+                if (pendingDebugModelDownload) {
+                    pendingDebugModelDownload = false;
+                    Boolean granted = result.get(android.Manifest.permission.POST_NOTIFICATIONS);
+                    if (Boolean.FALSE.equals(granted)) {
+                        snackbar(getString(R.string.debug_model_notification_denied));
+                    }
+                    startDebugModelDownload();
+                }
+            });
 
     /**
      * Debug-model identity (P0.3). Must match {@code modelPackFiles} in
@@ -86,7 +136,6 @@ public class MainActivity extends AppCompatActivity {
     private static final AtomicBoolean cancelDebugModelDownload = new AtomicBoolean(false);
     private static final Object debugModelFinalizationLock = new Object();
     private static volatile okhttp3.Call debugModelCall;
-    private boolean pendingDebugModelDownload = false;
 
     // Live reference to whichever MainActivity instance is currently in the
     // foreground. The model download thread reads this field on completion
@@ -121,8 +170,20 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        EdgeToEdge.enable(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+
+        View rootView = findViewById(R.id.main_root);
+        if (rootView != null) {
+            ViewCompat.setOnApplyWindowInsetsListener(rootView, (v, windowInsets) -> {
+                Insets insets = windowInsets.getInsets(
+                        WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
+                );
+                v.setPadding(insets.left, insets.top, insets.right, insets.bottom);
+                return windowInsets;
+            });
+        }
 
         statusText = findViewById(R.id.text_status);
         voiceStatusText = findViewById(R.id.text_voice_status);
@@ -327,9 +388,8 @@ public class MainActivity extends AppCompatActivity {
                     // the permission is granted.
                     pendingFloatingStart = true;
                     switchFloating.setChecked(false);
-                    requestPermissions(
-                            new String[]{android.Manifest.permission.RECORD_AUDIO},
-                            REQ_FLOATING_MIC);
+                    floatingMicPermissionLauncher.launch(
+                            new String[]{android.Manifest.permission.RECORD_AUDIO});
                     return;
                 }
                 startFloatingService();
@@ -360,7 +420,7 @@ public class MainActivity extends AppCompatActivity {
                 newMode = AudioDeviceManager.MIC_MODE_BLUETOOTH_ONLY;
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                         checkSelfPermission(android.Manifest.permission.BLUETOOTH_CONNECT) != PackageManager.PERMISSION_GRANTED) {
-                    requestPermissions(new String[]{android.Manifest.permission.BLUETOOTH_CONNECT}, PERM_REQ_CODE);
+                    permissionsLauncher.launch(new String[]{android.Manifest.permission.BLUETOOTH_CONNECT});
                 }
             } else if (checkedId == R.id.rb_mic_builtin) {
                 newMode = AudioDeviceManager.MIC_MODE_BUILTIN_ONLY;
@@ -413,7 +473,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void startMicTest() {
         if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(new String[]{android.Manifest.permission.RECORD_AUDIO}, PERM_REQ_CODE);
+            permissionsLauncher.launch(new String[]{android.Manifest.permission.RECORD_AUDIO});
             return;
         }
 
@@ -482,13 +542,8 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private boolean isServiceRunning(Class<?> serviceClass) {
-        ActivityManager manager = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
-        if (manager != null) {
-            for (ActivityManager.RunningServiceInfo service : manager.getRunningServices(Integer.MAX_VALUE)) {
-                if (serviceClass.getName().equals(service.service.getClassName())) {
-                    return true;
-                }
-            }
+        if (FloatingOverlayService.class.equals(serviceClass)) {
+            return FloatingOverlayService.isRunning();
         }
         return false;
     }
@@ -580,26 +635,11 @@ public class MainActivity extends AppCompatActivity {
         intent.putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL,
                 RecognizerIntent.LANGUAGE_MODEL_FREE_FORM);
         try {
-            startActivityForResult(intent, REQ_VOICE_TEST);
+            voiceTestLauncher.launch(intent);
         } catch (android.content.ActivityNotFoundException e) {
             Log.w(TAG, "No RECOGNIZE_SPEECH handler", e);
             snackbar(getString(R.string.voice_test_failed));
         }
-    }
-
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == REQ_VOICE_TEST && resultCode == RESULT_OK && data != null) {
-            ArrayList<String> results =
-                    data.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS);
-            String heard = (results != null && !results.isEmpty()) ? results.get(0) : null;
-            snackbar(heard != null && !heard.trim().isEmpty()
-                    ? getString(R.string.voice_test_ok, heard)
-                    : getString(R.string.voice_test_empty));
-        }
-        // onResume() also refreshes, but do it here too for an immediate update.
-        updateVoiceInputStatus();
     }
 
     /**
@@ -663,44 +703,7 @@ public class MainActivity extends AppCompatActivity {
             }
         }
         if (!needed.isEmpty()) {
-            requestPermissions(needed.toArray(new String[0]), PERM_REQ_CODE);
-        }
-    }
-
-    @Override
-    public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
-        super.onRequestPermissionsResult(requestCode, permissions, grantResults);
-        if (requestCode == PERM_REQ_CODE) {
-            updateVoiceInputStatus();
-            updateConnectedMicsList();
-        } else if (requestCode == REQ_FLOATING_MIC) {
-            if (pendingFloatingStart) {
-                pendingFloatingStart = false;
-                if (grantResults.length > 0
-                        && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                    // Flip the switch back on; its listener performs the
-                    // permission checks again and starts the service.
-                    MaterialSwitch switchFloating = findViewById(R.id.switch_floating_mode);
-                    if (switchFloating != null) {
-                        switchFloating.setChecked(true);
-                    } else {
-                        // Activity was recreated while the dialog was up.
-                        startFloatingService();
-                    }
-                } else {
-                    snackbar(getString(R.string.floating_need_mic_body));
-                }
-            }
-        } else if (requestCode == REQ_DOWNLOAD_NOTIFICATIONS) {
-            if (pendingDebugModelDownload) {
-                pendingDebugModelDownload = false;
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-                        && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
-                                != PackageManager.PERMISSION_GRANTED) {
-                    snackbar(getString(R.string.debug_model_notification_denied));
-                }
-                startDebugModelDownload();
-            }
+            permissionsLauncher.launch(needed.toArray(new String[0]));
         }
     }
 
@@ -858,8 +861,8 @@ public class MainActivity extends AppCompatActivity {
                 && checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
                         != PackageManager.PERMISSION_GRANTED) {
             pendingDebugModelDownload = true;
-            requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS},
-                    REQ_DOWNLOAD_NOTIFICATIONS);
+            downloadNotificationPermissionLauncher.launch(
+                    new String[]{android.Manifest.permission.POST_NOTIFICATIONS});
             return;
         }
         startDebugModelDownload();
@@ -1101,17 +1104,15 @@ public class MainActivity extends AppCompatActivity {
         } else {
             progressText = context.getString(R.string.debug_model_downloading);
         }
-        Notification notification = new Notification.Builder(context, DEBUG_DOWNLOAD_CHANNEL_ID)
+        NotificationCompat.Builder builder = new NotificationCompat.Builder(context, DEBUG_DOWNLOAD_CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_download)
                 .setContentTitle(context.getString(R.string.app_name))
                 .setContentText(progressText)
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setProgress(100, Math.max(0, percent), percent < 0)
-                .addAction(new Notification.Action.Builder(null,
-                        context.getString(R.string.debug_model_cancel), cancelPendingIntent).build())
-                .build();
-        manager.notify(DEBUG_DOWNLOAD_NOTIFICATION_ID, notification);
+                .addAction(0, context.getString(R.string.debug_model_cancel), cancelPendingIntent);
+        manager.notify(DEBUG_DOWNLOAD_NOTIFICATION_ID, builder.build());
     }
 
     private static String formatBytes(long bytes) {

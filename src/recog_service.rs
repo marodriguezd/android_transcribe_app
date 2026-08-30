@@ -336,13 +336,111 @@ pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService
     *guard = None;
 }
 
-/// Called from `onDestroy`.
 #[no_mangle]
 pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService_destroyNative(
     env: JNIEnv,
     class: JClass,
 ) {
     Java_dev_notune_transcribe_VoiceRecognitionService_cancelNative(env, class);
+}
+
+#[no_mangle]
+pub unsafe extern "system" fn Java_dev_notune_transcribe_VoiceRecognitionService_pushAudioDirect(
+    mut env: JNIEnv,
+    _class: JClass,
+    buffer: JObject,
+    byte_count: jni::sys::jint,
+    session_id: jni::sys::jint,
+) {
+    push_audio_direct(&mut env, &buffer, byte_count as i32, session_id as i32);
+}
+
+/// Ingests raw audio PCM buffer directly from Java AudioRecord.
+pub fn push_audio_direct(env: &mut JNIEnv, direct_buf: &JObject, byte_count: i32, session_id: i32) {
+    if byte_count <= 0 {
+        return;
+    }
+    let session_guard = SESSION.lock().unwrap_or_else(|p| p.into_inner());
+    let shared = match session_guard.as_ref() {
+        Some(s)
+            if s.shared.session_id == session_id && !s.shared.finalized.load(Ordering::SeqCst) =>
+        {
+            s.shared.clone()
+        }
+        _ => return,
+    };
+    drop(session_guard);
+
+    let addr = match env.get_direct_buffer_address(direct_buf.into()) {
+        Ok(ptr) => ptr,
+        Err(_) => return,
+    };
+    if addr.is_null() {
+        return;
+    }
+    let samples_count = (byte_count as usize) / 2;
+    let i16_slice = unsafe { std::slice::from_raw_parts(addr as *const i16, samples_count) };
+
+    let mut audio_buf = shared
+        .audio_buffer
+        .lock()
+        .unwrap_or_else(|p| p.into_inner());
+    let prev_len = audio_buf.len();
+    crate::audio::pcm_i16_to_f32_neon(i16_slice, &mut audio_buf);
+    let chunk_f32 = &audio_buf[prev_len..];
+
+    shared
+        .total_pushed
+        .fetch_add(samples_count, Ordering::SeqCst);
+
+    let rms = crate::audio::fast_rms(chunk_f32);
+    let level = (rms * 6.0).clamp(0.0, 1.0);
+
+    let floor = f32::from_bits(shared.noise_floor_bits.load(Ordering::Relaxed));
+    let is_speech = level > MIN_SPEECH_LEVEL && level > floor + SPEECH_MARGIN;
+
+    if is_speech {
+        let elapsed_ms = shared.started_at.elapsed().as_millis() as u64;
+        if shared.speech_started.load(Ordering::SeqCst) {
+            shared.last_voice_ms.store(elapsed_ms, Ordering::Relaxed);
+        } else {
+            let run = shared
+                .speech_run_samples
+                .fetch_add(samples_count, Ordering::SeqCst)
+                + samples_count;
+            if run >= MIN_SPEECH_SAMPLES
+                && shared.speech_started.swap(true, Ordering::SeqCst) == false
+            {
+                shared.last_voice_ms.store(elapsed_ms, Ordering::Relaxed);
+                if let Ok(mut env2) = shared.jvm.attach_current_thread_permanently() {
+                    let _ = env2.call_method(
+                        shared.target.as_obj(),
+                        "onBeginningOfSpeech",
+                        "(I)V",
+                        &[shared.session_id.into()],
+                    );
+                }
+            }
+        }
+    } else {
+        if !shared.speech_started.load(Ordering::SeqCst) {
+            shared.speech_run_samples.store(0, Ordering::SeqCst);
+        }
+        let mut current_bits = shared.noise_floor_bits.load(Ordering::Relaxed);
+        loop {
+            let current_val = f32::from_bits(current_bits);
+            let new_val = (current_val * 0.95 + level * 0.05).clamp(0.0, 1.0);
+            match shared.noise_floor_bits.compare_exchange_weak(
+                current_bits,
+                new_val.to_bits(),
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+            ) {
+                Ok(_) => break,
+                Err(b) => current_bits = b,
+            }
+        }
+    }
 }
 
 // --- Audio + endpointing ------------------------------------------------------
@@ -514,7 +612,12 @@ fn streaming_pump(
             chunk.extend(b.drain(..));
             local.extend_from_slice(chunk);
         };
-        let mut partial = |text: &str| call_partial(&mut env, target, text, shared.session_id);
+        let mut partial = |text: &str| {
+            let _ = env.with_local_frame(16, |local_env| {
+                call_partial(local_env, target, text, shared.session_id);
+                Ok::<(), jni::errors::Error>(())
+            });
+        };
         engine::transcribe_stream_shared(&engine_arc, &rx, &mut drain, &mut partial)
     };
     shared.streaming_active.store(false, Ordering::SeqCst);

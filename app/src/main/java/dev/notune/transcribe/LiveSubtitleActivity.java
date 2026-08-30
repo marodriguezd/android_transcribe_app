@@ -14,7 +14,13 @@ import android.widget.ArrayAdapter;
 import android.widget.Spinner;
 import android.widget.Toast;
 
+import androidx.activity.EdgeToEdge;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import com.google.android.material.snackbar.Snackbar;
 
@@ -32,15 +38,48 @@ import java.util.Locale;
  */
 public class LiveSubtitleActivity extends AppCompatActivity {
     private static final String TAG = "LiveSubtitleActivity";
-    private static final int PERMISSION_CODE = 1;
     private MediaProjectionManager mProjectionManager;
     private boolean mWaitingForOverlayPermission = false;
     private boolean mProjectionStarted = false;
 
+    private final ActivityResultLauncher<Intent> projectionLauncher =
+            registerForActivityResult(new ActivityResultContracts.StartActivityForResult(), result -> {
+                if (result.getResultCode() != RESULT_OK || result.getData() == null) {
+                    Toast.makeText(this, getString(R.string.subs_screen_capture_denied), Toast.LENGTH_SHORT).show();
+                    finish();
+                    return;
+                }
+
+                Intent serviceIntent = new Intent(this, LiveSubtitleService.class);
+                serviceIntent.setAction(LiveSubtitleService.ACTION_START);
+                serviceIntent.putExtra("code", result.getResultCode());
+                serviceIntent.putExtra("data", result.getData());
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    startForegroundService(serviceIntent);
+                } else {
+                    startService(serviceIntent);
+                }
+                finish();
+            });
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        EdgeToEdge.enable(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_live_subtitle);
+
+        View rootView = findViewById(R.id.live_subtitle_root);
+        if (rootView != null) {
+            ViewCompat.setOnApplyWindowInsetsListener(rootView, (v, windowInsets) -> {
+                Insets insets = windowInsets.getInsets(
+                        WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
+                );
+                v.setPadding(insets.left, insets.top, insets.right, insets.bottom);
+                return windowInsets;
+            });
+        }
+
         mProjectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
 
         setupSubtitleTranslationSpinner(findViewById(R.id.spinner_subtitle_translation));
@@ -102,36 +141,12 @@ public class LiveSubtitleActivity extends AppCompatActivity {
         }
     }
 
-    @Override
-    public void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode == PERMISSION_CODE) {
-            if (resultCode != RESULT_OK) {
-                Toast.makeText(this, getString(R.string.subs_screen_capture_denied), Toast.LENGTH_SHORT).show();
-                finish();
-                return;
-            }
-
-            Intent serviceIntent = new Intent(this, LiveSubtitleService.class);
-            serviceIntent.setAction(LiveSubtitleService.ACTION_START);
-            serviceIntent.putExtra("code", resultCode);
-            serviceIntent.putExtra("data", data);
-
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                startForegroundService(serviceIntent);
-            } else {
-                startService(serviceIntent);
-            }
-            finish();
-        }
-    }
-
     private void startProjection() {
         if (mProjectionStarted) {
             return;
         }
         mProjectionStarted = true;
-        startActivityForResult(mProjectionManager.createScreenCaptureIntent(), PERMISSION_CODE);
+        projectionLauncher.launch(mProjectionManager.createScreenCaptureIntent());
     }
 
     /**

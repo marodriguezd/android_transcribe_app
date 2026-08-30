@@ -18,7 +18,13 @@ import android.widget.RadioButton;
 import android.widget.Spinner;
 import android.widget.TextView;
 
+import androidx.activity.EdgeToEdge;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.graphics.Insets;
+import androidx.core.view.ViewCompat;
+import androidx.core.view.WindowInsetsCompat;
 
 import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.android.material.snackbar.Snackbar;
@@ -48,9 +54,14 @@ import java.util.Locale;
  */
 public class ModelsActivity extends AppCompatActivity {
     private static final String TAG = "ModelsActivity";
-    private static final int REQ_PICK_MODEL = 301;
     /** Keep this much free space beyond the model file itself. */
     private static final long FREE_SPACE_MARGIN = 64L * 1024 * 1024;
+
+    private final ActivityResultLauncher<String[]> pickModelLauncher =
+            registerForActivityResult(new ActivityResultContracts.OpenDocument(), uri -> {
+                if (uri == null) return;
+                handleModelImportUri(uri);
+            });
 
     static {
         try {
@@ -145,8 +156,20 @@ public class ModelsActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        EdgeToEdge.enable(this);
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_models);
+
+        View rootView = findViewById(R.id.models_root);
+        if (rootView != null) {
+            ViewCompat.setOnApplyWindowInsetsListener(rootView, (v, windowInsets) -> {
+                Insets insets = windowInsets.getInsets(
+                        WindowInsetsCompat.Type.systemBars() | WindowInsetsCompat.Type.displayCutout()
+                );
+                v.setPadding(insets.left, insets.top, insets.right, insets.bottom);
+                return windowInsets;
+            });
+        }
 
         modelList = findViewById(R.id.model_list);
         statusText = findViewById(R.id.txt_model_status);
@@ -157,10 +180,7 @@ public class ModelsActivity extends AppCompatActivity {
         languageSpinner = findViewById(R.id.spinner_language);
 
         importButton.setOnClickListener(v -> {
-            Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT);
-            intent.addCategory(Intent.CATEGORY_OPENABLE);
-            intent.setType("*/*");
-            startActivityForResult(intent, REQ_PICK_MODEL);
+            pickModelLauncher.launch(new String[]{"*/*"});
         });
 
         findViewById(R.id.btn_model_links).setOnClickListener(v -> showLinksDialog());
@@ -560,13 +580,7 @@ public class ModelsActivity extends AppCompatActivity {
 
     // --- Import ------------------------------------------------------------
 
-    @Override
-    protected void onActivityResult(int requestCode, int resultCode, Intent data) {
-        super.onActivityResult(requestCode, resultCode, data);
-        if (requestCode != REQ_PICK_MODEL || resultCode != RESULT_OK || data == null) return;
-        Uri uri = data.getData();
-        if (uri == null) return;
-
+    private void handleModelImportUri(Uri uri) {
         String name = queryDisplayName(uri);
         long size = querySize(uri);
 

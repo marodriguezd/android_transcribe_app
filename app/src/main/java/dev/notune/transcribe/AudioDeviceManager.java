@@ -84,12 +84,12 @@ public final class AudioDeviceManager {
                     if (target != null) {
                         am.setCommunicationDevice(target);
                     }
+                } else {
+                    try {
+                        am.startBluetoothSco();
+                        am.setBluetoothScoOn(true);
+                    } catch (Throwable ignored) {}
                 }
-
-                try {
-                    am.startBluetoothSco();
-                    am.setBluetoothScoOn(true);
-                } catch (Throwable ignored) {}
 
                 isPrewarmed = true;
                 Log.d(TAG, "Bluetooth communication channel pre-warmed successfully");
@@ -236,9 +236,9 @@ public final class AudioDeviceManager {
     public static AudioRecord createAudioRecord(Context context, String micPreference) {
         int minBuf = AudioRecord.getMinBufferSize(SAMPLE_RATE, CHANNEL_CONFIG, AUDIO_FORMAT);
         if (minBuf <= 0) {
-            minBuf = 3200 * 2;
+            minBuf = 32000;
         }
-        int bufferSize = Math.max(minBuf, 3200 * 2);
+        int bufferSize = Math.max(minBuf, 32000);
 
         boolean useVoiceComm = !MIC_MODE_BUILTIN_ONLY.equals(micPreference) && isBluetoothConnected(context);
         int primarySource = useVoiceComm ? MediaRecorder.AudioSource.VOICE_COMMUNICATION : MediaRecorder.AudioSource.MIC;
@@ -420,13 +420,13 @@ public final class AudioDeviceManager {
         } catch (Throwable ignored) {}
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             routeToBluetoothMicApi31(am);
-        }
-        // Always attempt SCO as well for maximum headset compatibility
-        try {
-            am.startBluetoothSco();
-            am.setBluetoothScoOn(true);
-        } catch (Throwable t) {
-            Log.w(TAG, "Error starting Bluetooth SCO", t);
+        } else {
+            try {
+                am.startBluetoothSco();
+                am.setBluetoothScoOn(true);
+            } catch (Throwable t) {
+                Log.w(TAG, "Error starting Bluetooth SCO", t);
+            }
         }
     }
 

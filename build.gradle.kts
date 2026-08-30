@@ -1,3 +1,4 @@
 plugins {
-    id("com.android.application") version "8.7.3" apply false
+    alias(libs.plugins.android.application) apply false
+    alias(libs.plugins.android.asset.pack) apply false
 }

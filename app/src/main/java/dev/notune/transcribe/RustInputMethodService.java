@@ -869,18 +869,23 @@ public class RustInputMethodService extends InputMethodService {
     // selecting it afterwards (select_transcription setting).
     private void commitTranscribedText(InputConnection ic, String committed) {
         try {
-            ic.commitText(committed, 1);
+            ic.beginBatchEdit();
+            try {
+                ic.commitText(committed, 1);
 
-            if (!pendingSwitchBack && new File(getFilesDir(), "select_transcription").exists()) {
-                android.view.inputmethod.ExtractedText et = ic.getExtractedText(
-                    new android.view.inputmethod.ExtractedTextRequest(), 0);
-                if (et != null) {
-                    int end = et.selectionStart;
-                    int start = end - committed.length();
-                    if (start >= 0) {
-                        ic.setSelection(start, end);
+                if (!pendingSwitchBack && new File(getFilesDir(), "select_transcription").exists()) {
+                    android.view.inputmethod.ExtractedText et = ic.getExtractedText(
+                        new android.view.inputmethod.ExtractedTextRequest(), 0);
+                    if (et != null) {
+                        int end = et.selectionStart;
+                        int start = end - committed.length();
+                        if (start >= 0) {
+                            ic.setSelection(start, end);
+                        }
                     }
                 }
+            } finally {
+                ic.endBatchEdit();
             }
         } catch (Exception e) {
             // The target app can destroy its editor while ASR or post-processing

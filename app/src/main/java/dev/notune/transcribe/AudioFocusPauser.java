@@ -1,13 +1,14 @@
 package dev.notune.transcribe;
 
 import android.content.Context;
+import android.media.AudioAttributes;
 import android.media.AudioFocusRequest;
 import android.media.AudioManager;
 import android.os.Build;
 
 public class AudioFocusPauser {
     private AudioFocusRequest focusRequest = null;
-    private AudioManager.OnAudioFocusChangeListener listener = focusChange -> { };
+    private final AudioManager.OnAudioFocusChangeListener listener = focusChange -> { };
 
     public void request(Context ctx) {
         try {
@@ -18,9 +19,14 @@ public class AudioFocusPauser {
             abandon(ctx);
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                focusRequest = new AudioFocusRequest.Builder(
-                        AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE
-                ).build();
+                AudioAttributes playbackAttributes = new AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_VOICE_COMMUNICATION)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build();
+                focusRequest = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT_EXCLUSIVE)
+                        .setAudioAttributes(playbackAttributes)
+                        .setOnAudioFocusChangeListener(listener)
+                        .build();
                 am.requestAudioFocus(focusRequest);
             } else {
                 // Pre-O: best effort

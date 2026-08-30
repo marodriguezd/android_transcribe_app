@@ -3,12 +3,12 @@ import java.io.File
 import java.security.MessageDigest
 
 plugins {
-    id("com.android.application")
+    alias(libs.plugins.android.application)
 }
 
 android {
     namespace = "dev.notune.transcribe"
-    compileSdk = 34
+    compileSdk = 35
     // Single source of truth for the NDK (P0.4): this exact version is what
     // CI installs (`.github/workflows/*.yml` -> sdkmanager ndk;28.0.13004108)
     // and what README/AGENTS document. Keep all three in sync.
@@ -17,7 +17,7 @@ android {
     defaultConfig {
         applicationId = "com.auratranscribe.app"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = 41
         versionName = "0.2.2"
         ndk {
@@ -104,8 +104,8 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_1_8
-        targetCompatibility = JavaVersion.VERSION_1_8
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     // Source sets — the Rust-built .so files land in jniLibs via cargo-ndk.
@@ -215,35 +215,35 @@ if (!isBundle) {
 
 dependencies {
     // Material Components (Material 3 / Material You). Pulls in AppCompat.
-    implementation("com.google.android.material:material:1.12.0")
+    implementation(libs.material)
 
     // AI post-processing layer (fork addition): HTTP client for the
     // OpenAI-compatible /chat/completions endpoint.
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
+    implementation(libs.okhttp)
 
     // Live-subtitle translation (fork addition): on-device text translation
     // (ML Kit). Language packs are downloaded through Google Play Services on
     // first use; the actual translation runs fully on-device and works offline
     // afterwards. On devices without Play Services the translator falls back
     // to showing the original subtitle text (see OnDeviceSubtitleTranslator).
-    implementation("com.google.mlkit:translate:17.0.2")
+    implementation(libs.mlkit.translate)
 
     // One-time compatibility migration for API keys saved by v0.1.19–v0.1.21
     // in EncryptedSharedPreferences. New writes remain marker-file based; this
     // dependency is retained so upgrades can recover the old key instead of
     // silently turning post-processing into unauthenticated 401 requests.
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+    implementation(libs.androidx.security.crypto)
 
     // Unit test harness
-    testImplementation("junit:junit:4.13.2")
+    testImplementation(libs.junit)
     // Controlled HTTP server for the post-processing cancellation-isolation
     // tests (P0.1) and payload/fallback tests (P1.3).
-    testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
+    testImplementation(libs.okhttp.mockwebserver)
     // Real org.json for the JVM tests: the android.jar copy is stubbed, so
     // JSONObject.toString() would return null/defaults and the PostProcessor
     // payload tests would fail (android.jar sits last on the test classpath,
     // so this shadows it).
-    testImplementation("org.json:json:20240303")
+    testImplementation(libs.json)
 
     // Material/AppCompat transitively pull the legacy kotlin-stdlib-jdk7/jdk8:1.6.21
     // (via kotlinx-coroutines-android), whose classes were folded into
@@ -251,8 +251,8 @@ dependencies {
     // Align them with the resolved kotlin-stdlib (1.8.22), where they are empty
     // stubs. See https://kotlinlang.org/docs/whatsnew18.html#kotlin-stdlib
     constraints {
-        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22")
-        implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22")
+        implementation(libs.kotlin.stdlib.jdk7)
+        implementation(libs.kotlin.stdlib.jdk8)
     }
 }
 
@@ -308,7 +308,7 @@ val cargoNdkBuild by tasks.registering(Exec::class) {
         environment("CMAKE_TOOLCHAIN_FILE_aarch64_linux_android", "$ndkDir/build/cmake/android.toolchain.cmake")
         environment("CMAKE_TOOLCHAIN_FILE_aarch64_unknown_linux_android", "$ndkDir/build/cmake/android.toolchain.cmake")
         environment("CARGO_NDK_PLATFORM", "26")
-        environment("RUSTFLAGS", "-C target-feature=+neon,+fp16,+dotprod")
+        environment("RUSTFLAGS", "-C target-feature=+neon,+fp16,+dotprod -C link-arg=-Wl,-z,max-page-size=16384 -C link-arg=-lc++_shared")
         environment("TRANSCRIBE_CMAKE_ARGS", "-DCMAKE_TOOLCHAIN_FILE=$ndkDir/build/cmake/android.toolchain.cmake -DANDROID_ABI=arm64-v8a -DANDROID_PLATFORM=26 -DANDROID_STL=c++_shared -DGGML_CPU_ARM_ARCH=armv8.2-a+dotprod+fp16 -DCMAKE_BUILD_TYPE=Release -DCMAKE_C_FLAGS_RELEASE=-O3 -DCMAKE_CXX_FLAGS_RELEASE=-O3 -DGGML_NATIVE=OFF -DGGML_BUILD_TESTS=OFF -DGGML_BUILD_EXAMPLES=OFF")
     }
 
